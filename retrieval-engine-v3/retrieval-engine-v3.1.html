@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知识库检索引擎 v3.1 — 架构补充设计</title>
+<style>
+@font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Bold.ttf'); font-weight: 700; }
+@font-face { font-family: 'JetBrainsMono'; src: url('./_shared/fonts/JetBrainsMono-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'JetBrainsMono'; src: url('./_shared/fonts/JetBrainsMono-Bold.ttf'); font-weight: 700; }
+
+:root {
+  --bg: #0b0e14;
+  --bg2: #131820;
+  --bg3: #1a2235;
+  --ink: #e2e8f0;
+  --muted: #8899b0;
+  --muted2: #5a6a80;
+  --rule: #1e2a3a;
+  --accent: #60a5fa;
+  --accent2: #34d399;
+  --accent3: #fbbf24;
+  --danger: #f87171;
+  --warn: #f59e0b;
+  --success: #34d399;
+  --purple: #a78bfa;
+  --pink: #f472b6;
+  --orange: #fb923c;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.7;
+  font-size: 15px;
+}
+.page-wrapper { display: flex; min-height: 100vh; }
+.toc-sidebar {
+  width: 260px; flex-shrink: 0; background: var(--bg2);
+  border-right: 1px solid var(--rule); position: sticky; top: 0;
+  height: 100vh; overflow-y: auto; padding: 24px 16px;
+}
+.toc-sidebar h2 {
+  font-family: 'InstrumentSans', sans-serif; font-size: 13px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted2); margin-bottom: 12px; padding: 0 8px;
+}
+.toc-sidebar nav ul { list-style: none; }
+.toc-sidebar nav li { margin-bottom: 2px; }
+.toc-sidebar nav a {
+  display: block; padding: 6px 12px; font-size: 13px;
+  color: var(--muted); text-decoration: none; border-radius: 4px;
+  border-left: 2px solid transparent; transition: all 0.15s;
+}
+.toc-sidebar nav a:hover { color: var(--ink); background: var(--bg3); }
+.toc-sidebar nav a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(96,165,250,0.08); }
+.toc-sidebar .toc-tag { font-size: 10px; margin-left: 6px; padding: 1px 5px; border-radius: 8px; font-weight: 600; }
+.content-area { flex: 1; max-width: 920px; margin: 0 auto; padding: 48px 40px 80px; }
+
+h1 { font-family: 'InstrumentSans', sans-serif; font-size: 30px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+h1 + .subtitle { font-size: 15px; color: var(--muted); margin-bottom: 28px; }
+h2 {
+  font-family: 'InstrumentSans', sans-serif; font-size: 22px; font-weight: 700;
+  margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule); letter-spacing: -0.01em;
+}
+h3 { font-family: 'InstrumentSans', sans-serif; font-size: 17px; font-weight: 700; color: var(--accent); margin-top: 32px; margin-bottom: 12px; }
+h4 { font-family: 'InstrumentSans', sans-serif; font-size: 15px; font-weight: 700; margin-top: 20px; margin-bottom: 8px; }
+p { margin-bottom: 14px; }
+code { font-family: 'JetBrainsMono', 'Consolas', monospace; font-size: 0.88em; background: var(--bg3); padding: 2px 6px; border-radius: 3px; color: var(--accent2); }
+pre { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 20px; overflow-x: auto; margin: 16px 0; font-size: 13px; line-height: 1.6; }
+pre code { background: none; padding: 0; color: var(--ink); font-size: 13px; }
+.t-keyword { color: var(--purple); }
+.t-type { color: var(--accent); }
+.t-string { color: var(--success); }
+.t-comment { color: var(--muted2); }
+.t-number { color: var(--orange); }
+.t-property { color: var(--accent2); }
+.t-annotation { color: var(--pink); font-style: italic; }
+
+.table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--rule); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; padding: 10px 14px; background: var(--bg3);
+  color: var(--muted); font-weight: 600; font-family: 'InstrumentSans', sans-serif;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--rule); position: sticky; top: 0; white-space: nowrap;
+}
+td { padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(96,165,250,0.03); }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600; font-family: 'InstrumentSans', sans-serif;
+}
+.badge-p0 { background: rgba(248,113,113,0.15); color: var(--danger); }
+.badge-p1 { background: rgba(245,158,11,0.15); color: var(--warn); }
+.badge-p2 { background: rgba(96,165,250,0.15); color: var(--accent); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--accent); }
+.badge-green { background: rgba(52,211,153,0.15); color: var(--accent2); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--danger); }
+.badge-yellow { background: rgba(245,158,11,0.15); color: var(--warn); }
+.badge-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
+.badge-cyan { background: rgba(52,211,153,0.15); color: var(--accent2); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: rgba(96,165,250,0.06);
+  padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 14px;
+}
+.callout.warn { border-left-color: var(--warn); background: rgba(245,158,11,0.06); }
+.callout.danger { border-left-color: var(--danger); background: rgba(248,113,113,0.06); }
+.callout.success { border-left-color: var(--success); background: rgba(52,211,153,0.06); }
+.callout-title { font-weight: 700; font-family: 'InstrumentSans', sans-serif; margin-bottom: 4px; font-size: 13px; }
+
+.card { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 20px; margin: 16px 0; }
+.card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 16px 0; }
+.card-item { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; }
+.card-item h4 { margin-top: 0; }
+
+.mermaid { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 24px; margin: 16px 0; text-align: center; }
+figure { margin: 20px 0; }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: center; }
+
+.doc-header { margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
+.doc-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 12px; }
+.doc-meta span { display: flex; align-items: center; gap: 4px; }
+
+ul, ol { margin-bottom: 14px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
+
+@media (max-width: 900px) {
+  .toc-sidebar { display: none; }
+  .content-area { padding: 32px 20px 60px; }
+  .card-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+<aside class="toc-sidebar">
+  <h2>目录</h2>
+  <nav>
+    <ul>
+      <li><a href="#sec-1">1. DSL 完整语法定义</a></li>
+      <li><a href="#sec-2">2. 完整数据模型</a></li>
+      <li><a href="#sec-3">3. API 契约规范</a></li>
+      <li><a href="#sec-4">4. 性能模型与容量规划</a></li>
+      <li><a href="#sec-5">5. 融合决策层</a></li>
+      <li><a href="#sec-6">6. 冲突仲裁策略</a></li>
+      <li><a href="#sec-7">7. 时间泄漏防护详细设计</a></li>
+      <li><a href="#sec-8">8. 外部数据源集成</a></li>
+      <li><a href="#sec-9">9. 跨域依赖时序策略</a></li>
+      <li><a href="#sec-10">10. 数据治理模型</a></li>
+      <li><a href="#sec-11">11. 缓存策略</a></li>
+      <li><a href="#sec-12">12. 幂等键生命周期</a></li>
+    </ul>
+  </nav>
+</aside>
+
+<main class="content-area">
+
+<div class="doc-header">
+  <h1>知识库检索引擎 v3.1</h1>
+  <div class="subtitle">架构补充设计 — 填补评审报告识别的 20 个待完善领域</div>
+  <div class="doc-meta">
+    <span>版本: v3.1</span>
+    <span>日期: 2026-08-15</span>
+    <span>状态: <span class="badge badge-green">设计完成</span></span>
+    <span>覆盖缺口: G1 / G2 / G6 / G9-G15 / G17-G20</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 1: DSL Grammar -->
+<!-- ============================================================ -->
+<h2 id="sec-1">DSL 完整语法定义</h2>
+
+<p>本节定义 KD-DSL（Knowledge Domain DSL）的完整文法。KD-DSL 采用 JSON 作为序列化格式，支持在 PostgreSQL JSONB 中直接存储和索引。规则以 JSON 表达，求值引擎将 JSON 解析为 AST 后执行。</p>
+
+<h3>1.1 EBNF 文法</h3>
+
+<pre><code><span class="t-annotation">(* KD-DSL EBNF Grammar *)</span>
+
+<span class="t-comment">(* 顶层规则 *)</span>
+<span class="t-property">Rule</span>         = <span class="t-string">"{"</span> <span class="t-property">metadata</span> <span class="t-string">","</span> <span class="t-property">condition</span> <span class="t-string">","</span> <span class="t-property">conclusion</span> <span class="t-string">"}"</span>;
+
+<span class="t-comment">(* 元数据 *)</span>
+<span class="t-property">metadata</span>     = <span class="t-string">"\"metadata\""</span> <span class="t-string">":"</span> <span class="t-string">"{"</span>
+                <span class="t-property">rule_id</span> <span class="t-string">","</span>
+                <span class="t-property">version</span> <span class="t-string">","</span>
+                <span class="t-property">category</span> <span class="t-string">","</span>
+                <span class="t-property">author</span> <span class="t-string">","</span>
+                <span class="t-property">created_at</span>
+              <span class="t-string">"}"</span>;
+
+<span class="t-comment">(* 条件表达式 — 核心 *)</span>
+<span class="t-property">condition</span>    = <span class="t-property">atomic_condition</span> | <span class="t-property">compound_condition</span>;
+
+<span class="t-property">compound_condition</span> = <span class="t-property">and_condition</span>
+                    | <span class="t-property">or_condition</span>
+                    | <span class="t-property">not_condition</span>
+                    | <span class="t-property">any_condition</span>;  <span class="t-annotation">(* 至少一个匹配 *)</span>
+
+<span class="t-property">and_condition</span> = <span class="t-string">"{"</span> <span class="t-string">"\"type\""</span> <span class="t-string">":"</span> <span class="t-string">"\"AND\""</span> <span class="t-string">","</span>
+                <span class="t-string">"\"conditions\""</span> <span class="t-string">":"</span> <span class="t-string">"["</span> <span class="t-property">condition</span> <span class="t-string">","</span> <span class="t-property">condition</span> <span class="t-string">"}"</span> <span class="t-string">"]"</span> <span class="t-string">"}"</span>;
+
+<span class="t-property">or_condition</span>  = <span class="t-string">"{"</span> <span class="t-string">"\"type\""</span> <span class="t-string">":"</span> <span class="t-string">"\"OR\""</span> <span class="t-string">","</span>
+                <span class="t-string">"\"conditions\""</span> <span class="t-string">":"</span> <span class="t-string">"["</span> <span class="t-property">condition</span> <span class="t-string">","</span> <span class="t-property">condition</span> <span class="t-string">"}"</span> <span class="t-string">"]"</span> <span class="t-string">"}"</span>;
+
+<span class="t-property">not_condition</span> = <span class="t-string">"{"</span> <span class="t-string">"\"type\""</span> <span class="t-string">":"</span> <span class="t-string">"\"NOT\""</span> <span class="t-string">","</span>
+                <span class="t-string">"\"condition\""</span> <span class="t-string">":"</span> <span class="t-property">condition</span> <span class="t-string">"}"</span>;
+
+<span class="t-comment">(* 原子条件 *)</span>
+<span class="t-property">atomic_condition</span> = <span class="t-string">"{"</span> <span class="t-string">"\"type\""</span> <span class="t-string">":"</span> <span class="t-string">"\"ATOMIC\""</span> <span class="t-string">","</span>
+                    <span class="t-string">"\"field\""</span> <span class="t-string">":"</span> <span class="t-property">field_path</span> <span class="t-string">","</span>
+                    <span class="t-string">"\"operator\""</span> <span class="t-string">":"</span> <span class="t-property">operator</span> <span class="t-string">","</span>
+                    <span class="t-string">"\"value\""</span> <span class="t-string">":"</span> <span class="t-property">value</span>
+                    <span class="t-string">"}"</span>;
+
+<span class="t-comment">(* 字段路径：支持嵌套引用 *)</span>
+<span class="t-property">field_path</span>   = <span class="t-string">"\"odds.macau.current.handicap\""</span>
+              | <span class="t-string">"\"odds.bet365.initial.upper\""</span>
+              | <span class="t-string">"\"match.league\""</span>
+              | <span class="t-string">"\"match.home_team\""</span>
+              | <span class="t-string">"\"features.volatility\""</span>
+              | <span class="t-string">"\"features.kelly_index\""</span>
+              | <span class="t-string">"\"features.volume_ratio\""</span>;
+
+<span class="t-comment">(* 算子全集 *)</span>
+<span class="t-property">operator</span>     = <span class="t-string">"\"eq\""</span>     | <span class="t-comment">// 等于</span>
+                <span class="t-string">"\"neq\""</span>    | <span class="t-comment">// 不等于</span>
+                <span class="t-string">"\"gt\""</span>     | <span class="t-comment">// 大于</span>
+                <span class="t-string">"\"gte\""</span>    | <span class="t-comment">// 大于等于</span>
+                <span class="t-string">"\"lt\""</span>     | <span class="t-comment">// 小于</span>
+                <span class="t-string">"\"lte\""</span>    | <span class="t-comment">// 小于等于</span>
+                <span class="t-string">"\"between\""</span> | <span class="t-comment">// 在区间内 [min, max]</span>
+                <span class="t-string">"\"in\""</span>     | <span class="t-comment">// 在集合中</span>
+                <span class="t-string">"\"not_in\""</span> | <span class="t-comment">// 不在集合中</span>
+                <span class="t-string">"\"contains\""</span> | <span class="t-comment">// 字符串包含</span>
+                <span class="t-string">"\"regex\""</span>  | <span class="t-comment">// 正则匹配</span>
+                <span class="t-string">"\"changed\""</span> | <span class="t-comment">// 值是否变化（初盘→当前）</span>
+                <span class="t-string">"\"changed_by\""</span>; <span class="t-comment">// 变化量绝对值或百分比</span>
+
+<span class="t-comment">(* 时间表达式 *)</span>
+<span class="t-property">time_condition</span> = <span class="t-string">"{"</span> <span class="t-string">"\"type\""</span> <span class="t-string">":"</span> <span class="t-string">"\"TIME\""</span> <span class="t-string">","</span>
+                  <span class="t-string">"\"anchor\""</span> <span class="t-string">":"</span> <span class="t-property">time_anchor</span> <span class="t-string">","</span>
+                  <span class="t-string">"\"window\""</span> <span class="t-string">":"</span> <span class="t-property">time_window</span> <span class="t-string">"}"</span>;
+
+<span class="t-property">time_anchor</span>  = <span class="t-string">"\"kickoff\""</span>     | <span class="t-comment">// 开赛时间</span>
+                <span class="t-string">"\"analysis\""</span>   | <span class="t-comment">// 分析时间</span>
+                <span class="t-string">"\"now\""</span>;        <span class="t-comment">// 当前时间</span>
+
+<span class="t-property">time_window</span>  = <span class="t-string">"{"</span> <span class="t-string">"\"before\""</span> <span class="t-string">":"</span> <span class="t-property">duration</span> <span class="t-string">","</span>
+                <span class="t-string">"\"after\""</span> <span class="t-string">":"</span> <span class="t-property">duration</span> <span class="t-string">"}"</span>
+              | <span class="t-string">"{"</span> <span class="t-string">"\"before\""</span> <span class="t-string">":"</span> <span class="t-property">duration</span> <span class="t-string">"}"</span>
+              | <span class="t-string">"{"</span> <span class="t-string">"\"after\""</span> <span class="t-string">":"</span> <span class="t-property">duration</span> <span class="t-string">"}"</span>;
+
+<span class="t-property">duration</span>     = <span class="t-string">"\"30m\""</span> | <span class="t-string">"\"2h\""</span> | <span class="t-string">"\"1d\""</span> | <span class="t-string">"\"15m\""</span>;</code></pre>
+
+<h3>1.2 完整算子集</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>算子</th><th>类型</th><th>说明</th><th>示例</th></tr>
+</thead>
+<tbody>
+<tr><td><code>eq</code></td><td>标量</td><td>等于</td><td><code>{"field":"match.league","operator":"eq","value":"英超"}</code></td></tr>
+<tr><td><code>neq</code></td><td>标量</td><td>不等于</td><td><code>{"operator":"neq","value":"意甲"}</code></td></tr>
+<tr><td><code>gt</code></td><td>数值</td><td>大于</td><td><code>{"field":"odds.macau.current.upper","operator":"gt","value":0.95}</code></td></tr>
+<tr><td><code>gte</code></td><td>数值</td><td>大于等于</td><td><code>{"operator":"gte","value":0.90}</code></td></tr>
+<tr><td><code>lt</code></td><td>数值</td><td>小于</td><td><code>{"operator":"lt","value":0.85}</code></td></tr>
+<tr><td><code>lte</code></td><td>数值</td><td>小于等于</td><td><code>{"operator":"lte","value":0.88}</code></td></tr>
+<tr><td><code>between</code></td><td>数值</td><td>闭区间内</td><td><code>{"operator":"between","value":[0.80,0.95]}</code></td></tr>
+<tr><td><code>in</code></td><td>枚举</td><td>在集合中</td><td><code>{"field":"match.league","operator":"in","value":["英超","西甲","德甲"]}</code></td></tr>
+<tr><td><code>not_in</code></td><td>枚举</td><td>不在集合中</td><td><code>{"operator":"not_in","value":["法甲","荷甲"]}</code></td></tr>
+<tr><td><code>contains</code></td><td>字符串</td><td>包含子串</td><td><code>{"field":"match.home_team","operator":"contains","value":"曼城"}</code></td></tr>
+<tr><td><code>regex</code></td><td>字符串</td><td>正则匹配</td><td><code>{"operator":"regex","value":"^[A-Z].*"}</code></td></tr>
+<tr><td><code>changed</code></td><td>变化检测</td><td>初盘→当前是否变化</td><td><code>{"field":"odds.macau.handicap","operator":"changed","value":true}</code></td></tr>
+<tr><td><code>changed_by</code></td><td>变化量</td><td>绝对值变化量阈值</td><td><code>{"field":"odds.macau.upper","operator":"changed_by","value":{"min":0.05,"type":"abs"}}</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>1.3 完整规则示例</h3>
+
+<pre><code>{
+  <span class="t-string">"metadata"</span>: {
+    <span class="t-string">"rule_id"</span>: <span class="t-string">"R001_v3"</span>,
+    <span class="t-string">"version"</span>: <span class="t-number">3</span>,
+    <span class="t-string">"category"</span>: <span class="t-string">"odds_change"</span>,
+    <span class="t-string">"author"</span>: <span class="t-string">"system"</span>,
+    <span class="t-string">"confidence"</span>: <span class="t-number">0.72</span>
+  },
+  <span class="t-string">"condition"</span>: {
+    <span class="t-string">"type"</span>: <span class="t-string">"AND"</span>,
+    <span class="t-string">"conditions"</span>: [
+      {
+        <span class="t-string">"type"</span>: <span class="t-string">"ATOMIC"</span>,
+        <span class="t-string">"field"</span>: <span class="t-string">"odds.macau.handicap"</span>,
+        <span class="t-string">"operator"</span>: <span class="t-string">"changed"</span>,
+        <span class="t-string">"value"</span>: <span class="t-keyword">true</span>
+      },
+      {
+        <span class="t-string">"type"</span>: <span class="t-string">"ATOMIC"</span>,
+        <span class="t-string">"field"</span>: <span class="t-string">"odds.macau.upper"</span>,
+        <span class="t-string">"operator"</span>: <span class="t-string">"changed_by"</span>,
+        <span class="t-string">"value"</span>: { <span class="t-string">"min"</span>: <span class="t-number">0.05</span>, <span class="t-string">"direction"</span>: <span class="t-string">"down"</span>, <span class="t-string">"type"</span>: <span class="t-string">"abs"</span> }
+      },
+      {
+        <span class="t-string">"type"</span>: <span class="t-string">"TIME"</span>,
+        <span class="t-string">"anchor"</span>: <span class="t-string">"kickoff"</span>,
+        <span class="t-string">"window"</span>: { <span class="t-string">"before"</span>: <span class="t-string">"30m"</span> }
+      }
+    ]
+  },
+  <span class="t-string">"conclusion"</span>: {
+    <span class="t-string">"direction"</span>: <span class="t-string">"favor_upper"</span>,
+    <span class="t-string">"confidence_modifier"</span>: <span class="t-number">0.0</span>,
+    <span class="t-string">"message"</span>: <span class="t-string">"临场升盘降水 — 利好上盘"</span>
+  }
+}</code></pre>
+
+<h3>1.4 模糊匹配定义</h3>
+
+<p>KD-DSL 支持两种模糊匹配模式：</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>模式</th><th>算法</th><th>相似度阈值</th><th>适用场景</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>fuzzy_string</strong></td><td>Levenshtein 距离归一化</td><td>≥ 0.80</td><td>球队名称、联赛名称的模糊匹配</td></tr>
+<tr><td><strong>fuzzy_pattern</strong></td><td>条件因子加权匹配</td><td>≥ 0.65</td><td>盘口变化模式匹配（如"升盘+降水"相似但不完全相同的模式）</td></tr>
+</tbody>
+</table>
+</div>
+
+<pre><code><span class="t-comment">// 模糊匹配条件示例</span>
+{
+  <span class="t-string">"type"</span>: <span class="t-string">"FUZZY"</span>,
+  <span class="t-string">"mode"</span>: <span class="t-string">"fuzzy_pattern"</span>,
+  <span class="t-string">"threshold"</span>: <span class="t-number">0.65</span>,
+  <span class="t-string">"reference_pattern"</span>: {
+    <span class="t-string">"handicap_change"</span>: <span class="t-string">"升盘"</span>,
+    <span class="t-string">"water_change"</span>: <span class="t-string">"降水"</span>
+  },
+  <span class="t-string">"weights"</span>: {
+    <span class="t-string">"handicap_change"</span>: <span class="t-number">0.6</span>,
+    <span class="t-string">"water_change"</span>: <span class="t-number">0.4</span>
+  }
+}</code></pre>
+
+<div class="callout success">
+  <div class="callout-title">DSL 规约要点</div>
+  <p>DSL 规则以 JSON 格式存储于 PostgreSQL JSONB 列，支持 <code>jsonb_path_exists</code> 进行索引加速。规则条件采用表达式树结构，求值引擎递归遍历。所有时间表达式使用 UTC 时间戳，避免时区歧义。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 2: Data Model -->
+<!-- ============================================================ -->
+<h2 id="sec-2">完整数据模型</h2>
+
+<p>以下定义 v3 架构中缺失的 6 张核心表，加上已有的 3 张表，构成完整的数据字典。</p>
+
+<h3>2.1 数据字典总览</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>表名</th><th>用途</th><th>状态</th></tr>
+</thead>
+<tbody>
+<tr><td><code>qd_analysis_commands</code></td><td>分析任务命令</td><td><span class="badge badge-green">v3 已定义</span></td></tr>
+<tr><td><code>qd_evidence_snapshots</code></td><td>证据快照（不可变）</td><td><span class="badge badge-green">v3 已定义</span></td></tr>
+<tr><td><code>qd_rule_versions</code></td><td>规则版本</td><td><span class="badge badge-yellow">本次补充</span></td></tr>
+<tr><td><code>qd_backtest_jobs</code></td><td>回测作业</td><td><span class="badge badge-yellow">本次补充</span></td></tr>
+<tr><td><code>qd_worker_heartbeats</code></td><td>Worker 心跳</td><td><span class="badge badge-yellow">本次补充</span></td></tr>
+<tr><td><code>qd_rule_conflicts</code></td><td>规则冲突注册</td><td><span class="badge badge-yellow">本次补充</span></td></tr>
+<tr><td><code>qd_data_sources</code></td><td>外部数据源注册</td><td><span class="badge badge-yellow">本次补充</span></td></tr>
+<tr><td><code>qd_audit_log</code></td><td>审计日志</td><td><span class="badge badge-yellow">本次补充</span></td></tr>
+<tr><td><code>qd_idempotency_keys</code></td><td>幂等键（独立表）</td><td><span class="badge badge-yellow">本次补充</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>2.2 qd_rule_versions — 规则版本表</h3>
+
+<pre><code><span class="t-keyword">CREATE TABLE</span> qd_rule_versions (
+    <span class="t-property">rule_id</span>           <span class="t-type">VARCHAR(32)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">version</span>           <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span>,
+
+    <span class="t-comment">-- 规则标识</span>
+    <span class="t-property">category</span>          <span class="t-type">VARCHAR(32)</span>    <span class="t-keyword">NOT NULL</span>
+                        <span class="t-keyword">CHECK</span> (category <span class="t-keyword">IN</span> (
+                            <span class="t-string">'odds_change'</span>,
+                            <span class="t-string">'institution_diff'</span>,
+                            <span class="t-string">'sensitivity'</span>,
+                            <span class="t-string">'league_feature'</span>
+                        )),
+    <span class="t-property">title</span>             <span class="t-type">VARCHAR(128)</span>   <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">description</span>       <span class="t-type">TEXT</span>,
+
+    <span class="t-comment">-- DSL 规则体</span>
+    <span class="t-property">dsl_body</span>          <span class="t-type">JSONB</span>          <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">dsl_hash</span>          <span class="t-type">VARCHAR(64)</span>    <span class="t-keyword">NOT NULL</span>,
+
+    <span class="t-comment">-- 结论</span>
+    <span class="t-property">direction</span>         <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span>
+                        <span class="t-keyword">CHECK</span> (direction <span class="t-keyword">IN</span> (
+                            <span class="t-string">'favor_upper'</span>, <span class="t-string">'favor_lower'</span>,
+                            <span class="t-string">'favor_home'</span>, <span class="t-string">'favor_away'</span>,
+                            <span class="t-string">'under'</span>, <span class="t-string">'over'</span>,
+                            <span class="t-string">'reversal'</span>, <span class="t-string">'follow'</span>,
+                            <span class="t-string">'caution'</span>, <span class="t-string">'warning'</span>,
+                            <span class="t-string">'neutral'</span>
+                        )),
+    <span class="t-property">base_confidence</span>   <span class="t-type">NUMERIC(4,3)</span>   <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-number">0.500</span>
+                        <span class="t-keyword">CHECK</span> (base_confidence <span class="t-keyword">BETWEEN</span> <span class="t-number">0</span> <span class="t-keyword">AND</span> <span class="t-number">1</span>),
+
+    <span class="t-comment">-- 状态机</span>
+    <span class="t-property">status</span>            <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-string">'draft'</span>
+                        <span class="t-keyword">CHECK</span> (status <span class="t-keyword">IN</span> (
+                            <span class="t-string">'draft'</span>, <span class="t-string">'proposed'</span>, <span class="t-string">'experiment'</span>,
+                            <span class="t-string">'validated'</span>, <span class="t-string">'approved'</span>, <span class="t-string">'active'</span>,
+                            <span class="t-string">'superseded'</span>, <span class="t-string">'deprecated'</span>
+                        )),
+
+    <span class="t-comment">-- 元数据</span>
+    <span class="t-property">author</span>            <span class="t-type">VARCHAR(64)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">approved_by</span>       <span class="t-type">VARCHAR(64)</span>,
+    <span class="t-property">source</span>            <span class="t-type">VARCHAR(128)</span>,
+    <span class="t-property">tags</span>              <span class="t-type">VARCHAR(32)[]</span>  <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-string">'{}'</span>,
+    <span class="t-property">related_rules</span>     <span class="t-type">VARCHAR(32)[]</span>  <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-string">'{}'</span>,
+
+    <span class="t-comment">-- 统计</span>
+    <span class="t-property">evidence_count</span>    <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-number">0</span>,
+    <span class="t-property">hit_count</span>         <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-number">0</span>,
+    <span class="t-property">accuracy</span>          <span class="t-type">NUMERIC(4,3)</span>,
+
+    <span class="t-comment">-- 时间审计</span>
+    <span class="t-property">created_at</span>        <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>,
+    <span class="t-property">updated_at</span>        <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>,
+
+    <span class="t-keyword">PRIMARY KEY</span> (rule_id, version),
+
+    <span class="t-comment">-- 同一 rule_id 下版本号递增</span>
+    <span class="t-keyword">CONSTRAINT</span> ck_version_positive <span class="t-keyword">CHECK</span> (version > <span class="t-number">0</span>)
+);
+
+<span class="t-comment">-- 查询活跃规则</span>
+<span class="t-keyword">CREATE INDEX</span> idx_rules_active <span class="t-keyword">ON</span> qd_rule_versions (rule_id)
+    <span class="t-keyword">WHERE</span> status = <span class="t-string">'active'</span>;
+
+<span class="t-comment">-- 按分类查询</span>
+<span class="t-keyword">CREATE INDEX</span> idx_rules_category <span class="t-keyword">ON</span> qd_rule_versions (category, status);
+
+<span class="t-comment">-- DSL 内容哈希去重</span>
+<span class="t-keyword">CREATE UNIQUE INDEX</span> idx_rules_dsl_hash <span class="t-keyword">ON</span> qd_rule_versions (dsl_hash);</code></pre>
+
+<h3>2.3 qd_backtest_jobs — 回测作业表</h3>
+
+<pre><code><span class="t-keyword">CREATE TABLE</span> qd_backtest_jobs (
+    <span class="t-property">job_id</span>            <span class="t-type">UUID</span>           <span class="t-keyword">PRIMARY KEY</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">gen_random_uuid()</span>,
+    <span class="t-property">rule_id</span>           <span class="t-type">VARCHAR(32)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">rule_version</span>      <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span>,
+
+    <span class="t-comment">-- 回测配置</span>
+    <span class="t-property">config</span>            <span class="t-type">JSONB</span>          <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">date_range</span>        <span class="t-type">DATERANGE</span>      <span class="t-keyword">NOT NULL</span>,
+
+    <span class="t-comment">-- 状态机</span>
+    <span class="t-property">status</span>            <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-string">'queued'</span>
+                        <span class="t-keyword">CHECK</span> (status <span class="t-keyword">IN</span> (
+                            <span class="t-string">'queued'</span>, <span class="t-string">'running'</span>,
+                            <span class="t-string">'completed'</span>, <span class="t-string">'failed'</span>
+                        )),
+    <span class="t-property">priority</span>          <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-number">0</span>,
+
+    <span class="t-comment">-- 认领</span>
+    <span class="t-property">claimed_by</span>        <span class="t-type">VARCHAR(64)</span>,
+    <span class="t-property">started_at</span>        <span class="t-type">TIMESTAMPTZ</span>,
+    <span class="t-property">completed_at</span>      <span class="t-type">TIMESTAMPTZ</span>,
+
+    <span class="t-comment">-- 结果</span>
+    <span class="t-property">result</span>            <span class="t-type">JSONB</span>,
+    <span class="t-property">error_message</span>     <span class="t-type">TEXT</span>,
+    <span class="t-property">retry_count</span>       <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-number">0</span>,
+
+    <span class="t-property">created_at</span>        <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>
+);
+
+<span class="t-keyword">CREATE INDEX</span> idx_backtest_queued <span class="t-keyword">ON</span> qd_backtest_jobs (priority, created_at)
+    <span class="t-keyword">WHERE</span> status = <span class="t-string">'queued'</span>;
+
+<span class="t-keyword">CREATE INDEX</span> idx_backtest_rule <span class="t-keyword">ON</span> qd_backtest_jobs (rule_id, rule_version);</code></pre>
+
+<h3>2.4 qd_worker_heartbeats — Worker 心跳表</h3>
+
+<pre><code><span class="t-keyword">CREATE TABLE</span> qd_worker_heartbeats (
+    <span class="t-property">worker_id</span>         <span class="t-type">VARCHAR(64)</span>    <span class="t-keyword">PRIMARY KEY</span>,
+    <span class="t-property">process_type</span>      <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span>
+                        <span class="t-keyword">CHECK</span> (process_type <span class="t-keyword">IN</span> (
+                            <span class="t-string">'retrieval'</span>, <span class="t-string">'scheduler'</span>, <span class="t-string">'celery'</span>
+                        )),
+    <span class="t-property">hostname</span>          <span class="t-type">VARCHAR(128)</span>   <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">pid</span>               <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">load</span>              <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-number">0</span>,  <span class="t-comment">-- 当前处理的任务数</span>
+    <span class="t-property">max_load</span>          <span class="t-type">INT</span>            <span class="t-keyword">NOT NULL</span>,               <span class="t-comment">-- 最大容量</span>
+    <span class="t-property">version</span>           <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span>,               <span class="t-comment">-- 代码版本</span>
+    <span class="t-property">last_heartbeat_at</span> <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>,
+    <span class="t-property">started_at</span>        <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>
+);
+
+<span class="t-keyword">CREATE INDEX</span> idx_heartbeat_type <span class="t-keyword">ON</span> qd_worker_heartbeats (process_type, last_heartbeat_at);</code></pre>
+
+<h3>2.5 qd_rule_conflicts — 规则冲突注册表</h3>
+
+<pre><code><span class="t-keyword">CREATE TABLE</span> qd_rule_conflicts (
+    <span class="t-property">conflict_id</span>       <span class="t-type">UUID</span>           <span class="t-keyword">PRIMARY KEY</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">gen_random_uuid()</span>,
+    <span class="t-property">rule_id_a</span>         <span class="t-type">VARCHAR(32)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">rule_id_b</span>         <span class="t-type">VARCHAR(32)</span>    <span class="t-keyword">NOT NULL</span>,
+
+    <span class="t-comment">-- 冲突类型</span>
+    <span class="t-property">conflict_type</span>     <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span>
+                        <span class="t-keyword">CHECK</span> (conflict_type <span class="t-keyword">IN</span> (
+                            <span class="t-string">'opposite_direction'</span>,  <span class="t-comment">-- 方向相反</span>
+                            <span class="t-string">'partial_overlap'</span>,     <span class="t-comment">-- 条件部分重叠</span>
+                            <span class="t-string">'same_condition'</span>        <span class="t-comment">-- 条件相同结论不同</span>
+                        )),
+
+    <span class="t-comment">-- 仲裁方案</span>
+    <span class="t-property">resolution</span>        <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span>
+                        <span class="t-keyword">CHECK</span> (resolution <span class="t-keyword">IN</span> (
+                            <span class="t-string">'confidence_priority'</span>,
+                            <span class="t-string">'recent_priority'</span>,
+                            <span class="t-string">'manual_intervention'</span>,
+                            <span class="t-string">'both_uncertain'</span>
+                        )),
+
+    <span class="t-property">registered_by</span>     <span class="t-type">VARCHAR(64)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">registered_at</span>     <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>,
+
+    <span class="t-keyword">UNIQUE</span> (rule_id_a, rule_id_b),
+    <span class="t-keyword">CHECK</span> (rule_id_a &lt; rule_id_b)
+);
+
+<span class="t-keyword">CREATE INDEX</span> idx_conflicts_rule <span class="t-keyword">ON</span> qd_rule_conflicts (rule_id_a);
+<span class="t-keyword">CREATE INDEX</span> idx_conflicts_rule2 <span class="t-keyword">ON</span> qd_rule_conflicts (rule_id_b);</code></pre>
+
+<h3>2.6 qd_data_sources — 外部数据源注册表</h3>
+
+<pre><code><span class="t-keyword">CREATE TABLE</span> qd_data_sources (
+    <span class="t-property">source_id</span>         <span class="t-type">VARCHAR(32)</span>    <span class="t-keyword">PRIMARY KEY</span>,
+    <span class="t-property">name</span>              <span class="t-type">VARCHAR(64)</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">UNIQUE</span>,
+    <span class="t-property">source_type</span>       <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span>
+                        <span class="t-keyword">CHECK</span> (source_type <span class="t-keyword">IN</span> (
+                            <span class="t-string">'odds_api'</span>, <span class="t-string">'match_api'</span>,
+                            <span class="t-string">'league_stats'</span>, <span class="t-string">'manual_import'</span>
+                        )),
+    <span class="t-property">endpoint</span>          <span class="t-type">VARCHAR(256)</span>,
+    <span class="t-property">auth_type</span>         <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-string">'none'</span>,
+    <span class="t-property">trust_level</span>       <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-string">'untrusted'</span>
+                        <span class="t-keyword">CHECK</span> (trust_level <span class="t-keyword">IN</span> (
+                            <span class="t-string">'trusted'</span>, <span class="t-string">'semi_trusted'</span>, <span class="t-string">'untrusted'</span>
+                        )),
+    <span class="t-property">health_check_url</span>  <span class="t-type">VARCHAR(256)</span>,
+    <span class="t-property">sync_interval</span>     <span class="t-type">INTERVAL</span>       <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-string">'5 minutes'</span>,
+    <span class="t-property">is_active</span>         <span class="t-type">BOOLEAN</span>        <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-keyword">TRUE</span>,
+    <span class="t-property">last_sync_at</span>      <span class="t-type">TIMESTAMPTZ</span>,
+    <span class="t-property">last_sync_status</span>  <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">CHECK</span> (last_sync_status <span class="t-keyword">IN</span> (
+                            <span class="t-string">'success'</span>, <span class="t-string">'failed'</span>, <span class="t-string">'running'</span>
+                        )),
+    <span class="t-property">created_at</span>        <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>
+);
+</code></pre>
+
+<h3>2.7 qd_idempotency_keys — 幂等键独立表</h3>
+
+<pre><code><span class="t-keyword">CREATE TABLE</span> qd_idempotency_keys (
+    <span class="t-property">idempotency_key</span>   <span class="t-type">VARCHAR(192)</span>   <span class="t-keyword">PRIMARY KEY</span>,
+    <span class="t-property">operation_type</span>    <span class="t-type">VARCHAR(20)</span>    <span class="t-keyword">NOT NULL</span>
+                        <span class="t-keyword">CHECK</span> (operation_type <span class="t-keyword">IN</span> (
+                            <span class="t-string">'analyze'</span>, <span class="t-string">'create_rule'</span>,
+                            <span class="t-string">'backtest'</span>, <span class="t-string">'evidence'</span>
+                        )),
+    <span class="t-property">target_id</span>         <span class="t-type">VARCHAR(64)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">result</span>            <span class="t-type">JSONB</span>,
+    <span class="t-property">expires_at</span>        <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">created_at</span>        <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>
+);
+
+<span class="t-comment">-- 清理过期幂等键（定期任务）</span>
+<span class="t-keyword">CREATE INDEX</span> idx_idempotency_expiry <span class="t-keyword">ON</span> qd_idempotency_keys (expires_at)
+    <span class="t-keyword">WHERE</span> expires_at &lt; <span class="t-property">NOW()</span>;</code></pre>
+
+<h3>2.8 qd_audit_log — 审计日志表</h3>
+
+<pre><code><span class="t-keyword">CREATE TABLE</span> qd_audit_log (
+    <span class="t-property">log_id</span>            <span class="t-type">BIGSERIAL</span>      <span class="t-keyword">PRIMARY KEY</span>,
+    <span class="t-property">actor</span>             <span class="t-type">VARCHAR(64)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">action</span>            <span class="t-type">VARCHAR(32)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">resource_type</span>     <span class="t-type">VARCHAR(32)</span>    <span class="t-keyword">NOT NULL</span>,  <span class="t-comment">-- 'rule', 'backtest', 'evidence', 'config'</span>
+    <span class="t-property">resource_id</span>       <span class="t-type">VARCHAR(64)</span>    <span class="t-keyword">NOT NULL</span>,
+    <span class="t-property">changes</span>           <span class="t-type">JSONB</span>,                    <span class="t-comment">-- 变更前后的字段值</span>
+    <span class="t-property">ip_address</span>        <span class="t-type">INET</span>,
+    <span class="t-property">user_agent</span>        <span class="t-type">VARCHAR(256)</span>,
+    <span class="t-property">created_at</span>        <span class="t-type">TIMESTAMPTZ</span>    <span class="t-keyword">NOT NULL</span> <span class="t-keyword">DEFAULT</span> <span class="t-property">NOW()</span>
+);
+
+<span class="t-keyword">CREATE INDEX</span> idx_audit_resource <span class="t-keyword">ON</span> qd_audit_log (resource_type, resource_id, created_at);
+<span class="t-keyword">CREATE INDEX</span> idx_audit_actor <span class="t-keyword">ON</span> qd_audit_log (actor, created_at);
+<span class="t-keyword">CREATE INDEX</span> idx_audit_action <span class="t-keyword">ON</span> qd_audit_log (action, created_at);</code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 3: API Contract -->
+<!-- ============================================================ -->
+<h2 id="sec-3">API 契约规范</h2>
+
+<h3>3.1 API 版本化策略</h3>
+
+<p>所有 API 端点以 <code>/api/v1/</code> 为前缀。版本号嵌入 URL 路径，支持通过 Nginx 进行版本路由。当引入不兼容变更时，递增主版本号；向后兼容的变更保持当前版本。</p>
+
+<h3>3.2 统一错误响应格式</h3>
+
+<p>遵循 RFC 7807 Problem Details 标准：</p>
+
+<pre><code>{
+  <span class="t-string">"type"</span>: <span class="t-string">"https://api.kb-system.com/errors/rule-not-found"</span>,
+  <span class="t-string">"title"</span>: <span class="t-string">"规则未找到"</span>,
+  <span class="t-string">"status"</span>: <span class="t-number">404</span>,
+  <span class="t-string">"detail"</span>: <span class="t-string">"rule_id=R001_v3 不存在"</span>,
+  <span class="t-string">"instance"</span>: <span class="t-string">"/api/v1/rules/R001_v3"</span>,
+  <span class="t-string">"trace_id"</span>: <span class="t-string">"abc-123-def"</span>
+}</code></pre>
+
+<h3>3.3 核心 API 端点清单</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>方法</th><th>路径</th><th>用途</th><th>幂等</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/health</code></td><td>存活检查</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/health/ready</code></td><td>就绪检查（依赖就绪）</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/health/workers</code></td><td>Worker 心跳汇总</td><td>是</td></tr>
+<tr><td colspan="4" style="background:var(--bg3); font-weight:600;">规则管理</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/rules</code></td><td>规则列表（分页+过滤）</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/rules/:rule_id</code></td><td>规则详情及版本历史</td><td>是</td></tr>
+<tr><td><span class="badge badge-blue">POST</span></td><td><code>/api/v1/rules</code></td><td>创建规则（带幂等键）</td><td>是</td></tr>
+<tr><td><span class="badge badge-yellow">PUT</span></td><td><code>/api/v1/rules/:rule_id</code></td><td>更新规则（创建新版本）</td><td>是</td></tr>
+<tr><td><span class="badge badge-red">DELETE</span></td><td><code>/api/v1/rules/:rule_id</code></td><td>停用规则（→ deprecated）</td><td>是</td></tr>
+<tr><td><span class="badge badge-blue">POST</span></td><td><code>/api/v1/rules/:rule_id/transition</code></td><td>规则状态转换</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/rules/:rule_id/versions/:version</code></td><td>获取特定版本规则</td><td>是</td></tr>
+<tr><td><span class="badge badge-blue">POST</span></td><td><code>/api/v1/rules/:rule_id/rollback</code></td><td>回滚到指定版本</td><td>是</td></tr>
+<tr><td colspan="4" style="background:var(--bg3); font-weight:600;">分析任务</td></tr>
+<tr><td><span class="badge badge-blue">POST</span></td><td><code>/api/v1/analyze</code></td><td>提交分析请求（带幂等键）</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/analyze/:command_id</code></td><td>查询分析结果</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/analyze</code></td><td>分析任务列表（分页+过滤）</td><td>是</td></tr>
+<tr><td colspan="4" style="background:var(--bg3); font-weight:600;">回测作业</td></tr>
+<tr><td><span class="badge badge-blue">POST</span></td><td><code>/api/v1/backtest</code></td><td>提交回测作业（带幂等键）</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/backtest/:job_id</code></td><td>查询回测结果</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/backtest</code></td><td>回测作业列表</td><td>是</td></tr>
+<tr><td colspan="4" style="background:var(--bg3); font-weight:600;">证据记录</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/evidence</code></td><td>证据记录列表（分页+过滤）</td><td>是</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/evidence/:evidence_id</code></td><td>证据详情</td><td>是</td></tr>
+<tr><td colspan="4" style="background:var(--bg3); font-weight:600;">数据源管理</td></tr>
+<tr><td><span class="badge badge-green">GET</span></td><td><code>/api/v1/sources</code></td><td>数据源列表</td><td>是</td></tr>
+<tr><td><span class="badge badge-blue">POST</span></td><td><code>/api/v1/sources</code></td><td>注册数据源</td><td>否</td></tr>
+<tr><td><span class="badge badge-blue">POST</span></td><td><code>/api/v1/sources/:source_id/sync</code></td><td>触发数据同步</td><td>是</td></tr>
+<tr><td colspan="4" style="background:var(--bg3); font-weight:600;">实时推送</td></tr>
+<tr><td><span class="badge badge-purple">WS</span></td><td><code>/api/v1/ws/events</code></td><td>WebSocket 事件流</td><td>—</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.4 分页标准</h3>
+
+<pre><code><span class="t-comment">// 请求参数</span>
+GET /api/v1/rules?<span class="t-property">cursor</span>=eyJpZCI6IlIwMTAifQ&<span class="t-property">limit</span>=<span class="t-number">20</span>&<span class="t-property">status</span>=active&<span class="t-property">category</span>=odds_change
+
+<span class="t-comment">// 响应</span>
+{
+  <span class="t-string">"data"</span>: [ ... ],
+  <span class="t-string">"pagination"</span>: {
+    <span class="t-string">"next_cursor"</span>: <span class="t-string">"eyJpZCI6IlIwMjAifQ"</span>,
+    <span class="t-string">"has_more"</span>: <span class="t-keyword">true</span>,
+    <span class="t-string">"limit"</span>: <span class="t-number">20</span>,
+    <span class="t-string">"total"</span>: <span class="t-number">156</span>
+  }
+}</code></pre>
+
+<h3>3.5 WebSocket 事件流</h3>
+
+<p>支持以下事件类型，供前端实时消费：</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>事件类型</th><th>触发时机</th><th>Payload</th></tr>
+</thead>
+<tbody>
+<tr><td><code>analysis.completed</code></td><td>分析任务完成</td><td><code>{command_id, match_id, result_summary}</code></td></tr>
+<tr><td><code>rule.triggered</code></td><td>规则匹配命中</td><td><code>{rule_id, match_id, direction, confidence}</code></td></tr>
+<tr><td><code>rule.status_changed</code></td><td>规则状态变化</td><td><code>{rule_id, old_status, new_status}</code></td></tr>
+<tr><td><code>backtest.completed</code></td><td>回测作业完成</td><td><code>{job_id, rule_id, accuracy_summary}</code></td></tr>
+<tr><td><code>data_source.sync</code></td><td>数据源同步状态</td><td><code>{source_id, status, records_affected}</code></td></tr>
+<tr><td><code>alert.anomaly</code></td><td>异常检测触发</td><td><code>{match_id, alert_type, severity}</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 4: Performance Model -->
+<!-- ============================================================ -->
+<h2 id="sec-4">性能模型与容量规划</h2>
+
+<h3>4.1 延迟预算</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>操作</th><th>目标延迟</th><th>SLA</th><th>测量方式</th></tr>
+</thead>
+<tbody>
+<tr><td>单场比赛分析（实时）</td><td>P50: 500ms, P95: 2s</td><td>99.5% 在 3s 内完成</td><td>指标 <code>kb_analysis_latency_ms</code></td></tr>
+<tr><td>批量回测（1000 场）</td><td>≤ 5 分钟</td><td>99% 在 10 分钟内</td><td>指标 <code>kb_backtest_duration_seconds</code></td></tr>
+<tr><td>API 响应（非分析类）</td><td>P50: 100ms, P95: 300ms</td><td>99.9% 在 500ms 内</td><td>指标 <code>kb_api_latency_ms</code></td></tr>
+<tr><td>规则缓存加载</td><td>≤ 100ms</td><td>99% 在 200ms 内</td><td>指标 <code>kb_cache_load_time_ms</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.2 吞吐量估算</h3>
+
+<pre><code><span class="t-comment">// 典型比赛日场景</span>
+<span class="t-comment">// 单日比赛数: 约 200 场（欧洲五大联赛 + 主流杯赛）</span>
+<span class="t-comment">// 高峰时段: 赛前 1 小时集中分析</span>
+
+<span class="t-keyword">const</span> CAPACITY_ESTIMATE = {
+  <span class="t-comment">// 每场比赛分析耗时</span>
+  avg_analysis_time_ms: <span class="t-number">500</span>,
+
+  <span class="t-comment">// 高峰并发分析请求（赛前 1 小时涌入 200 场）</span>
+  peak_concurrent_analyses: <span class="t-number">200</span>,
+
+  <span class="t-comment">// 所需检索 Worker 数（每 Worker 处理 1 场, 3 秒超时）</span>
+  <span class="t-comment">// 200 * 500ms / 3s ≈ 34 Worker 并行处理</span>
+  <span class="t-comment">// 实际推荐: 8-12 个检索 Worker（带缓冲）</span>
+  recommended_retrieval_workers: <span class="t-number">12</span>,
+
+  <span class="t-comment">// 规则缓存大小估算</span>
+  <span class="t-comment">// 活跃规则: 约 200 条</span>
+  <span class="t-comment">// 每条规则 JSON 平均: 2KB</span>
+  <span class="t-comment">// 缓存总大小: 200 * 2KB = 400KB（极低）</span>
+  rule_cache_size_estimate_kb: <span class="t-number">400</span>,
+
+  <span class="t-comment">// 数据库连接估算</span>
+  <span class="t-comment">// 12 检索 Worker × 5 连接 + 1 API × 20 连接 + 2 调度 × 10 连接</span>
+  estimated_db_connections: <span class="t-number">100</span>,
+  <span class="t-comment">// PostgreSQL max_connections 建议值: 200</span>
+
+  <span class="t-comment">// 每日证据记录增长</span>
+  daily_evidence_growth: <span class="t-number">200</span>  <span class="t-comment">// 200 场比赛 × 平均 5 条规则/场</span>
+};</code></pre>
+
+<h3>4.3 瓶颈分析</h3>
+
+<div class="card-grid">
+<div class="card-item">
+<h4>DSL 求值引擎</h4>
+<p><strong>类型</strong>: CPU 密集型（条件求值、模式匹配）</p>
+<p><strong>瓶颈</strong>: 规则数量 × 规则复杂度呈线性增长</p>
+<p><strong>优化策略</strong>:</p>
+<ul>
+<li>规则条件预编译为求值函数</li>
+<li>常见条件缓存求值结果</li>
+<li>规则按活跃度分区，冷规则不加载</li>
+</ul>
+</div>
+<div class="card-item">
+<h4>PostgreSQL 查询</h4>
+<p><strong>类型</strong>: IO 密集型（特征加载、证据写入）</p>
+<p><strong>瓶颈</strong>: 连接池耗尽、索引缺失</p>
+<p><strong>优化策略</strong>:</p>
+<ul>
+<li>连接池上限 150</li>
+<li>部分索引 + 覆盖索引</li>
+<li>证据写入批量提交</li>
+</ul>
+</div>
+<div class="card-item">
+<h4>规则缓存访问</h4>
+<p><strong>类型</strong>: 网络延迟（Redis 跨进程访问）</p>
+<p><strong>瓶颈</strong>: 缓存未命中时的回源查询</p>
+<p><strong>优化策略</strong>:</p>
+<ul>
+<li>Worker 本地缓存（LRU, 100 条）</li>
+<li>缓存预热（启动时加载全部活跃规则）</li>
+<li>主动失效（规则变更时广播失效通知）</li>
+</ul>
+</div>
+<div class="card-item">
+<h4>回测作业</h4>
+<p><strong>类型</strong>: CPU + IO 混合</p>
+<p><strong>瓶颈</strong>: 大量历史数据扫描</p>
+<p><strong>优化策略</strong>:</p>
+<ul>
+<li>回测数据预计算物化视图</li>
+<li>有界 Worker 池（4 并发）</li>
+<li>与实时检索 Worker 资源隔离</li>
+</ul>
+</div>
+</div>
+
+<h3>4.4 扩容策略</h3>
+
+<pre><code><span class="t-comment">// 扩容触发条件（基于 Prometheus 指标）</span>
+<span class="t-keyword">const</span> SCALING_RULES = {
+  <span class="t-property">retrieval_worker</span>: {
+    <span class="t-comment">// 指标: 分析队列深度 > 50</span>
+    <span class="t-comment">// 指标: 分析延迟 P95 > 3s</span>
+    <span class="t-comment">// 动作: 增加 2 个检索 Worker，上限 20</span>
+    <span class="t-property">metric</span>: <span class="t-string">'kb_analysis_queue_depth'</span>,
+    <span class="t-property">threshold</span>: <span class="t-number">50</span>,
+    <span class="t-property">scale_up_by</span>: <span class="t-number">2</span>,
+    <span class="t-property">max_instances</span>: <span class="t-number">20</span>,
+    <span class="t-property">cooldown_seconds</span>: <span class="t-number">120</span>
+  },
+  <span class="t-property">scheduler_worker</span>: {
+    <span class="t-comment">// 领导者选举模式，无需扩容</span>
+    <span class="t-comment">// 但可以增加备用 Worker 提升可用性</span>
+    <span class="t-property">instances</span>: <span class="t-number">2</span>  <span class="t-comment">// 1 主 + 1 备</span>
+  }
+};</code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 5: Fusion Decision Layer -->
+<!-- ============================================================ -->
+<h2 id="sec-5">融合决策层</h2>
+
+<p>融合决策层将 DSL 引擎输出的多条规则匹配结果、冲突组和推理链，融合为单一预测结论。这是解决"多条规则给出不同方向"问题的核心组件。</p>
+
+<h3>5.1 融合策略</h3>
+
+<p>支持三种融合策略，可通过配置动态切换：</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>策略</th><th>算法</th><th>适用场景</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>加权投票</strong></td><td>按规则置信度加权，方向得票最高者获胜</td><td>规则数量多、置信度分布均匀</td></tr>
+<tr><td><strong>置信度优先</strong></td><td>取最高置信度规则的方向</td><td>存在高置信度权威规则</td></tr>
+<tr><td><strong>贝叶斯融合</strong></td><td>以规则历史准确率为先验，计算后验概率</td><td>规则历史数据充足、需概率输出</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>5.2 加权投票算法</h3>
+
+<pre><code><span class="t-keyword">interface</span> <span class="t-type">FusionContext</span> {
+  <span class="t-property">exact_matches</span>: <span class="t-type">RuleMatch[]</span>;
+  <span class="t-property">fuzzy_matches</span>: <span class="t-type">FuzzyMatch[]</span>;
+  <span class="t-property">conflicts</span>: <span class="t-type">ConflictGroup[]</span>;
+  <span class="t-property">strategy</span>: <span class="t-string">'weighted_vote'</span> | <span class="t-string">'confidence_priority'</span> | <span class="t-string">'bayesian'</span>;
+}
+
+<span class="t-keyword">function</span> <span class="t-property">fusePredictions</span>(
+  ctx: <span class="t-type">FusionContext</span>
+): <span class="t-type">FusionResult</span> {
+
+  <span class="t-keyword">switch</span> (ctx.<span class="t-property">strategy</span>) {
+    <span class="t-keyword">case</span> <span class="t-string">'weighted_vote'</span>: {
+      <span class="t-comment">// 按方向聚合加权分数</span>
+      <span class="t-keyword">const</span> votes: <span class="t-type">Record</span>&lt;<span class="t-type">string</span>, <span class="t-type">number</span>&gt; = {};
+      <span class="t-keyword">const</span> allMatches = [...ctx.<span class="t-property">exact_matches</span>, ...ctx.<span class="t-property">fuzzy_matches</span>];
+
+      <span class="t-keyword">for</span> (<span class="t-keyword">const</span> match <span class="t-keyword">of</span> allMatches) {
+        <span class="t-keyword">const</span> weight = match.<span class="t-property">confidence</span> * match.<span class="t-property">base_weight</span>;
+        votes[match.<span class="t-property">direction</span>] = (votes[match.<span class="t-property">direction</span>] || <span class="t-number">0</span>) + weight;
+      }
+
+      <span class="t-comment">// 找到最高得分的方向</span>
+      <span class="t-keyword">const</span> [bestDirection, bestScore] = <span class="t-property">Object</span>.<span class="t-property">entries</span>(votes)
+        .<span class="t-property">sort</span>(([, a], [, b]) => b - a)[<span class="t-number">0</span>];
+
+      <span class="t-comment">// 计算置信度：最高分 / 总分</span>
+      <span class="t-keyword">const</span> totalScore = <span class="t-type">Object</span>.<span class="t-property">values</span>(votes).<span class="t-property">reduce</span>((a, b) => a + b, <span class="t-number">0</span>);
+      <span class="t-keyword">const</span> confidence = totalScore > <span class="t-number">0</span> ? bestScore / totalScore : <span class="t-number">0</span>;
+
+      <span class="t-keyword">return</span> {
+        <span class="t-property">direction</span>: bestDirection,
+        <span class="t-property">confidence</span>: <span class="t-type">Number</span>(confidence.<span class="t-property">toFixed</span>(<span class="t-number">3</span>)),
+        <span class="t-property">vote_details</span>: votes,
+        <span class="t-property">strategy_used</span>: <span class="t-string">'weighted_vote'</span>
+      };
+    }
+
+    <span class="t-keyword">case</span> <span class="t-string">'confidence_priority'</span>: {
+      <span class="t-comment">// 取最高置信度规则的方向</span>
+      <span class="t-keyword">const</span> best = allMatches.<span class="t-property">reduce</span>((best, m) =>
+        m.<span class="t-property">confidence</span> > best.<span class="t-property">confidence</span> ? m : best
+      );
+      <span class="t-keyword">return</span> {
+        <span class="t-property">direction</span>: best.<span class="t-property">direction</span>,
+        <span class="t-property">confidence</span>: best.<span class="t-property">confidence</span>,
+        <span class="t-property">strategy_used</span>: <span class="t-string">'confidence_priority'</span>
+      };
+    }
+  }
+}
+
+<span class="t-keyword">interface</span> <span class="t-type">FusionResult</span> {
+  <span class="t-property">direction</span>: <span class="t-type">PredictionDirection</span>;
+  <span class="t-property">confidence</span>: <span class="t-type">number</span>;
+  <span class="t-property">vote_details</span>?: <span class="t-type">Record</span>&lt;<span class="t-type">string</span>, <span class="t-type">number</span>&gt;;
+  <span class="t-property">strategy_used</span>: <span class="t-type">string</span>;
+}</code></pre>
+
+<h3>5.3 方向枚举值</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>方向</th><th>含义</th><th>对应投注方向</th></tr>
+</thead>
+<tbody>
+<tr><td><code>favor_upper</code></td><td>利好上盘</td><td>上盘（让球方）</td></tr>
+<tr><td><code>favor_lower</code></td><td>利好下盘</td><td>下盘（受让方）</td></tr>
+<tr><td><code>favor_home</code></td><td>利好主队</td><td>主队不败</td></tr>
+<tr><td><code>favor_away</code></td><td>利好客队</td><td>客队不败</td></tr>
+<tr><td><code>under</code></td><td>小球方向</td><td>总进球数小</td></tr>
+<tr><td><code>over</code></td><td>大球方向</td><td>总进球数大</td></tr>
+<tr><td><code>reversal</code></td><td>反向操作</td><td>与盘口方向相反</td></tr>
+<tr><td><code>follow</code></td><td>跟随方向</td><td>跟随机构信号方向</td></tr>
+<tr><td><code>caution</code></td><td>谨慎观望</td><td>不建议投注</td></tr>
+<tr><td><code>warning</code></td><td>异常预警</td><td>存在异常，暂停分析</td></tr>
+<tr><td><code>neutral</code></td><td>中性</td><td>无明确倾向</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 6: Conflict Resolution -->
+<!-- ============================================================ -->
+<h2 id="sec-6">冲突仲裁策略</h2>
+
+<h3>6.1 冲突类型定义</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>冲突类型</th><th>定义</th><th>示例</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>方向相反</strong></td><td>两条规则在相同比赛上给出相反预测方向</td><td>R001→favor_upper vs R011→reversal</td></tr>
+<tr><td><strong>条件重叠</strong></td><td>两条规则的触发条件有交集，但结论不同</td><td>R003→reversal vs R008→caution</td></tr>
+<tr><td><strong>条件相同结论不同</strong></td><td>完全相同的触发条件，不同的预测方向</td><td>罕见，通常表示规则逻辑错误</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>6.2 仲裁优先级</h3>
+
+<pre><code><span class="t-comment">// 冲突仲裁器 — 按优先级链裁决</span>
+<span class="t-keyword">function</span> <span class="t-property">arbitrate</span>(
+  conflict: <span class="t-type">ConflictGroup</span>,
+  context: <span class="t-type">ArbitrationContext</span>
+): <span class="t-type">ArbitrationResult</span> {
+
+  <span class="t-comment">// 优先级 1: 人工注册的冲突仲裁方案</span>
+  <span class="t-keyword">const</span> registered = <span class="t-keyword">await</span> <span class="t-property">lookupRegisteredConflict</span>(
+    conflict.<span class="t-property">rule_ids</span>
+  );
+  <span class="t-keyword">if</span> (registered) {
+    <span class="t-keyword">return</span> <span class="t-property">applyResolution</span>(registered.<span class="t-property">resolution</span>, conflict);
+  }
+
+  <span class="t-comment">// 优先级 2: 置信度优先</span>
+  <span class="t-keyword">const</span> sorted = conflict.<span class="t-property">rules</span>.<span class="t-property">sort</span>(
+    (a, b) => b.<span class="t-property">confidence</span> - a.<span class="t-property">confidence</span>
+  );
+  <span class="t-keyword">const</span> gap = sorted[<span class="t-number">0</span>].<span class="t-property">confidence</span> - sorted[<span class="t-number">1</span>].<span class="t-property">confidence</span>;
+
+  <span class="t-keyword">if</span> (gap >= <span class="t-number">0.15</span>) {
+    <span class="t-comment">// 置信度差距 ≥ 0.15，取高置信度规则</span>
+    <span class="t-keyword">return</span> { <span class="t-property">winner</span>: sorted[<span class="t-number">0</span>], <span class="t-property">reason</span>: <span class="t-string">'confidence_gap'</span> };
+  }
+
+  <span class="t-comment">// 优先级 3: 证据量优先</span>
+  <span class="t-keyword">const</span> byEvidence = sorted.<span class="t-property">sort</span>(
+    (a, b) => b.<span class="t-property">evidence_count</span> - a.<span class="t-property">evidence_count</span>
+  );
+  <span class="t-keyword">if</span> (byEvidence[<span class="t-number">0</span>].<span class="t-property">evidence_count</span> >= byEvidence[<span class="t-number">1</span>].<span class="t-property">evidence_count</span> * <span class="t-number">2</span>) {
+    <span class="t-keyword">return</span> { <span class="t-property">winner</span>: byEvidence[<span class="t-number">0</span>], <span class="t-property">reason</span>: <span class="t-string">'evidence_dominance'</span> };
+  }
+
+  <span class="t-comment">// 优先级 4: 最近更新优先</span>
+  <span class="t-keyword">const</span> byRecent = sorted.<span class="t-property">sort</span>(
+    (a, b) => b.<span class="t-property">updated_at</span> - a.<span class="t-property">updated_at</span>
+  );
+  <span class="t-keyword">return</span> { <span class="t-property">winner</span>: byRecent[<span class="t-number">0</span>], <span class="t-property">reason</span>: <span class="t-string">'recent_update'</span> };
+}</code></pre>
+
+<h3>6.3 冲突仲裁结果影响</h3>
+
+<p>仲裁结果影响融合决策层的输入：</p>
+<ul>
+<li>仲裁失败的规则（未获胜方）在融合决策中权重降低 50%</li>
+<li>仲裁结果为 <code>both_uncertain</code> 时，融合决策层输出 <code>caution</code> 方向</li>
+<li>仲裁结果为 <code>manual_intervention</code> 时，系统发出告警，等待人工处理</li>
+</ul>
+
+<!-- ============================================================ -->
+<!-- Section 7: Time Leakage Prevention -->
+<!-- ============================================================ -->
+<h2 id="sec-7">时间泄漏防护详细设计</h2>
+
+<h3>7.1 时间戳三元素校验</h3>
+
+<pre><code><span class="t-comment">// 核心不变量：observed_at ≤ received_at ≤ match_time</span>
+<span class="t-comment">// 同时必须满足：analysis_time ≤ match_time（分析不能在比赛开始后）</span>
+
+<span class="t-keyword">interface</span> <span class="t-type">TemporalContext</span> {
+  <span class="t-comment">// 分析的时间锚点（回测时 = 历史时间点，实时 = NOW）</span>
+  <span class="t-property">analysis_time</span>: <span class="t-type">Date</span>;
+
+  <span class="t-comment">// 允许的数据时间窗口</span>
+  <span class="t-property">eligible_window</span>: {
+    <span class="t-property">start</span>: <span class="t-type">Date</span>;  <span class="t-comment">// 最早可用的数据时间</span>
+    <span class="t-property">end</span>: <span class="t-type">Date</span>;    <span class="t-comment">// 最晚可用的数据时间 (= analysis_time)</span>
+  };
+
+  <span class="t-comment">// 严格模式：为 true 时，任何时间校验失败都拒绝分析</span>
+  <span class="t-comment">// 宽松模式：为 false 时，记录警告但继续</span>
+  <span class="t-property">strict_mode</span>: <span class="t-type">boolean</span>;
+}
+
+<span class="t-keyword">function</span> <span class="t-property">validateTemporalIntegrity</span>(
+  evidence: <span class="t-type">EvidenceInput</span>,
+  context: <span class="t-type">TemporalContext</span>
+): <span class="t-type">TemporalCheck</span> {
+
+  <span class="t-keyword">const</span> checks: <span class="t-type">TemporalCheckItem</span>[] = [];
+
+  <span class="t-comment">// 检查 1: observed_at ≤ received_at</span>
+  checks.<span class="t-property">push</span>({
+    <span class="t-property">name</span>: <span class="t-string">'observation_before_reception'</span>,
+    <span class="t-property">passed</span>: evidence.<span class="t-property">observed_at</span> &lt;= evidence.<span class="t-property">received_at</span>,
+    <span class="t-property">detail</span>: <span class="t-string">`observed=${evidence.observed_at} ≤ received=${evidence.received_at}`</span>
+  });
+
+  <span class="t-comment">// 检查 2: received_at ≤ match_time</span>
+  checks.<span class="t-property">push</span>({
+    <span class="t-property">name</span>: <span class="t-string">'reception_before_match'</span>,
+    <span class="t-property">passed</span>: evidence.<span class="t-property">received_at</span> &lt;= evidence.<span class="t-property">match_time</span>,
+    <span class="t-property">detail</span>: <span class="t-string">`received=${evidence.received_at} ≤ match=${evidence.match_time}`</span>
+  });
+
+  <span class="t-comment">// 检查 3: 数据时间 ≤ 分析时间（禁止使用未来数据）</span>
+  checks.<span class="t-property">push</span>({
+    <span class="t-property">name</span>: <span class="t-string">'no_future_data'</span>,
+    <span class="t-property">passed</span>: evidence.<span class="t-property">received_at</span> &lt;= context.<span class="t-property">analysis_time</span>,
+    <span class="t-property">detail</span>: <span class="t-string">`data=${evidence.received_at} ≤ analysis=${context.analysis_time}`</span>
+  });
+
+  <span class="t-comment">// 检查 4: 分析时间 ≤ 比赛时间（不能在比赛开始后分析）</span>
+  checks.<span class="t-property">push</span>({
+    <span class="t-property">name</span>: <span class="t-string">'analysis_before_match'</span>,
+    <span class="t-property">passed</span>: context.<span class="t-property">analysis_time</span> &lt;= evidence.<span class="t-property">match_time</span>,
+    <span class="t-property">detail</span>: <span class="t-string">`analysis=${context.analysis_time} ≤ match=${evidence.match_time}`</span>
+  });
+
+  <span class="t-keyword">const</span> allPassed = checks.<span class="t-property">every</span>(c => c.<span class="t-property">passed</span>);
+
+  <span class="t-keyword">return</span> {
+    <span class="t-property">valid</span>: allPassed,
+    <span class="t-property">checks</span>: checks,
+    <span class="t-property">action</span>: allPassed ? <span class="t-string">'proceed'</span>
+         : context.<span class="t-property">strict_mode</span> ? <span class="t-string">'reject'</span>
+         : <span class="t-string">'warn'</span>
+  };
+}</code></pre>
+
+<h3>7.2 回测中的时间泄漏防护</h3>
+
+<figure>
+<pre class="mermaid">
+sequenceDiagram
+    participant Worker as 调度 Worker
+    participant DB as PostgreSQL
+    participant Engine as DSL 引擎
+
+    Worker->>DB: 加载回测配置（date_range=[2026-01-01, 2026-03-31]）
+    Worker->>DB: 查询该时间范围内的所有比赛
+    DB-->>Worker: 返回比赛列表（按时间升序）
+    loop 每场比赛
+        Worker->>Engine: analyzeMatch(match_id, features, {analysis_time: match.kickoff_time - 1h})
+        Note over Worker,Engine: analysis_time 设置在比赛开始前 1 小时
+        Engine->>DB: 加载特征数据（只加载 observed_at ≤ analysis_time 的数据）
+        DB-->>Engine: 返回时间窗口内的数据
+        Engine->>Engine: 执行 DSL 求值
+        Engine-->>Worker: 返回分析结果
+        Worker->>DB: 写入证据（记录 analysis_time, observed_at, received_at）
+    end
+</pre>
+<figcaption>图1: 回测时间窗口正确性验证。analysis_time 是回放的关键，必须设置为历史时间点而非当前时间</figcaption>
+</figure>
+
+<h3>7.3 反盲区防护（Look-Ahead Bias）</h3>
+
+<pre><code><span class="t-comment">// 批量回测时，必须确保第 N 场比赛不会用到第 N+1 场比赛的数据</span>
+<span class="t-keyword">async function</span> <span class="t-property">runBacktestWithoutLookAhead</span>(
+  matches: <span class="t-type">MatchFeatures[]</span>,
+  config: <span class="t-type">BacktestConfig</span>
+): <span class="t-type">Promise</span>&lt;<span class="t-type">AnalysisResult</span>[]&gt; {
+  <span class="t-comment">// 1. 按比赛时间升序排列</span>
+  <span class="t-keyword">const</span> sorted = [...matches].<span class="t-property">sort</span>(
+    (a, b) => a.<span class="t-property">match_time</span> - b.<span class="t-property">match_time</span>
+  );
+
+  <span class="t-keyword">const</span> results: <span class="t-type">AnalysisResult</span>[] = [];
+
+  <span class="t-keyword">for</span> (<span class="t-keyword">let</span> i = <span class="t-number">0</span>; i &lt; sorted.<span class="t-property">length</span>; i++) {
+    <span class="t-keyword">const</span> match = sorted[i];
+
+    <span class="t-comment">// 2. 每个 match 的 analysis_time = match.match_time - 1h</span>
+    <span class="t-comment">//    确保只使用该时间点之前的数据</span>
+    <span class="t-keyword">const</span> context: <span class="t-type">TemporalContext</span> = {
+      <span class="t-property">analysis_time</span>: <span class="t-keyword">new</span> <span class="t-type">Date</span>(
+        match.<span class="t-property">match_time</span>.<span class="t-property">getTime</span>() - <span class="t-number">3600000</span>
+      ),
+      <span class="t-property">eligible_window</span>: {
+        <span class="t-property">start</span>: config.<span class="t-property">date_range</span>.<span class="t-property">start</span>,
+        <span class="t-property">end</span>: <span class="t-keyword">new</span> <span class="t-type">Date</span>(match.<span class="t-property">match_time</span>.<span class="t-property">getTime</span>() - <span class="t-number">3600000</span>)
+      },
+      <span class="t-property">strict_mode</span>: <span class="t-keyword">true</span>
+    };
+
+    <span class="t-keyword">const</span> result = <span class="t-keyword">await</span> dsEngine.<span class="t-property">analyzeMatch</span>(
+      match.<span class="t-property">match_id</span>, match.<span class="t-property">features</span>, context
+    );
+    results.<span class="t-property">push</span>(result);
+  }
+
+  <span class="t-keyword">return</span> results;
+}</code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 8: External Data Source Integration -->
+<!-- ============================================================ -->
+<h2 id="sec-8">外部数据源集成</h2>
+
+<h3>8.1 数据源类型</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>类型</th><th>示例数据源</th><th>数据内容</th><th>更新频率</th></tr>
+</thead>
+<tbody>
+<tr><td><code>odds_api</code></td><td>机构赔率数据提供商</td><td>初盘/实时赔率、水位、盘口变化</td><td>1-5 分钟</td></tr>
+<tr><td><code>match_api</code></td><td>赛程/比分数据提供商</td><td>比赛时间、球队、比分、历史交锋</td><td>实时</td></tr>
+<tr><td><code>league_stats</code></td><td>联赛统计服务</td><td>场均进球、赢盘率、大小球分布</td><td>每日</td></tr>
+<tr><td><code>manual_import</code></td><td>CSV / Excel 导入</td><td>自定义历史数据或外部报告</td><td>按需</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>8.2 数据管道架构</h3>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    subgraph External["外部数据源"]
+        API1[赔率 API]
+        API2[赛程 API]
+        CSV[CSV 导入]
+    end
+
+    subgraph Connector["连接器层"]
+        C1[赔率连接器]
+        C2[赛程连接器]
+        C3[CSV 导入器]
+    end
+
+    subgraph Pipeline["数据管道"]
+        V[数据校验器]
+        T[时间戳标注]
+        Q[质量评级]
+        N[标准化]
+    end
+
+    subgraph Storage["存储层"]
+        RAW[(原始数据表)]
+        MV[物化视图]
+        CACHE[Redis 缓存]
+    end
+
+    API1 --> C1
+    API2 --> C2
+    CSV --> C3
+    C1 --> V
+    C2 --> V
+    C3 --> V
+    V --> T --> Q --> N
+    N --> RAW
+    N --> MV
+    N --> CACHE
+</pre>
+<figcaption>图2: 数据管道架构。所有数据源通过连接器→校验→标注→评级→标准化流程</figcaption>
+</figure>
+
+<h3>8.3 数据源健康检查</h3>
+
+<pre><code><span class="t-comment">// 数据源健康检查（调度 Worker 定期执行）</span>
+<span class="t-keyword">async function</span> <span class="t-property">checkDataSourceHealth</span>(
+  sourceId: <span class="t-type">string</span>
+): <span class="t-type">Promise</span>&lt;<span class="t-type">SourceHealthStatus</span>&gt; {
+  <span class="t-keyword">const</span> source = <span class="t-keyword">await</span> pg.<span class="t-property">query</span>(
+    <span class="t-string">`SELECT * FROM qd_data_sources WHERE source_id = $1`</span>,
+    [sourceId]
+  );
+
+  <span class="t-keyword">const</span> healthCheckUrl = source.<span class="t-property">health_check_url</span>;
+  <span class="t-keyword">if</span> (!healthCheckUrl) {
+    <span class="t-keyword">return</span> { <span class="t-property">status</span>: <span class="t-string">'unknown'</span>, <span class="t-property">reason</span>: <span class="t-string">'no_health_check_url'</span> };
+  }
+
+  <span class="t-keyword">try</span> {
+    <span class="t-keyword">const</span> response = <span class="t-keyword">await</span> <span class="t-property">fetch</span>(healthCheckUrl, {
+      <span class="t-property">timeout</span>: <span class="t-number">5000</span>,
+      <span class="t-property">method</span>: <span class="t-string">'HEAD'</span>
+    });
+
+    <span class="t-keyword">const</span> status = response.<span class="t-property">ok</span> ? <span class="t-string">'healthy'</span> : <span class="t-string">'degraded'</span>;
+
+    <span class="t-comment">// 更新数据源状态</span>
+    <span class="t-keyword">await</span> pg.<span class="t-property">query</span>(
+      <span class="t-string">`UPDATE qd_data_sources
+       SET last_sync_at = NOW(), last_sync_status = $1
+       WHERE source_id = $2`</span>,
+      [status, sourceId]
+    );
+
+    <span class="t-keyword">return</span> { <span class="t-property">status</span>: status };
+  } <span class="t-keyword">catch</span> (err) {
+    <span class="t-keyword">await</span> pg.<span class="t-property">query</span>(
+      <span class="t-string">`UPDATE qd_data_sources
+       SET last_sync_status = 'failed'
+       WHERE source_id = $1`</span>,
+      [sourceId]
+    );
+
+    <span class="t-keyword">return</span> { <span class="t-property">status</span>: <span class="t-string">'down'</span>, <span class="t-property">reason</span>: err.<span class="t-property">message</span> };
+  }
+}
+
+<span class="t-comment">// 数据源不可用时的降级策略</span>
+<span class="t-comment">// 1. 单一赔率源不可用 → 使用其他机构的赔率数据</span>
+<span class="t-comment">// 2. 所有赔率源不可用 → 拒绝分析请求，返回 503</span>
+<span class="t-comment">// 3. 联赛统计源不可用 → 使用缓存的历史数据</span>
+<span class="t-comment">// 4. 赛程数据源不可用 → 使用本地缓存的赛程数据</span></code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 9: Cross-domain Timing -->
+<!-- ============================================================ -->
+<h2 id="sec-9">跨域依赖时序策略</h2>
+
+<h3>9.1 跨域时序图</h3>
+
+<figure>
+<pre class="mermaid">
+sequenceDiagram
+    participant API as API 进程
+    participant RW as 检索 Worker
+    participant SW as 调度 Worker
+    participant PG as PostgreSQL
+    participant Cache as Redis 缓存
+
+    Note over API,SW: 时序 1: 实时分析链路
+    API->>PG: INSERT qd_analysis_commands (status=pending)
+    RW->>PG: SKIP LOCKED 领取任务
+    RW->>Cache: 加载活跃规则
+    Cache-->>RW: 返回规则列表
+    RW->>RW: DSL 求值（纯函数）
+    RW->>PG: INSERT qd_evidence_snapshots（不可变）
+    RW->>PG: UPDATE qd_analysis_commands (status=completed)
+    RW-->>API: (通过 WebSocket) analysis.completed
+
+    Note over API,SW: 时序 2: 回测→置信度更新链路
+    SW->>PG: 领取回测作业
+    SW->>PG: 加载历史数据
+    SW->>SW: 执行回测
+    SW->>PG: UPDATE qd_backtest_jobs (status=completed)
+    SW->>PG: UPDATE qd_rule_versions SET accuracy=result
+    SW->>Cache: DEL rules:cache（失效缓存，而非直接更新）
+    Note over RW: 检索 Worker 下次加载时自动获取新缓存
+
+    Note over API,SW: 时序 3: 规则状态转换链路
+    API->>PG: SELECT ... FOR UPDATE（锁定规则行）
+    API->>PG: UPDATE qd_rule_versions SET status=new_status
+    API->>Cache: PUBLISH rule:status_changed {rule_id, new_status}
+    Cache-->>RW: 收到失效通知
+    RW->>Cache: 重新加载受影响规则
+</pre>
+<figcaption>图3: 跨域时序图。核心原则：写时复制、缓存失效而非直接更新、异步解耦</figcaption>
+</figure>
+
+<h3>9.2 跨域依赖原则</h3>
+
+<div class="card-grid">
+<div class="card-item">
+<h4>原则 1：写时复制</h4>
+<p>正在被检索 Worker 使用的规则，在置信度更新时不会被直接修改。新置信度只影响新分析任务，不影响正在进行的分析。</p>
+<p><strong>实现</strong>：规则缓存采用"加载时快照"模式，Worker 在一次分析中使用的规则版本在分析开始时固定。</p>
+</div>
+<div class="card-item">
+<h4>原则 2：缓存失效优先</h4>
+<p>调度 Worker 完成回测后，不直接更新检索 Worker 的运行时状态。而是通过缓存失效通知触发热加载。</p>
+<p><strong>实现</strong>：Redis PUB/SUB 通道 <code>rule:status_changed</code>，Worker 收到后异步重新加载受影响规则。</p>
+</div>
+<div class="card-item">
+<h4>原则 3：异步解耦</h4>
+<p>回测→置信度更新→规则状态重新评估，这三个步骤采用异步事件驱动，不阻塞任何链路。</p>
+<p><strong>实现</strong>：回测完成后向 <code>qd_analysis_commands</code> 写入一条"置信度更新"命令，由调度 Worker 领取后执行。</p>
+</div>
+<div class="card-item">
+<h4>原则 4：最终一致性</h4>
+<p>规则置信度更新与实时分析之间允许短暂不一致（≤ 30 秒），但保证最终一致。</p>
+<p><strong>实现</strong>：缓存的 TTL 设为 30 秒，过期后自动重新加载。</p>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 10: Data Governance -->
+<!-- ============================================================ -->
+<h2 id="sec-10">数据治理模型</h2>
+
+<h3>10.1 数据质量标准</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>维度</th><th>标准</th><th>验证方式</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>完整性</strong></td><td>所有必填字段非空</td><td>数据库 NOT NULL 约束 + 应用层校验</td></tr>
+<tr><td><strong>准确性</strong></td><td>数据值与真实值偏差 ≤ 1%</td><td>交叉验证（多家机构数据比对）</td></tr>
+<tr><td><strong>时效性</strong></td><td>数据接收时间 ≤ 数据产生时间 + 5 分钟</td><td><code>received_at - observed_at ≤ 5min</code></td></tr>
+<tr><td><strong>一致性</strong></td><td>同一数据在不同表中值一致</td><td>定期一致性检查脚本</td></tr>
+<tr><td><strong>唯一性</strong></td><td>无重复数据记录</td><td>唯一索引 + 幂等键</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>10.2 数据血缘追踪</h3>
+
+<pre><code><span class="t-comment">// 数据血缘模型：每条证据记录的可追溯路径</span>
+<span class="t-keyword">interface</span> <span class="t-type">DataLineage</span> {
+  <span class="t-property">evidence_id</span>: <span class="t-type">string</span>;
+  <span class="t-property">match_id</span>: <span class="t-type">string</span>;
+
+  <span class="t-comment">// 源数据追踪</span>
+  <span class="t-property">source_data</span>: {
+    <span class="t-property">odds_provider</span>: <span class="t-type">string</span>;       <span class="t-comment">// 赔率数据来源机构</span>
+    <span class="t-property">odds_fetch_time</span>: <span class="t-type">Date</span>;      <span class="t-comment">// 赔率获取时间</span>
+    <span class="t-property">match_data_source</span>: <span class="t-type">string</span>;   <span class="t-comment">// 比赛数据来源</span>
+  };
+
+  <span class="t-comment">// 规则追踪</span>
+  <span class="t-property">rule_chain</span>: {
+    <span class="t-property">rule_id</span>: <span class="t-type">string</span>;
+    <span class="t-property">version</span>: <span class="t-type">number</span>;
+    <span class="t-property">dsl_hash</span>: <span class="t-type">string</span>;              <span class="t-comment">// 规则内容的哈希指纹</span>
+  }[];
+
+  <span class="t-comment">// 推理链</span>
+  <span class="t-property">reasoning_path</span>: <span class="t-type">ReasoningNode</span>[];
+
+  <span class="t-comment">// 时间完整性校验结果</span>
+  <span class="t-property">temporal_checks</span>: <span class="t-type">TemporalCheckItem</span>[];
+}</code></pre>
+
+<h3>10.3 规则衰减策略</h3>
+
+<pre><code><span class="t-comment">// 规则衰减策略：基于时间衰减和准确率衰减</span>
+<span class="t-keyword">const</span> DECAY_STRATEGY = {
+  <span class="t-comment">// 时间衰减：规则 6 个月未更新，置信度下调 10%</span>
+  <span class="t-property">time_decay</span>: {
+    <span class="t-property">enabled</span>: <span class="t-keyword">true</span>,
+    <span class="t-property">threshold_days</span>: <span class="t-number">180</span>,
+    <span class="t-property">decay_factor</span>: <span class="t-number">0.10</span>,
+    <span class="t-property">max_decay</span>: <span class="t-number">0.30</span>
+  },
+
+  <span class="t-comment">// 准确率衰减：连续 20 场预测准确率 < 0.5，自动降为 deprecated</span>
+  <span class="t-property">accuracy_decay</span>: {
+    <span class="t-property">enabled</span>: <span class="t-keyword">true</span>,
+    <span class="t-property">window_size</span>: <span class="t-number">20</span>,
+    <span class="t-property">threshold</span>: <span class="t-number">0.50</span>,
+    <span class="t-property">action</span>: <span class="t-string">'deprecate'</span>
+  },
+
+  <span class="t-comment">// 规则自动淘汰：deprecated 超过 90 天，移至 cold storage</span>
+  <span class="t-property">auto_archive</span>: {
+    <span class="t-property">enabled</span>: <span class="t-keyword">true</span>,
+    <span class="t-property">threshold_days</span>: <span class="t-number">90</span>
+  }
+};</code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 11: Cache Strategy -->
+<!-- ============================================================ -->
+<h2 id="sec-11">缓存策略</h2>
+
+<h3>11.1 缓存层级</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>层级</th><th>名称</th><th>存储</th><th>容量</th><th>TTL</th></tr>
+</thead>
+<tbody>
+<tr><td>L1</td><td>Worker 本地缓存</td><td>进程内存 (LRU)</td><td>100 条规则</td><td>30 秒</td></tr>
+<tr><td>L2</td><td>Redis 共享缓存</td><td>Redis (eviction)</td><td>500 MB</td><td>300 秒</td></tr>
+<tr><td>L3</td><td>PostgreSQL 持久层</td><td>数据库表</td><td>无限制</td><td>永久</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>11.2 缓存失效策略</h3>
+
+<pre><code><span class="t-comment">// 缓存失效事件及处理方式</span>
+<span class="t-keyword">const</span> CACHE_INVALIDATION = {
+  <span class="t-comment">// 规则状态变更 → 主动失效</span>
+  <span class="t-property">rule_status_change</span>: {
+    <span class="t-property">trigger</span>: <span class="t-string">'规则状态从 active 变为其他'</span>,
+    <span class="t-property">action</span>: <span class="t-string">'DEL rules:{rule_id} + Redis PUB/SUB 通知'</span>,
+    <span class="t-property">latency</span>: <span class="t-string">'&lt; 1s'</span>
+  },
+
+  <span class="t-comment">// 规则置信度更新 → 惰性失效</span>
+  <span class="t-property">rule_confidence_update</span>: {
+    <span class="t-property">trigger</span>: <span class="t-string">'回测完成后更新 accuracy'</span>,
+    <span class="t-property">action</span>: <span class="t-string">'不主动失效，依赖 TTL 过期后重新加载'</span>,
+    <span class="t-property">latency</span>: <span class="t-string">'≤ 30s（TTL 过期时间）'</span>
+  },
+
+  <span class="t-comment">// 新规则发布 → 主动加载</span>
+  <span class="t-property">new_rule_active</span>: {
+    <span class="t-property">trigger</span>: <span class="t-string">'规则状态 → active'</span>,
+    <span class="t-property">action</span>: <span class="t-string">'SET rules:{rule_id} + PUB/SUB 通知所有 Worker'</span>,
+    <span class="t-property">latency</span>: <span class="t-string">'&lt; 1s'</span>
+  }
+};</code></pre>
+
+<h3>11.3 缓存预热流程</h3>
+
+<pre><code><span class="t-comment">// 检索 Worker 启动时预热</span>
+<span class="t-keyword">async function</span> <span class="t-property">warmCache</span>(workerId: <span class="t-type">string</span>): <span class="t-type">Promise</span>&lt;<span class="t-type">void</span>&gt; {
+  <span class="t-comment">// 1. 从 Redis 加载所有活跃规则</span>
+  <span class="t-keyword">const</span> cachedRules = <span class="t-keyword">await</span> redis.<span class="t-property">get</span>(<span class="t-string">'rules:active:all'</span>);
+
+  <span class="t-keyword">if</span> (cachedRules) {
+    <span class="t-comment">// 缓存命中，直接加载到本地 L1 缓存</span>
+    <span class="t-property">loadToLocalCache</span>(<span class="t-type">JSON</span>.<span class="t-property">parse</span>(cachedRules));
+    <span class="t-keyword">return</span>;
+  }
+
+  <span class="t-comment">// 2. 缓存未命中，从数据库加载</span>
+  <span class="t-keyword">const</span> activeRules = <span class="t-keyword">await</span> pg.<span class="t-property">query</span>(
+    <span class="t-string">`SELECT * FROM qd_rule_versions WHERE status = 'active'`</span>
+  );
+
+  <span class="t-comment">// 3. 写入 Redis 缓存</span>
+  <span class="t-keyword">await</span> redis.<span class="t-property">set</span>(<span class="t-string">'rules:active:all'</span>, <span class="t-type">JSON</span>.<span class="t-property">stringify</span>(activeRules), {
+    <span class="t-property">EX</span>: <span class="t-number">300</span>  <span class="t-comment">// 5 分钟 TTL</span>
+  });
+
+  <span class="t-comment">// 4. 加载到本地 L1 缓存</span>
+  <span class="t-property">loadToLocalCache</span>(activeRules);
+}</code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 12: Idempotency Key Lifecycle -->
+<!-- ============================================================ -->
+<h2 id="sec-12">幂等键生命周期</h2>
+
+<h3>12.1 生命周期定义</h3>
+
+<figure>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> active: 创建幂等键
+  active --> consumed: 第一次使用
+  consumed --> expired: 超过保留期（7天）
+  expired --> [*]: 清理任务删除
+
+  state active {
+    [*] --> unused: 创建后未使用
+    unused --> used: 请求到达
+  }
+</pre>
+<figcaption>图4: 幂等键生命周期。保留期 7 天，过期后清理</figcaption>
+</figure>
+
+<h3>12.2 保留策略</h3>
+
+<pre><code><span class="t-keyword">const</span> IDEMPOTENCY_KEY_POLICY = {
+  <span class="t-comment">// 保留期：操作完成后保留 7 天</span>
+  <span class="t-property">retention_days</span>: <span class="t-number">7</span>,
+
+  <span class="t-comment">// 过期后行为：允许重新提交，但会记录审计日志</span>
+  <span class="t-property">expired_behavior</span>: <span class="t-string">'allow_resubmit'</span>,
+
+  <span class="t-comment">// 清理任务：Celery Beat 每日凌晨 3:00 执行</span>
+  <span class="t-property">cleanup_schedule</span>: <span class="t-string">'0 3 * * *'</span>,
+
+  <span class="t-comment">// 清理 SQL</span>
+  <span class="t-property">cleanup_sql</span>: <span class="t-string">`
+    DELETE FROM qd_idempotency_keys
+    WHERE expires_at &lt; NOW() - INTERVAL '7 days'
+  `</span>,
+
+  <span class="t-comment">// 最大保留行数（防止表膨胀）</span>
+  <span class="t-property">max_rows</span>: <span class="t-number">100000</span>,
+  <span class="t-property">cleanup_batch_size</span>: <span class="t-number">5000</span>
+};</code></pre>
+
+<hr>
+
+<div class="callout success">
+  <div class="callout-title">v3.1 补充设计总结</div>
+  <p>本节补充设计覆盖了架构评审报告中识别的 <strong>12 个核心缺口</strong>：DSL 完整语法（G9）、完整数据模型（G12）、API 契约规范（G1）、性能模型（G6）、融合决策层（G10）、冲突仲裁策略（G11）、时间泄漏防护（G13）、数据源集成（G18）、跨域时序（G19）、数据治理（G2）、缓存策略（G14）、幂等键生命周期（G15）。结合 v3 已有的并发模型，构成了可进入编码阶段的完整架构设计。</p>
+</div>
+
+</main>
+</div>
+
+<script src="./_shared/js/mermaid.min.js"></script>
+<script>
+mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+</script>
+</body>
+</html>

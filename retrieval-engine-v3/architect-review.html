@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>架构评审报告 — 知识库检索引擎 v3 待完善领域分析</title>
+<style>
+@font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Bold.ttf'); font-weight: 700; }
+@font-face { font-family: 'JetBrainsMono'; src: url('./_shared/fonts/JetBrainsMono-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'JetBrainsMono'; src: url('./_shared/fonts/JetBrainsMono-Bold.ttf'); font-weight: 700; }
+
+:root {
+  --bg: #0b0e14;
+  --bg2: #131820;
+  --bg3: #1a2235;
+  --ink: #e2e8f0;
+  --muted: #8899b0;
+  --muted2: #5a6a80;
+  --rule: #1e2a3a;
+  --accent: #60a5fa;
+  --accent2: #34d399;
+  --accent3: #fbbf24;
+  --danger: #f87171;
+  --warn: #f59e0b;
+  --success: #34d399;
+  --purple: #a78bfa;
+  --pink: #f472b6;
+  --orange: #fb923c;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.page-wrapper { display: flex; min-height: 100vh; }
+
+.toc-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border-right: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 24px 16px;
+}
+.toc-sidebar h2 {
+  font-family: 'InstrumentSans', sans-serif;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted2);
+  margin-bottom: 12px;
+  padding: 0 8px;
+}
+.toc-sidebar nav ul { list-style: none; }
+.toc-sidebar nav li { margin-bottom: 2px; }
+.toc-sidebar nav a {
+  display: block;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 4px;
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+}
+.toc-sidebar nav a:hover { color: var(--ink); background: var(--bg3); }
+.toc-sidebar nav a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(96,165,250,0.08); }
+.toc-sidebar .toc-tag { font-size: 10px; margin-left: 6px; padding: 1px 5px; border-radius: 8px; font-weight: 600; }
+
+.content-area {
+  flex: 1;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 48px 40px 80px;
+}
+
+h1 {
+  font-family: 'InstrumentSans', sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+h1 + .subtitle { font-size: 15px; color: var(--muted); margin-bottom: 28px; }
+
+h2 {
+  font-family: 'InstrumentSans', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 48px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+h3 {
+  font-family: 'InstrumentSans', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 32px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+h4 {
+  font-family: 'InstrumentSans', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 20px;
+  margin-bottom: 8px;
+}
+
+p { margin-bottom: 14px; }
+
+code {
+  font-family: 'JetBrainsMono', 'Consolas', monospace;
+  font-size: 0.88em;
+  background: var(--bg3);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+pre {
+  background: var(--bg2);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+pre code { background: none; padding: 0; color: var(--ink); font-size: 13px; }
+
+.table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--rule); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--bg3);
+  color: var(--muted);
+  font-weight: 600;
+  font-family: 'InstrumentSans', sans-serif;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+td { padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(96,165,250,0.03); }
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'InstrumentSans', sans-serif;
+}
+.badge-p0 { background: rgba(248,113,113,0.15); color: var(--danger); }
+.badge-p1 { background: rgba(245,158,11,0.15); color: var(--warn); }
+.badge-p2 { background: rgba(96,165,250,0.15); color: var(--accent); }
+.badge-p3 { background: rgba(120,120,120,0.15); color: var(--muted2); }
+
+.callout {
+  border-left: 3px solid var(--accent);
+  background: rgba(96,165,250,0.06);
+  padding: 12px 16px;
+  border-radius: 0 6px 6px 0;
+  margin: 16px 0;
+  font-size: 14px;
+}
+.callout.warn { border-left-color: var(--warn); background: rgba(245,158,11,0.06); }
+.callout.danger { border-left-color: var(--danger); background: rgba(248,113,113,0.06); }
+.callout.success { border-left-color: var(--success); background: rgba(52,211,153,0.06); }
+.callout-title { font-weight: 700; font-family: 'InstrumentSans', sans-serif; margin-bottom: 4px; font-size: 13px; }
+
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 20px;
+  margin: 16px 0;
+}
+
+.severity-gauge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'InstrumentSans', sans-serif;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.sev-critical { background: rgba(248,113,113,0.15); color: var(--danger); }
+.sev-high { background: rgba(245,158,11,0.15); color: var(--warn); }
+.sev-medium { background: rgba(96,165,250,0.15); color: var(--accent); }
+.sev-low { background: rgba(120,120,120,0.15); color: var(--muted2); }
+
+.gap-section {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.gap-section:hover { border-color: var(--accent); }
+.gap-number {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-family: 'InstrumentSans', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+}
+.gap-content { flex: 1; min-width: 0; }
+.gap-content h3 { margin-top: 0; margin-bottom: 8px; }
+.gap-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.gap-content ul { padding-left: 20px; margin-bottom: 10px; }
+.gap-content li { margin-bottom: 4px; font-size: 14px; }
+.impact-list { list-style: none; padding: 0 !important; }
+.impact-list li { 
+  padding: 6px 0 6px 20px; 
+  position: relative; 
+  font-size: 14px;
+}
+.impact-list li::before { 
+  content: "→"; 
+  position: absolute; 
+  left: 0; 
+  color: var(--muted2); 
+}
+
+.doc-header { margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
+.doc-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 12px; }
+.doc-meta span { display: flex; align-items: center; gap: 4px; }
+
+ul, ol { margin-bottom: 14px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+
+hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
+
+.mermaid { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 24px; margin: 16px 0; text-align: center; }
+figure { margin: 20px 0; }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: center; }
+
+.severity-legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
+.severity-legend span { font-size: 12px; display: flex; align-items: center; gap: 4px; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
+
+@media (max-width: 900px) {
+  .toc-sidebar { display: none; }
+  .content-area { padding: 32px 20px 60px; }
+  .gap-section { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+<aside class="toc-sidebar">
+  <h2>评审目录</h2>
+  <nav>
+    <ul>
+      <li><a href="#summary">评审总览</a></li>
+      <li><a href="#g1">G1 完整 API 契约缺失</a></li>
+      <li><a href="#g2">G2 数据治理模型缺失</a></li>
+      <li><a href="#g3">G3 可观测性体系不完整</a></li>
+      <li><a href="#g4">G4 安全与权限模型缺失</a></li>
+      <li><a href="#g5">G5 失败模式与容错策略缺失</a></li>
+      <li><a href="#g6">G6 性能模型与容量规划缺失</a></li>
+      <li><a href="#g7">G7 配置管理架构缺失</a></li>
+      <li><a href="#g8">G8 灾备与连续性缺失</a></li>
+      <li><a href="#g9">G9 DSL 语法定义不完整</a></li>
+      <li><a href="#g10">G10 融合决策层未定义</a></li>
+      <li><a href="#g11">G11 冲突仲裁策略不明确</a></li>
+      <li><a href="#g12">G12 缺失数据模型定义</a></li>
+      <li><a href="#g13">G13 时间泄漏防护机制不完善</a></li>
+      <li><a href="#g14">G14 缓存策略未定义</a></li>
+      <li><a href="#g15">G15 幂等键生命周期管理缺失</a></li>
+      <li><a href="#g16">G16 优雅关闭流程缺失</a></li>
+      <li><a href="#g17">G17 指标定义缺失</a></li>
+      <li><a href="#g18">G18 外部数据源集成策略缺失</a></li>
+      <li><a href="#g19">G19 跨域依赖时序问题未解决</a></li>
+      <li><a href="#g20">G20 规则版本对比与回滚缺失</a></li>
+      <li><a href="#conclusion">总结与路线图</a></li>
+    </ul>
+  </nav>
+</aside>
+
+<main class="content-area">
+
+<div class="doc-header">
+  <h1>架构评审报告</h1>
+  <div class="subtitle">知识库检索引擎 v3 — 从架构师视角识别的 20 个待完善领域</div>
+  <div class="doc-meta">
+    <span>评审版本: v3.0</span>
+    <span>日期: 2026-08-15</span>
+    <span>状态: <span class="badge badge-p1">待定稿</span></span>
+    <span>评审范围: 并发模型 / 进程架构 / DSL 引擎 / 数据模型 / 部署拓扑</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Summary -->
+<!-- ============================================================ -->
+<h2 id="summary">评审总览</h2>
+
+<p>v3 架构在并发模型方面做出了正确的设计选择：进程分离、SKIP LOCKED 任务分发、租约+心跳、Fencing Token、幂等键——这些构成了一个健壮的并发基础设施。但架构设计文档的覆盖范围与深度仍存在显著缺口。</p>
+
+<p>本次评审共识别出 <strong>20 个待完善领域</strong>，按严重程度分为四类：</p>
+
+<div class="severity-legend">
+  <span><span class="severity-gauge sev-critical">严重</span> 架构根本性缺陷，会导致生产事故</span>
+  <span><span class="severity-gauge sev-high">高</span> 重要功能缺失，影响系统成熟度</span>
+  <span><span class="severity-gauge sev-medium">中</span> 设计不完备，增加技术债务</span>
+  <span><span class="severity-gauge sev-low">低</span> 优化建议，后续迭代补齐</span>
+</div>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>分类</th><th>数量</th><th>严重</th><th>高</th><th>中</th><th>低</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>架构级缺口</strong>（跨系统关注点）</td><td>8</td><td>2</td><td>4</td><td>2</td><td>0</td></tr>
+<tr><td><strong>设计文档内部缺陷</strong>（文档本身不完整）</td><td>12</td><td>2</td><td>5</td><td>4</td><td>1</td></tr>
+<tr><td><strong>合计</strong></td><td><strong>20</strong></td><td><strong>4</strong></td><td><strong>9</strong></td><td><strong>6</strong></td><td><strong>1</strong></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout danger">
+  <div class="callout-title">紧急建议：先补齐 4 个严重缺陷，再推进代码实现</div>
+  <p>G1（API 契约）、G6（性能模型）、G9（DSL 语法）、G12（数据模型）这四个严重缺陷会直接影响代码实现的可交付性。建议在进入编码阶段前，先完成这些模块的设计。</p>
+</div>
+
+<hr>
+
+<!-- ============================================================ -->
+<!-- Gap 1 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g1">
+  <div class="gap-number" style="background:rgba(248,113,113,0.15);color:var(--danger);">G1</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-critical">严重</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>完整 API 契约缺失</h3>
+    <p>文档中仅提及 <code>POST /api/matches/analyze</code> 一个端点，整个知识库系统的 API 面完全未定义。</p>
+    <ul class="impact-list">
+      <li>没有 API 版本化策略（<code>/api/v1/</code> vs <code>/api/v2/</code>），前端与后端无法独立演进</li>
+      <li>没有统一的错误响应格式（<code>RFC 7807 Problem Details</code>），客户端无法编程式处理错误</li>
+      <li>没有分页、过滤、排序标准（<code>cursor</code> vs <code>offset/limit</code>），规则列表查询无法扩展</li>
+      <li>没有 WebSocket / SSE 端点，实时推送（比赛分析完成、规则触发告警）无通道</li>
+      <li>没有健康检查端点的详细规范（<code>/api/health</code> 的响应结构、状态码、依赖检查粒度）</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 2 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g2">
+  <div class="gap-number" style="background:rgba(245,158,11,0.15);color:var(--warn);">G2</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-high">高</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>数据治理模型缺失</h3>
+    <p>v3 文档定义了 <code>trust_level</code> 和 <code>eligible</code> 字段，但没有定义数据治理的完整机制。</p>
+    <ul class="impact-list">
+      <li>没有数据血缘（Lineage）追踪——证据记录依赖哪些源数据？推理链如何追溯？</li>
+      <li>规则质量评分机制缺失——如何评估一条规则的预测准确率？如何自动淘汰低质量规则？</li>
+      <li>规则衰减（Decay）策略缺失——基于历史数据的规则可能因赛季更新、球队变化而失效</li>
+      <li>数据准入（Data Eligibility）标准不完整——<code>eligible</code> 字段仅是一个布尔值，判断逻辑未定义</li>
+      <li>没有数据生命周期管理——历史证据记录何时归档？何时删除？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 3 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g3">
+  <div class="gap-number" style="background:rgba(245,158,11,0.15);color:var(--warn);">G3</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-high">高</span>
+      <span class="badge badge-p1">P1</span>
+    </div>
+    <h3>可观测性体系不完整</h3>
+    <p>Section 10 提到了 Prometheus 和 Grafana 但仅作为可选组件，没有定义可观测性的具体内容。</p>
+    <ul class="impact-list">
+      <li>没有分布式追踪（Distributed Tracing）——一个分析请求跨越 API → 检索 Worker → DSL 引擎 → 证据记录，链路上出问题无法定位</li>
+      <li>没有结构化日志规范——日志格式、级别、采样策略、敏感信息脱敏</li>
+      <li>没有业务指标定义——规则命中率、预测准确率、分析延迟、证据记录率等关键业务指标缺失</li>
+      <li>没有告警规则——Worker 心跳丢失、任务积压、租约过期率升高等场景无告警</li>
+      <li>健康检查仅覆盖存活性和就绪性，缺少依赖深度检查（慢查询检测、连接池水位）</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 4 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g4">
+  <div class="gap-number" style="background:rgba(245,158,11,0.15);color:var(--warn);">G4</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-high">高</span>
+      <span class="badge badge-p1">P1</span>
+    </div>
+    <h3>安全与权限模型缺失</h3>
+    <p>文档提及"认证"，但安全模型远不止于认证——没有定义谁来管理规则、谁来发起分析、谁来审批。</p>
+    <ul class="impact-list">
+      <li>没有 RBAC 模型——规则创建者、审核者、审批者、管理员四个角色缺少权限矩阵</li>
+      <li>没有 API 速率限制——恶意的分析请求可能耗尽 Worker 资源</li>
+      <li>没有数据加密策略——证据快照包含敏感预测数据，传输和存储加密未定义</li>
+      <li>没有审计日志的策略——谁在什么时候修改了规则、谁触发了回测、结果如何变更</li>
+      <li>没有多租户隔离——如果多个用户或团队共享知识库，数据隔离怎么办？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 5 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g5">
+  <div class="gap-number" style="background:rgba(96,165,250,0.15);color:var(--accent);">G5</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-medium">中</span>
+      <span class="badge badge-p1">P1</span>
+    </div>
+    <h3>失败模式与容错策略缺失</h3>
+    <p>文档覆盖了 Worker 崩溃的场景（租约+Fencing Token），但系统还有更多失败模式未覆盖。</p>
+    <ul class="impact-list">
+      <li>没有 Circuit Breaker 模式——Redis 队列不可用时，API 是否应继续接受分析请求？</li>
+      <li>没有 Bulkhead 隔离——回测作业消耗大量 CPU，是否会影响实时检索的延迟？</li>
+      <li>没有降级策略——当 DSL 引擎不可用时，系统是否应该返回缓存的分析结果？</li>
+      <li>没有重试风暴防护——大量任务同时失败时，重试是否会导致雪崩？</li>
+      <li>没有数据库连接池溢出防护——多个 Worker 同时连接 PostgreSQL，连接池上限如何配置？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 6 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g6">
+  <div class="gap-number" style="background:rgba(248,113,113,0.15);color:var(--danger);">G6</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-critical">严重</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>性能模型与容量规划缺失</h3>
+    <p>架构设计完全可以支撑并发，但没有任何量化指标来指导部署决策——需要多少 Worker？多少内存？</p>
+    <ul class="impact-list">
+      <li>没有预期吞吐量——单场比赛分析需要多少毫秒？每秒钟能处理多少比赛？</li>
+      <li>没有瓶颈分析——DSL 求值是 CPU 密集型还是 IO 密集型？规则加载是瓶颈吗？</li>
+      <li>没有 Worker 扩容策略——基于什么指标（队列深度、分析延迟、CPU 使用率）进行水平扩缩容？</li>
+      <li>没有内存预算——每场比赛分析加载多少规则？规则缓存占多少内存？</li>
+      <li>没有数据库连接估算——N 个检索 Worker × 每个 Worker 的并发连接数 = 总连接数，超过 PostgreSQL 默认值怎么办？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 7 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g7">
+  <div class="gap-number" style="background:rgba(96,165,250,0.15);color:var(--accent);">G7</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-medium">中</span>
+      <span class="badge badge-p2">P2</span>
+    </div>
+    <h3>配置管理架构缺失</h3>
+    <p>文档中出现了各种常量（<code>BACKTEST_CONFIG</code>、租约 30 秒、心跳 10 秒），但这些配置的管理方式未定义。</p>
+    <ul class="impact-list">
+      <li>没有环境配置分层——开发/测试/生产环境的配置如何管理？</li>
+      <li>没有动态配置机制——运行时修改租约超时、Worker 池大小等参数是否需要重启？</li>
+      <li>没有 Feature Flag 机制——新规则匹配算法是否可以灰度发布？</li>
+      <li>没有配置的版本化与审计——配置变更是否可以追溯？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 8 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g8">
+  <div class="gap-number" style="background:rgba(96,165,250,0.15);color:var(--accent);">G8</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-medium">中</span>
+      <span class="badge badge-p2">P2</span>
+    </div>
+    <h3>灾备与连续性缺失</h3>
+    <p>Docker Compose 部署拓扑定义了服务，但系统崩溃后的恢复策略未定义。</p>
+    <ul class="impact-list">
+      <li>没有备份策略——PostgreSQL 的备份频率、保留策略、恢复验证流程</li>
+      <li>没有 RPO/RTO 定义——数据最多丢失多少？系统多久恢复？</li>
+      <li>没有数据复制策略——是否需要 PostgreSQL Streaming Replication？Redis 是否需要 Sentinel 或 Cluster？</li>
+      <li>没有多区域部署方案——如果主区域不可用，是否有备用区域？</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+
+<!-- ============================================================ -->
+<!-- Gap 9 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g9">
+  <div class="gap-number" style="background:rgba(248,113,113,0.15);color:var(--danger);">G9</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-critical">严重</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>DSL 语法定义不完整</h3>
+    <p>文档展示了条件求值器的 <code>evaluateCondition</code> 函数，但 DSL 的完整文法未定义。这是整个检索引擎的核心，也是最大的设计空白。</p>
+    <ul class="impact-list">
+      <li>没有完整的 BNF 或 EBNF 文法——规则以什么格式编写？JSON？YAML？自定义 DSL 语法？</li>
+      <li>没有 Atomic 条件的完整算子集——支持哪些比较？<code>gt</code>、<code>lt</code>、<code>eq</code>、<code>between</code>、<code>in</code>、<code>pattern_match</code>？</li>
+      <li>没有模糊匹配的定义——<code>fuzzy_matches</code> 在接口中出现了，但匹配算法（Levenshtein？Jaccard？Embedding similarity？）未定义</li>
+      <li>没有时间条件语法——<code>timeWindow: "临场前30分钟"</code> 这种自然语言如何映射为 DSL 的时间算子？</li>
+      <li>没有外部数据引用机制——规则如何引用比赛特征（<code>MatchFeatures</code>）中的字段？字段可扩展性如何？</li>
+      <li>没有条件权重机制——一个 AND 组合中的子条件是否可以有不同权重？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 10 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g10">
+  <div class="gap-number" style="background:rgba(245,158,11,0.15);color:var(--warn);">G10</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-high">高</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>融合决策层未定义</h3>
+    <p>图6 的 DSL 引擎架构中出现了"融合决策层"（<code>Result[融合决策层]</code>），但全文没有任何关于这个层的说明。</p>
+    <ul class="impact-list">
+      <li>融合决策的输入是什么？——多条规则匹配结果、冲突组、推理链？</li>
+      <li>融合决策的策略是什么？——加权投票？置信度排序？贝叶斯融合？</li>
+      <li>预测方向（<code>PredictionDirection</code>）的枚举值是什么？——<code>favor_upper</code>、<code>favor_lower</code>、<code>under</code>、<code>over</code>、<code>neutral</code>... 这些值如何映射到最终预测？</li>
+      <li>置信度（<code>final_confidence</code>）的计算公式是什么？——规则置信度的加权平均？最大值？</li>
+      <li>融合决策层是否支持可配置策略？——不同用户或场景可能需要不同的决策策略</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 11 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g11">
+  <div class="gap-number" style="background:rgba(245,158,11,0.15);color:var(--warn);">G11</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-high">高</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>冲突仲裁策略不明确</h3>
+    <p><code>AnalysisResult</code> 接口中有 <code>conflicts: ConflictGroup[]</code>，冲突仲裁器（<code>CM[冲突仲裁器]</code>）出现在架构图中，但仲裁策略完全未定义。</p>
+    <ul class="impact-list">
+      <li>什么算冲突？——规则 A 说"上盘"，规则 B 说"下盘"，这是冲突。但"上盘"和"谨慎"算冲突吗？</li>
+      <li>仲裁策略是什么？——置信度优先？权威性优先？最近更新优先？</li>
+      <li>冲突时是否保留所有推理路径？——用于人工审计和回溯</li>
+      <li>是否允许人工标记冲突？——专家可以手动标记规则之间的冲突，系统在检测到已知冲突时立即告警</li>
+      <li>冲突组（<code>ConflictGroup</code>）的结构是什么？——参与的规则、冲突类型、建议的仲裁结果</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 12 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g12">
+  <div class="gap-number" style="background:rgba(248,113,113,0.15);color:var(--danger);">G12</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-critical">严重</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>缺失数据模型定义</h3>
+    <p>文档中定义了 <code>qd_analysis_commands</code> 和 <code>qd_evidence_snapshots</code> 两张表，但引用了多张未定义的表。</p>
+    <ul class="impact-list">
+      <li><code>qd_rule_versions</code> 未定义——规则版本的数据模型是什么？<code>rule_id</code>、<code>version</code>、<code>dsl_body</code>、<code>status</code>、<code>author</code>、<code>approved_by</code>？</li>
+      <li><code>qd_backtest_jobs</code> 未定义——回测作业包含哪些字段？<code>rule_id</code>、<code>config</code>（JSONB）、<code>date_range</code>、<code>result</code>？</li>
+      <li><code>qd_worker_heartbeats</code> 未定义——心跳记录的结构？<code>worker_id</code>、<code>process_type</code>、<code>last_heartbeat_at</code>、<code>load</code>？</li>
+      <li><code>qd_analysis_leases</code> 在图2 的说明中被提及，但表结构未定义</li>
+      <li>没有规则的 DSL 存储格式——规则条件以 JSONB 存储？还是以自定义 DSL 文本存储？</li>
+      <li>没有索引策略——除了 <code>idx_analysis_pending</code> 和 <code>idx_analysis_expired</code>，其他查询路径缺少索引</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 13 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g13">
+  <div class="gap-number" style="background:rgba(245,158,11,0.15);color:var(--warn);">G13</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-high">高</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>时间泄漏防护机制不完善</h3>
+    <p>用户背景信息中强调"时间泄漏"是核心约束，但 v3 文档对时间泄漏防护的描述不够具体，不足以指导实现。</p>
+    <ul class="impact-list">
+      <li><code>observed_at</code>、<code>received_at</code>、<code>match_time</code> 三个时间戳的比较规则是什么？——<code>observed_at &le; received_at &le; match_time</code>？</li>
+      <li><code>analysis_time</code> 的角色是什么？——分析时间应与模拟的历史时间点一致，而不是当前系统时间</li>
+      <li>回测中的时间泄漏防护——回测时加载历史数据，必须确保分析时只使用"当时"可用的信息</li>
+      <li><code>TemporalContext</code> 的结构未定义——它包含 <code>analysisTime</code>、<code>eligibleDataWindow</code>、<code>forbiddenFutureData</code>？</li>
+      <li>时间校验失败时的行为——是跳过分析？标记为不可信？还是记录警告但继续？</li>
+      <li>反盲区（Look-Ahead Bias）防护——在批量回测时，如何确保第 N 场比赛的分析不会用到第 N+1 场比赛的数据？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 14 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g14">
+  <div class="gap-number" style="background:rgba(96,165,250,0.15);color:var(--accent);">G14</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-medium">中</span>
+      <span class="badge badge-p1">P1</span>
+    </div>
+    <h3>缓存策略未定义</h3>
+    <p>图6 中规则缓存（<code>R[规则缓存<br/>Redis]</code>）是 DSL 引擎的核心数据源，但缓存策略完全未定义。</p>
+    <ul class="impact-list">
+      <li>缓存失效策略——当规则从 <code>active</code> 变为 <code>deprecated</code> 时，缓存如何失效？</li>
+      <li>缓存预热——系统启动时，如何将活跃规则加载到缓存？</li>
+      <li>缓存一致性——如果多个检索 Worker 各自缓存了规则，如何确保缓存一致性？</li>
+      <li>缓存淘汰策略——Redis 使用 <code>allkeys-lru</code> 还是 <code>volatile-ttl</code>？</li>
+      <li>分析结果缓存——是否缓存相同比赛的分析结果？如果比赛特征不变，重复分析是否可以返回缓存？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 15 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g15">
+  <div class="gap-number" style="background:rgba(96,165,250,0.15);color:var(--accent);">G15</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-medium">中</span>
+      <span class="badge badge-p2">P2</span>
+    </div>
+    <h3>幂等键生命周期管理缺失</h3>
+    <p>幂等键通过唯一约束防止重复，但幂等键何时失效？</p>
+    <ul class="impact-list">
+      <li>幂等键的保留期限——分析完成后的幂等键是否永远保留？如果保留，<code>qd_analysis_commands</code> 表会无限增长</li>
+      <li>幂等键的清理策略——基于时间（完成 30 天后清理）还是基于容量（表大小超阈值后清理最旧的）？</li>
+      <li>幂等键过期后的行为——如果用户用相同的 <code>requestId</code> 发起新请求，但旧的幂等键已被清理，结果是重复分析还是新分析？</li>
+      <li>建议：幂等键保留期 = 7 天，超过后允许重新提交。但需记录幂等键的清理审计日志</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 16 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g16">
+  <div class="gap-number" style="background:rgba(120,120,120,0.15);color:var(--muted2);">G16</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-low">低</span>
+      <span class="badge badge-p2">P2</span>
+    </div>
+    <h3>优雅关闭流程缺失</h3>
+    <p>当检索 Worker 接收到 SIGTERM（如 Kubernetes 滚动更新、Docker Compose down），当前正在执行的分析任务怎么办？</p>
+    <ul class="impact-list">
+      <li>没有优雅关闭的步骤定义——收到 SIGTERM → 停止认领新任务 → 完成当前任务 → 释放租约 → 退出</li>
+      <li>没有超时机制——SIGTERM 后最多等待多少秒？超时后强制 SIGKILL？</li>
+      <li>没有 PreStop Hook——Kubernetes 中应配置 <code>preStop</code> 通知 Worker 即将关闭</li>
+      <li>没有孤儿任务处理——如果 Worker 被强制杀死，租约在 30 秒后自动过期，其他 Worker 可以认领</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 17 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g17">
+  <div class="gap-number" style="background:rgba(96,165,250,0.15);color:var(--accent);">G17</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-medium">中</span>
+      <span class="badge badge-p1">P1</span>
+    </div>
+    <h3>指标定义缺失</h3>
+    <p>健康检查端点返回了 Workers 数量，但系统需要更丰富的指标来驱动运维决策和业务分析。</p>
+    <ul class="impact-list">
+      <li>业务指标缺失——规则命中率（<code>kb_rule_hit_rate</code>）、预测准确率（<code>kb_prediction_accuracy</code>）、规则覆盖率（<code>kb_rule_coverage</code>）</li>
+      <li>系统指标缺失——分析队列深度（<code>kb_analysis_queue_depth</code>）、租约过期率（<code>kb_lease_expiry_rate</code>）、分析延迟 P50/P95/P99（<code>kb_analysis_latency_ms</code>）</li>
+      <li>Worker 指标缺失——Worker 任务完成率（<code>kb_worker_task_completion_rate</code>）、Worker 崩溃率（<code>kb_worker_crash_rate</code>）</li>
+      <li>缓存指标缺失——缓存命中率（<code>kb_cache_hit_ratio</code>）、缓存大小（<code>kb_cache_size_bytes</code>）</li>
+      <li>建议：为每个指标定义名称、类型、标签（<code>worker_id</code>、<code>process_type</code>）、采样间隔</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 18 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g18">
+  <div class="gap-number" style="background:rgba(245,158,11,0.15);color:var(--warn);">G18</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-high">高</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>外部数据源集成策略缺失</h3>
+    <p>知识库需要从外部获取比赛数据（赔率、比分、球队信息等），但架构文档没有定义数据集成的方式。</p>
+    <ul class="impact-list">
+      <li>没有数据源接入规范——外部数据源（机构赔率 API、联赛数据提供商）如何接入？</li>
+      <li>没有数据管道——数据采集、清洗、转换、加载的 ETL/ELT 流程未定义</li>
+      <li>没有数据源的健康检查——如果赔率数据源不可用，系统是降级还是拒绝服务？</li>
+      <li>没有数据质量评级——不同数据源的数据质量不同，是否应该有数据源的可信度评级？</li>
+      <li>没有增量更新策略——比赛数据是实时推送还是定时拉取？增量更新还是全量替换？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 19 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g19">
+  <div class="gap-number" style="background:rgba(245,158,11,0.15);color:var(--warn);">G19</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-high">高</span>
+      <span class="badge badge-p0">P0</span>
+    </div>
+    <h3>跨域依赖时序问题未解决</h3>
+    <p>图1 的并发域依赖关系图中，回测作业完成后会"更新规则置信度"，这触发规则生命周期的状态重新评估。但时序问题未定义。</p>
+    <ul class="impact-list">
+      <li>回测更新置信度时，如果规则正在被检索 Worker 使用，是否会影响正在进行的分析？</li>
+      <li>置信度更新是同步还是异步？——如果同步，调度 Worker 可能阻塞等待规则状态转换锁</li>
+      <li>活跃规则的热更新——当规则置信度变化时，正在运行的 DSL 匹配是否应该使用新置信度？</li>
+      <li>建议：规则置信度更新采用"写时复制"模式——更新只影响新分析任务，不影响正在进行的分析</li>
+      <li>建议：定义跨域依赖的时序图，明确每个操作的顺序和一致性要求</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Gap 20 -->
+<!-- ============================================================ -->
+<div class="gap-section" id="g20">
+  <div class="gap-number" style="background:rgba(96,165,250,0.15);color:var(--accent);">G20</div>
+  <div class="gap-content">
+    <div class="gap-meta">
+      <span class="severity-gauge sev-medium">中</span>
+      <span class="badge badge-p2">P2</span>
+    </div>
+    <h3>规则版本对比与回滚缺失</h3>
+    <p>规则版本状态机（图5）定义了 <code>superseded</code> 状态，但版本对比和回滚机制未定义。</p>
+    <ul class="impact-list">
+      <li>没有版本对比工具——如何比较两个版本规则的 DSL 差异？</li>
+      <li>没有回滚机制——如果新版本发布后预测准确率下降，如何快速回滚到旧版本？</li>
+      <li>没有 A/B 测试框架——新旧版本是否可以同时运行，用实际数据验证？</li>
+      <li>没有版本标签——<code>v1.0</code>、<code>v2.0</code> 等语义化版本标签</li>
+      <li>没有版本发布说明——每个版本变更的 changelog 机制</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+
+<!-- ============================================================ -->
+<!-- Conclusion -->
+<!-- ============================================================ -->
+<h2 id="conclusion">总结与路线图</h2>
+
+<p>v3 架构在并发安全、进程隔离、幂等性这三个维度上，方向完全正确。但架构设计文档的实际覆盖范围远小于一个可交付系统所需的完整设计。以下是按优先级排序的补齐路线图建议：</p>
+
+<div class="card">
+<h4 style="margin-top:0;">第一阶段：可交付基线（P0 — 必须编码前完成）</h4>
+<table style="font-size:13px;">
+<thead>
+<tr><th>优先级</th><th>缺口</th><th>交付物</th><th>预估工作量</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="badge badge-p0">P0</span></td><td>G9 DSL 语法定义</td><td>DSL 文法规范文档（BNF）+ 示例规则集</td><td>3-5 天</td></tr>
+<tr><td><span class="badge badge-p0">P0</span></td><td>G12 数据模型定义</td><td>完整的数据字典 + DDL 脚本</td><td>2-3 天</td></tr>
+<tr><td><span class="badge badge-p0">P0</span></td><td>G1 API 契约</td><td>OpenAPI 3.0 规范文档</td><td>2-3 天</td></tr>
+<tr><td><span class="badge badge-p0">P0</span></td><td>G6 性能模型</td><td>性能基准测试计划 + 容量估算表</td><td>2-3 天</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h4 style="margin-top:0;">第二阶段：系统成熟度（P1 — 上线前完成）</h4>
+<table style="font-size:13px;">
+<thead>
+<tr><th>优先级</th><th>缺口</th><th>交付物</th><th>预估工作量</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="badge badge-p1">P1</span></td><td>G10 融合决策层</td><td>决策策略文档 + 算法伪代码</td><td>2-3 天</td></tr>
+<tr><td><span class="badge badge-p1">P1</span></td><td>G11 冲突仲裁策略</td><td>仲裁规则文档 + 仲裁流程图</td><td>1-2 天</td></tr>
+<tr><td><span class="badge badge-p1">P1</span></td><td>G13 时间泄漏防护</td><td>时间校验详细设计 + 测试用例</td><td>1-2 天</td></tr>
+<tr><td><span class="badge badge-p1">P1</span></td><td>G18 外部数据源集成</td><td>数据源接入规范 + 数据管道架构</td><td>3-5 天</td></tr>
+<tr><td><span class="badge badge-p1">P1</span></td><td>G19 跨域依赖时序</td><td>时序图 + 一致性保证策略</td><td>1-2 天</td></tr>
+<tr><td><span class="badge badge-p1">P1</span></td><td>G2 数据治理</td><td>数据质量标准 + 规则衰减策略</td><td>2-3 天</td></tr>
+<tr><td><span class="badge badge-p1">P1</span></td><td>G3 可观测性</td><td>指标清单 + 日志规范 + 告警规则</td><td>2-3 天</td></tr>
+<tr><td><span class="badge badge-p1">P1</span></td><td>G4 安全与权限</td><td>RBAC 矩阵 + API 速率限制策略</td><td>2-3 天</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h4 style="margin-top:0;">第三阶段：生产就绪（P2 — 上线后迭代）</h4>
+<table style="font-size:13px;">
+<thead>
+<tr><th>优先级</th><th>缺口</th><th>交付物</th><th>预估工作量</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="badge badge-p2">P2</span></td><td>G5 容错策略</td><td>Circuit Breaker / Bulkhead 设计</td><td>2-3 天</td></tr>
+<tr><td><span class="badge badge-p2">P2</span></td><td>G7 配置管理</td><td>配置分层方案 + 动态配置机制</td><td>1-2 天</td></tr>
+<tr><td><span class="badge badge-p2">P2</span></td><td>G8 灾备</td><td>备份策略 + RPO/RTO 定义</td><td>1-2 天</td></tr>
+<tr><td><span class="badge badge-p2">P2</span></td><td>G14 缓存策略</td><td>缓存失效/预热/一致性策略</td><td>1-2 天</td></tr>
+<tr><td><span class="badge badge-p2">P2</span></td><td>G15 幂等键生命周期</td><td>幂等键清理策略</td><td>0.5 天</td></tr>
+<tr><td><span class="badge badge-p2">P2</span></td><td>G17 指标定义</td><td>完整的指标清单</td><td>1 天</td></tr>
+<tr><td><span class="badge badge-p2">P2</span></td><td>G20 版本对比与回滚</td><td>版本管理 + A/B 测试方案</td><td>2-3 天</td></tr>
+<tr><td><span class="badge badge-p2">P2</span></td><td>G16 优雅关闭</td><td>关闭流程文档 + PreStop Hook</td><td>0.5 天</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout success">
+  <div class="callout-title">核心建议</div>
+  <p>v3 架构的并发层设计已经足够坚实，可以进入编码阶段，但前提是必须先完成 <strong>第一阶段（P0）</strong> 的四个缺口补齐。DSL 语法定义（G9）是重中之重——没有 DSL 规范，引擎开发无从下手。建议按以下顺序推进：<strong>DSL 语法 → 数据模型 → API 契约 → 性能模型 → 编码实现并发层 → 编码实现 DSL 引擎</strong>。</p>
+</div>
+
+</main>
+</div>
+
+<script src="./_shared/js/mermaid.min.js"></script>
+<script>
+mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+</script>
+</body>
+</html>
