@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>架构评审报告 — 知识库检索引擎 v3 待完善领域分析</title>
+<title>架构评审报告 — 知识库检索引擎 1.0.0 待完善领域分析</title>
 <style>
 @font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Regular.ttf'); font-weight: 400; }
 @font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Bold.ttf'); font-weight: 700; }
@@ -325,9 +325,9 @@ figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: 
 
 <div class="doc-header">
   <h1>架构评审报告</h1>
-  <div class="subtitle">知识库检索引擎 v3 — 从架构师视角识别的 20 个待完善领域</div>
+  <div class="subtitle">知识库检索引擎 1.0.0 — 从架构师视角识别的 20 个待完善领域</div>
   <div class="doc-meta">
-    <span>评审版本: v3.0</span>
+    <span>评审版本: 1.0.0</span>
     <span>日期: 2026-08-15</span>
     <span>状态: <span class="badge badge-p1">待定稿</span></span>
     <span>评审范围: 并发模型 / 进程架构 / DSL 引擎 / 数据模型 / 部署拓扑</span>
@@ -339,7 +339,7 @@ figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: 
 <!-- ============================================================ -->
 <h2 id="summary">评审总览</h2>
 
-<p>v3 架构在并发模型方面做出了正确的设计选择：进程分离、SKIP LOCKED 任务分发、租约+心跳、Fencing Token、幂等键——这些构成了一个健壮的并发基础设施。但架构设计文档的覆盖范围与深度仍存在显著缺口。</p>
+<p>前序架构在并发模型方面做出了正确的设计选择：进程分离、SKIP LOCKED 任务分发、租约+心跳、Fencing Token、幂等键——这些构成了一个健壮的并发基础设施。但架构设计文档的覆盖范围与深度仍存在显著缺口。</p>
 
 <p>本次评审共识别出 <strong>20 个待完善领域</strong>，按严重程度分为四类：</p>
 
@@ -403,7 +403,7 @@ figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: 
       <span class="badge badge-p0">P0</span>
     </div>
     <h3>数据治理模型缺失</h3>
-    <p>v3 文档定义了 <code>trust_level</code> 和 <code>eligible</code> 字段，但没有定义数据治理的完整机制。</p>
+    <p>前序设计定义了 <code>trust_level</code> 和 <code>eligible</code> 字段，但没有定义数据治理的完整机制。</p>
     <ul class="impact-list">
       <li>没有数据血缘（Lineage）追踪——证据记录依赖哪些源数据？推理链如何追溯？</li>
       <li>规则质量评分机制缺失——如何评估一条规则的预测准确率？如何自动淘汰低质量规则？</li>
@@ -647,7 +647,7 @@ figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: 
       <span class="badge badge-p0">P0</span>
     </div>
     <h3>时间泄漏防护机制不完善</h3>
-    <p>用户背景信息中强调"时间泄漏"是核心约束，但 v3 文档对时间泄漏防护的描述不够具体，不足以指导实现。</p>
+    <p>用户背景信息中强调"时间泄漏"是核心约束，但前序设计对时间泄漏防护的描述不够具体，不足以指导实现。</p>
     <ul class="impact-list">
       <li><code>observed_at</code>、<code>received_at</code>、<code>match_time</code> 三个时间戳的比较规则是什么？——<code>observed_at &le; received_at &le; match_time</code>？</li>
       <li><code>analysis_time</code> 的角色是什么？——分析时间应与模拟的历史时间点一致，而不是当前系统时间</li>
@@ -805,7 +805,7 @@ figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: 
       <li>没有版本对比工具——如何比较两个版本规则的 DSL 差异？</li>
       <li>没有回滚机制——如果新版本发布后预测准确率下降，如何快速回滚到旧版本？</li>
       <li>没有 A/B 测试框架——新旧版本是否可以同时运行，用实际数据验证？</li>
-      <li>没有版本标签——<code>v1.0</code>、<code>v2.0</code> 等语义化版本标签</li>
+      <li>没有统一的语义化版本标签和发布约束</li>
       <li>没有版本发布说明——每个版本变更的 changelog 机制</li>
     </ul>
   </div>
@@ -818,7 +818,7 @@ figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: 
 <!-- ============================================================ -->
 <h2 id="conclusion">总结与路线图</h2>
 
-<p>v3 架构在并发安全、进程隔离、幂等性这三个维度上，方向完全正确。但架构设计文档的实际覆盖范围远小于一个可交付系统所需的完整设计。以下是按优先级排序的补齐路线图建议：</p>
+<p>前序架构在并发安全、进程隔离、幂等性这三个维度上，方向完全正确。但架构设计文档的实际覆盖范围远小于一个可交付系统所需的完整设计。以下是按优先级排序的补齐路线图建议：</p>
 
 <div class="card">
 <h4 style="margin-top:0;">第一阶段：可交付基线（P0 — 必须编码前完成）</h4>
@@ -875,7 +875,7 @@ figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: 
 
 <div class="callout success">
   <div class="callout-title">核心建议</div>
-  <p>v3 架构的并发层设计已经足够坚实，可以进入编码阶段，但前提是必须先完成 <strong>第一阶段（P0）</strong> 的四个缺口补齐。DSL 语法定义（G9）是重中之重——没有 DSL 规范，引擎开发无从下手。建议按以下顺序推进：<strong>DSL 语法 → 数据模型 → API 契约 → 性能模型 → 编码实现并发层 → 编码实现 DSL 引擎</strong>。</p>
+  <p>1.0.0 架构的并发层设计已经足够坚实，可以进入编码阶段，但前提是必须先完成 <strong>第一阶段（P0）</strong> 的四个缺口补齐。DSL 语法定义（G9）是重中之重——没有 DSL 规范，引擎开发无从下手。建议按以下顺序推进：<strong>DSL 语法 → 数据模型 → API 契约 → 性能模型 → 编码实现并发层 → 编码实现 DSL 引擎</strong>。</p>
 </div>
 
 </main>

@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>足球竞猜知识库工程架构方案 v2.0</title>
+<title>足球竞猜知识库工程架构方案 1.0.0</title>
 <style>
 @font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Regular.ttf'); font-weight: 400; }
 @font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Bold.ttf'); font-weight: 700; }
@@ -334,9 +334,9 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
 
 <div class="doc-header">
   <h1>足球竞猜知识库工程架构方案</h1>
-  <div class="subtitle">基于机构盘口赔率数据差异性的知识库检索与预测系统 — 符合工程治理标准 v2.0</div>
+  <div class="subtitle">基于机构盘口赔率数据差异性的知识库检索与预测系统 — 架构设计基线 1.0.0</div>
   <div class="doc-meta">
-    <span>版本: v2.0</span>
+    <span>版本: 1.0.0</span>
     <span>日期: 2026-08-13</span>
     <span>状态: <span class="badge badge-yellow">架构设计</span></span>
     <span>适用: 足球竞猜赔率分析系统</span>
@@ -419,7 +419,7 @@ graph TB
   <span class="t-comment">// === 身份标识 ===</span>
   <span class="t-property">rule_id</span>: <span class="t-type">string</span>;           <span class="t-comment">// 规则唯一ID，如 "R001"</span>
   <span class="t-property">version</span>: <span class="t-type">number</span>;          <span class="t-comment">// 版本号，从1递增</span>
-  <span class="t-property">version_id</span>: <span class="t-type">string</span>;       <span class="t-comment">// 版本唯一ID: "R001#v3"</span>
+  <span class="t-property">version_id</span>: <span class="t-type">string</span>;       <span class="t-comment">// 版本唯一ID: "R001#1.0.0"</span>
 
   <span class="t-comment">// === 分类与范围 ===</span>
   <span class="t-property">category</span>: <span class="t-type">RuleCategory</span>;    <span class="t-comment">// odds_change | institution_diff | sensitivity | league_feature</span>
@@ -1249,11 +1249,11 @@ flowchart TD
 </div>
 
 <div class="card">
-<h4>原型 v1 与架构方案 v2 对照</h4>
+<h4>原型与架构设计对照</h4>
 <div class="table-wrap">
 <table>
 <thead>
-<tr><th>维度</th><th>原型 v1</th><th>架构方案 v2</th></tr>
+<tr><th>维度</th><th>当前原型</th><th>1.0.0 架构设计</th></tr>
 </thead>
 <tbody>
 <tr><td>规则存储</td><td>可变 CRUD</td><td>Append-only 版本化</td></tr>

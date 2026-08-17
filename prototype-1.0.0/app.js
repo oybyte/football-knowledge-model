@@ -1,5 +1,5 @@
 // ============================================================================
-// Odds Edge · UI 层 —— 产品级原型 v0.5（后续开发照此实现）
+// Odds Edge · UI 层 —— 产品级原型 1.0.0（后续开发照此实现）
 // 路由：首页(竞彩) / 历史记录(复盘) / 规则库 / AI引擎 / 设置
 // 数据层 data.js · 特征层 features.js · 规则层 rules.js 已解耦，UI 不掺算法
 // ============================================================================
@@ -643,7 +643,7 @@ function renderSettings() {
         <div class="setting-row col"><label>默认启用规则族</label><div class="filter-chips">${famChips}</div></div>
       </div></div>
       <div class="card"><div class="card-hd"><div class="title">关于</div></div><div class="card-bd">
-        <div class="setting-row"><label>版本</label><span class="muted mono">v0.5 (交互原型)</span></div>
+        <div class="setting-row"><label>版本</label><span class="muted mono">1.0.0 (交互原型)</span></div>
         <div class="setting-row"><label>数据来源</label><span class="muted">竞彩官方接口（模拟）</span></div>
         <div class="setting-note">本原型为产品级交互验证，后续开发将完全照此实现。规则引擎(RULES) / 特征层(features) / 数据层(data) 已解耦。</div>
       </div></div>

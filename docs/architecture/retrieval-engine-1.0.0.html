@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>知识库检索引擎 v3.2 — 生产就绪补充设计</title>
+<title>知识库检索引擎 1.0.0 — 生产就绪设计</title>
 <style>
 @font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Regular.ttf'); font-weight: 400; }
 @font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Bold.ttf'); font-weight: 700; }
@@ -144,10 +144,10 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
 <main class="content-area">
 
 <div class="doc-header">
-  <h1>知识库检索引擎 v3.2</h1>
+  <h1>知识库检索引擎 1.0.0</h1>
   <div class="subtitle">生产就绪补充设计 — 可观测性 / 安全 / 容错 / 配置 / 灾备 / 指标 / 版本管理 / 优雅关闭</div>
   <div class="doc-meta">
-    <span>版本: v3.2</span>
+    <span>版本: 1.0.0</span>
     <span>日期: 2026-08-15</span>
     <span>状态: <span class="badge badge-green">设计完成</span></span>
     <span>覆盖缺口: G3 / G4 / G5 / G7 / G8 / G16 / G17 / G20</span>
@@ -188,7 +188,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
 
   <span class="t-comment">// 业务上下文（可选，根据场景添加）</span>
   <span class="t-string">"match_id"</span>: <span class="t-string">"M20260815_001"</span>,
-  <span class="t-string">"rule_id"</span>: <span class="t-string">"R001_v3"</span>,
+  <span class="t-string">"rule_id"</span>: <span class="t-string">"R001#1.0.0"</span>,
   <span class="t-string">"command_id"</span>: <span class="t-string">"cmd_abc"</span>
 }
 
@@ -1286,9 +1286,9 @@ spec:
 <hr>
 
 <div class="callout success">
-  <div class="callout-title">v3.2 补充设计总结</div>
+  <div class="callout-title">1.0.0 设计总结</div>
   <p>本节补充设计覆盖了评审报告中剩余的 <strong>8 个 P1/P2 缺口</strong>：可观测性体系（G3）、安全与权限模型（G4）、容错策略（G5）、配置管理架构（G7）、灾备与连续性（G8）、指标定义（G17）、版本对比与回滚（G20）、优雅关闭（G16）。</p>
-  <p>至此，架构评审报告识别的 <strong>20 个待完善领域已全部完成设计覆盖</strong>。结合 v3 的并发模型、v3.1 的 DSL/数据模型/API 契约/性能规划，以及 v3.2 的生产就绪设计，整个知识库检索引擎已经具备完整的架构设计文档，可以进入编码实施阶段。</p>
+  <p>至此，架构评审报告识别的 <strong>20 个待完善领域已全部完成设计覆盖</strong>。结合前序并发模型、DSL/数据模型/API 契约/性能规划和生产就绪设计，整个知识库检索引擎已经具备完整的架构设计文档，可以进入编码实施阶段。</p>
 </div>
 
 </main>

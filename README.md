@@ -1,19 +1,29 @@
-# football-knowledge-model
+# football-knowledge-model 1.0.0
 
-足球竞猜知识库检索与预测系统 — 基于机构盘口赔率数据差异性的知识库检索与预测系统。
+足球竞猜知识库检索与预测系统。当前版本以交互原型验证盘口特征、确定性规则和分析流程，架构设计同步作为后续工程实现基线。
 
-## 项目结构
+## 入口
 
+- 当前原型：`prototype-1.0.0/index.html`
+- 总体架构：`docs/architecture/architecture-1.0.0.html`
+- 检索引擎：`docs/architecture/retrieval-engine-1.0.0.html`
+- 架构评审：`docs/architecture/architecture-review-1.0.0.html`
+- 项目索引：`docs/index.md`
+
+## 本地运行
+
+在项目根目录执行：
+
+```powershell
+python -m http.server 8137
 ```
-├── kb-architecture/          # 知识库工程架构方案 v2.0
-├── odds-kb-prototype/        # 知识库管理前端原型
-├── retrieval-engine-v3/      # 检索引擎设计文档（v3 / v3.1 / v3.2 / 架构评审）
-└── product-plan-v1/          # 产品方案文档 v1.0
-```
 
-## 核心设计原则
+然后打开 `http://localhost:8137/prototype-1.0.0/`。
 
-1. **不可变性** — 规则和证据快照发布后只读，禁止修改和删除
-2. **时间完整性** — 所有数据携带时间戳，强制校验时间窗口，防止时间泄漏
-3. **实验隔离** — 未审批的规则在沙箱中运行，不进入正式预测链
-4. **可追溯性** — 每次预测可追溯到具体规则版本和证据快照
+## 当前状态
+
+原型使用本地模拟赛事和盘口数据，数据层、特征层、规则层已经解耦。真实竞彩接口、后端服务、数据库、正式 DSL、时间泄漏校验、回测和 ROI 置信度仍未实现，详见 `docs/current-status.md`。
+
+## 版本约定
+
+当前基线为 `1.0.0`。后续变更使用语义化版本号，不再创建并列的旧版本目录。
