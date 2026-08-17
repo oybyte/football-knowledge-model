@@ -322,7 +322,7 @@ body {
 .risk-empty { font-size: 11px; color: var(--t-4); }
 
 /* ---------- 比赛列表 ---------- */
-.match-col { width: 248px; flex: 0 0 248px; border-right: 1px solid var(--bd-1); background: var(--bg-1); overflow-y: auto; }
+.match-col { width: 220px; flex: 0 0 220px; border-right: 1px solid var(--bd-1); background: var(--bg-1); overflow-y: auto; }
 .match-col .hd { padding: 14px 14px 8px; }
 .match-item {
   margin: 0 8px 6px; padding: 10px 11px; border-radius: var(--r-md);
@@ -341,7 +341,7 @@ body {
 .chip.active { background: var(--brand-soft); color: var(--brand); border-color: transparent; }
 
 /* ---------- Tab ---------- */
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--bd-1); margin-bottom: 14px; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--bd-1); margin-bottom: 14px; overflow-x: auto; }
 .tab {
   padding: 9px 14px; font-size: 13px; font-weight: 500; color: var(--t-3);
   cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s;
@@ -416,11 +416,11 @@ body {
 .mc-analyzed { font-size: 11px; color: var(--up); white-space: nowrap; }
 
 /* ---------- 分析壳 ---------- */
-.analysis-shell { display: flex; flex-direction: column; height: 100%; }
+.analysis-shell { display: flex; flex-direction: column; height: 100%; min-width: 0; flex: 1 1 0; }
 .analysis-bar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--bd-1); background: var(--bg-1); }
 .analysis-bar .ab-title { font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-bar .ab-spacer { flex: 1; }
-.analysis-body { flex: 1; display: flex; overflow: hidden; }
+.analysis-body { flex: 1; display: flex; overflow: hidden; min-width: 0; }
 
 /* ---------- 历史记录 ---------- */
 .history-list { display: flex; flex-direction: column; gap: 10px; }
@@ -513,4 +513,56 @@ body {
   .lottery-datebar { overflow-x: auto; white-space: nowrap; }
   .match-grid { grid-template-columns: 1fr; }
   .page-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+
+/* ============================================================================
+   首页 · 竖向比赛行 + 右侧分析结论
+   ========================================================================== */
+.match-rows { display: flex; flex-direction: column; gap: 14px; }
+.match-row {
+  display: flex; gap: 16px; align-items: stretch;
+  background: var(--bg-2); border: 1px solid var(--bd-1); border-radius: var(--r-lg); padding: 16px;
+}
+.match-row.on { border-color: var(--bd-3); }
+.mr-card { flex: 0 0 300px; width: 300px; display: flex; flex-direction: column; gap: 10px; }
+.mr-summary { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.mr-summary.off {
+  flex-direction: row; align-items: center; justify-content: center; gap: 14px;
+  background: var(--bg-1); border: 1px dashed var(--bd-2); border-radius: var(--r-md);
+}
+.off-msg { color: var(--t-3); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.mc-analyzed { font-size: 11px; color: var(--info); }
+
+.sum-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.sum-block { background: var(--bg-1); border: 1px solid var(--bd-1); border-radius: 10px; padding: 10px 12px; }
+.sum-h { font-size: 12px; color: var(--t-2); margin-bottom: 9px; display: flex; align-items: center; gap: 6px; }
+.sum-line { font-size: 11px; color: var(--brand); background: var(--brand-soft); padding: 1px 7px; border-radius: 5px; }
+.sum-1x2, .onex-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.sum-1x2 { flex-direction: column; gap: 7px; }
+.onex-row { width: 100%; }
+.onex-row .lab { width: 18px; color: var(--t-2); flex: 0 0 18px; }
+.onex-row .ob { flex: 1; height: 6px; background: var(--bg-3); border-radius: 3px; overflow: hidden; }
+.onex-row .ob i { display: block; height: 100%; background: var(--t-3); transition: width .2s; }
+.onex-row.hot .lab { color: var(--brand); font-weight: 700; }
+.onex-row.hot .ob i { background: var(--brand); }
+.onex-row .pct { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--t-2); }
+.onex-row.hot .pct { color: var(--t-1); font-weight: 600; }
+.sum-big { font-size: 20px; font-weight: 700; }
+.sum-sub { font-size: 11px; color: var(--t-3); margin-top: 4px; }
+.sum-scores { display: flex; gap: 8px; flex-wrap: wrap; }
+.score { font-size: 14px; font-weight: 600; padding: 3px 11px; border-radius: 6px; background: var(--bg-3); }
+.score.hot { background: var(--brand); color: #fff; }
+.sum-reason { grid-column: 1 / -1; background: var(--bg-1); border: 1px solid var(--bd-1); border-radius: 10px; padding: 10px 12px; }
+.reason-line { font-size: 12px; color: var(--t-2); line-height: 1.75; }
+.sum-foot { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--bd-1); padding-top: 12px; }
+.sum-foot .spacer { flex: 1; }
+.vc-pill { font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 20px; white-space: nowrap; }
+.vc-pill.up { color: var(--up); background: var(--up-soft); }
+.vc-pill.down { color: var(--down); background: var(--down-soft); }
+.vc-pill.none { color: var(--t-2); background: var(--bg-3); }
+
+@media (max-width: 900px) {
+  .match-row { flex-direction: column; }
+  .mr-card { flex: 0 0 auto; width: 100%; }
+  .sum-grid { grid-template-columns: 1fr; }
 }

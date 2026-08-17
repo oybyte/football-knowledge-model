@@ -9,7 +9,7 @@ const MATCHES = [
   {
     id: "M007",
     real: true,
-    league: "未显示",
+    league: "日职联",
     home: "东京绿茵",
     away: "柏太阳神",
     neutral: true,
@@ -70,7 +70,7 @@ const MATCHES = [
   {
     id: "M008",
     real: true,
-    league: "未显示",
+    league: "芬超",
     home: "VPS瓦萨",
     away: "TPS土尔库",
     neutral: false,

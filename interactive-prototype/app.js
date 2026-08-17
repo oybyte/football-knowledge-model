@@ -80,6 +80,7 @@ const state = {
   ruleTab: "rules",
   lotteryGroup: "all",
   followed: {},
+  analysisOn: {},
   settings: loadSettings()
 };
 RULES.forEach(r => {
@@ -94,6 +95,7 @@ const FAM_COLOR = { cross: "#8b5cf6", temporal: "#38bdf8", resonance: "#10b981",
 function fmt(v, n) { if (v == null || (typeof v === "number" && isNaN(v))) return "—"; return (typeof v === "number") ? v.toFixed(n == null ? 2 : n) : v; }
 function getMatch() { return MATCHES.find(m => m.id === state.matchId); }
 function compute() { const m = getMatch(); const f = computeFeatures(m); const res = evaluate(RULES, f, m, state); return { m, f, res }; }
+function computeFor(id) { const m = MATCHES.find(x => x.id === id); const f = computeFeatures(m); const res = evaluate(RULES, f, m, state); return { m, f, res }; }
 function bmColor(name) { for (const k in BM_COLORS) if (name.includes(k)) return BM_COLORS[k]; return "#64748b"; }
 function fmtTime(ts) { const d = new Date(ts); const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 function toast(msg) {
@@ -121,16 +123,31 @@ function render() {
 }
 function setPage(p) { state.page = p; render(); }
 
-// ============================ 首页 · 竞彩赛事列表 ============================
+// ============================ 首页 · 竞彩赛事列表（竖向 + 右侧分析结论） ============================
 function renderLotteryList() {
   const active = state.lotteryGroup;
   let matches = LOTTERY_MATCHES;
   if (active !== "all") matches = matches.filter(m => m.dateGroup === active);
+  const onCount = matches.filter(m => state.analysisOn[m.id]).length;
   const datebar = `<div class="lottery-datebar"><span class="chip ${active === "all" ? "active" : ""}" onclick="setLotteryGroup('all')">全部</span>${LOTTERY_GROUPS.map(g => `<span class="chip ${active === g.id ? "active" : ""}" onclick="setLotteryGroup('${g.id}')">${g.label}</span>`).join("")}</div>`;
-  const cards = matches.map(m => {
-    const hist = loadHistory()[m.id];
-    const bt = m.betTypes.map(b => `<span class="play-chip ${b.data ? "on" : ""}">${b.label}</span>`).join("");
-    return `<div class="match-card">
+  const rows = matches.map(m => renderMatchRow(m)).join("");
+  return `<div class="home-list">
+    <div class="home-banner">
+      <div class="hb-left"><div class="hb-title">中国体育彩票 · 竞彩足球</div><div class="hb-sub">共 ${LOTTERY_MATCHES.length} 场在售 · 已开启分析 ${onCount} 场（默认不分析，需手动开启）</div></div>
+      <div class="hb-right"><button class="btn sm" onclick="refreshLottery()">${ICON.replay}刷新赛事</button></div>
+    </div>
+    ${datebar}
+    <div class="match-rows">${rows}</div>
+  </div>`;
+}
+
+function renderMatchRow(m) {
+  const hist = loadHistory()[m.id];
+  const bt = m.betTypes.map(b => `<span class="play-chip ${b.data ? "on" : ""}">${b.label}</span>`).join("");
+  const on = state.analysisOn[m.id];
+  const right = on ? renderSummary(m) : renderAnalysisOff(m);
+  return `<div class="match-row ${on ? "on" : ""}">
+    <div class="mr-card">
       <div class="mc-top"><span class="mc-league">${m.league}</span><span class="mc-serial">${m.serial}</span>${m.real ? '<span class="badge real">真实</span>' : '<span class="badge mock">Mock</span>'}</div>
       <div class="mc-teams">
         <div class="mc-team"><span class="mc-tn">${m.home}</span><span class="mc-pos">主</span></div>
@@ -139,21 +156,71 @@ function renderLotteryList() {
       </div>
       <div class="mc-meta"><span>${m.kickoff}</span><span class="mc-deadline">截止 ${m.deadline}</span>${m.salesOpen ? '<span class="dot up"></span>在售' : '<span class="dot idle"></span>停售'}</div>
       <div class="mc-plays">${bt}</div>
-      <div class="mc-foot">
-        <button class="btn sm primary" onclick="enterAnalysis('${m.id}')">${ICON.chart}分析</button>
-        ${hist ? `<span class="mc-analyzed">已复盘 · ${hist.verdict}</span>` : ""}
-      </div>
-    </div>`;
-  }).join("");
-  return `<div class="home-list">
-    <div class="home-banner">
-      <div class="hb-left"><div class="hb-title">中国体育彩票 · 竞彩足球</div><div class="hb-sub">数据来源：竞彩官方接口（原型以本地赛事模拟）· 共 ${LOTTERY_MATCHES.length} 场在售</div></div>
-      <div class="hb-right"><button class="btn sm" onclick="refreshLottery()">${ICON.replay}刷新赛事</button></div>
+      ${hist ? `<div class="mc-analyzed">已复盘 · ${hist.verdict}</div>` : ""}
     </div>
-    ${datebar}
-    <div class="match-grid">${cards}</div>
+    ${right}
   </div>`;
 }
+
+function renderAnalysisOff(m) {
+  return `<div class="mr-summary off">
+    <div class="off-msg">${ICON.chart}<span>未开启分析预测</span></div>
+    <button class="btn sm primary" onclick="toggleAnalysis('${m.id}',true)">${ICON.spark}开启分析预测</button>
+  </div>`;
+}
+
+function toggleAnalysis(id, on) { state.analysisOn[id] = on; render(); }
+
+function renderSummary(m) {
+  const { f, res } = computeFor(m.id);
+  const s = marketSummary(m, f, res);
+  const vcls = res.verdict.includes("上盘") ? "up" : (res.verdict.includes("下盘") ? "down" : "none");
+  const onexMax = Math.max(s.onex.h, s.onex.d, s.onex.a);
+  const hwdlMax = Math.max(s.hwdl.h, s.hwdl.d, s.hwdl.a);
+  const lineTxt = (s.hwdl.line >= 0 ? "主+" : "主") + (Math.round(s.hwdl.line * 100) / 100);
+  return `<div class="mr-summary on">
+    <div class="sum-grid">
+      <div class="sum-block">
+        <div class="sum-h">胜平负</div>
+        ${onexBar("胜", s.onex.h, s.onex.h === onexMax)}
+        ${onexBar("平", s.onex.d, s.onex.d === onexMax)}
+        ${onexBar("负", s.onex.a, s.onex.a === onexMax)}
+      </div>
+      <div class="sum-block">
+        <div class="sum-h">让球胜平负 <span class="sum-line">${lineTxt}</span></div>
+        ${onexBar("胜", s.hwdl.h, s.hwdl.h === hwdlMax)}
+        ${onexBar("平", s.hwdl.d, s.hwdl.d === hwdlMax)}
+        ${onexBar("负", s.hwdl.a, s.hwdl.a === hwdlMax)}
+      </div>
+      <div class="sum-block">
+        <div class="sum-h">总进球区间</div>
+        <div class="sum-big">${s.goals}</div>
+        <div class="sum-sub">大球概率 ${s.goalsPct}%</div>
+      </div>
+      <div class="sum-block">
+        <div class="sum-h">比分区间</div>
+        <div class="sum-scores">${s.scores.map((sc, i) => `<span class="score ${i === 0 ? "hot" : ""}">${sc}</span>`).join("")}</div>
+        <div class="sum-sub">最可能的 ${s.scores.length} 个比分</div>
+      </div>
+      <div class="sum-reason">
+        <div class="sum-h">推理过程</div>
+        ${s.reasoning.map(r => `<div class="reason-line">${r}</div>`).join("")}
+      </div>
+    </div>
+    <div class="sum-foot">
+      <span class="vc-pill ${vcls}">${res.verdict} · ${Math.round(res.confidence * 100)}%</span>
+      <div class="spacer"></div>
+      <button class="btn sm" onclick="toggleAnalysis('${m.id}',false)">关闭</button>
+      <button class="btn sm primary" onclick="enterAnalysis('${m.id}')">${ICON.chart}详细分析</button>
+    </div>
+  </div>`;
+}
+
+function onexBar(label, pct, hot) {
+  const p = Math.round(pct * 100);
+  return `<div class="onex-row ${hot ? "hot" : ""}"><span class="lab">${label}</span><span class="ob"><i style="width:${p}%"></i></span><span class="pct">${p}%</span></div>`;
+}
+
 function setLotteryGroup(g) { state.lotteryGroup = g; render(); }
 function refreshLottery() { render(); toast("赛事列表已刷新"); }
 
@@ -187,7 +254,7 @@ function renderAnalysisShell() {
     <div class="analysis-body">
       ${renderMatchCol()}
       <main class="page" style="flex:1 1 0;min-width:0;overflow:auto;padding:18px">${renderCenter()}</main>
-      <aside class="page" style="flex:0 0 332px;min-width:0;overflow-y:auto;border-left:1px solid var(--bd-1);background:var(--bg-1);padding:16px">${renderRulesPanel()}</aside>
+      <aside class="page" style="flex:0 0 300px;min-width:0;overflow-y:auto;border-left:1px solid var(--bd-1);background:var(--bg-1);padding:16px">${renderRulesPanel()}</aside>
     </div>
   </div>`;
 }
