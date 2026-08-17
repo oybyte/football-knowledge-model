@@ -170,18 +170,31 @@ function deriveOnex(match) {
   return { h: pw / sum, d: pd / sum, a: pl / sum, src: "handicap" };
 }
 
-// 让球胜平负（3 路）：两路覆盖概率来自双水，整数盘保留平局腿
-function deriveHandicap(match) {
+// 统一进球模型：从让球盘推导主队进球优势 mu，从大小球推导期望总进球 T，
+// 反解两队期望进球 lh/la。让球胜平负 / 比分 / 总进球 全部共享此模型，保证内部一致。
+function goalModel(match) {
   const bms = match.handicap || [];
-  const avgH = avg(bms.map(b => b.current.h));
-  let phc = 0, n = 0;
-  bms.forEach(b => { if (b.current.hw && b.current.aw) { const o = 1 / b.current.hw, u = 1 / b.current.aw; phc += o / (o + u); n++; } });
-  phc = n ? phc / n : 0.5;
-  const lineInt = Number.isInteger(avgH);
-  let draw = lineInt ? 0.10 : 0;
-  let ph = phc * (1 - draw), pa = (1 - phc) * (1 - draw);
-  const sum = ph + draw + pa;
-  return { line: avgH, h: ph / sum, d: draw / sum, a: pa / sum };
+  const avgH = bms.length ? avg(bms.map(b => b.current.h)) : 0;
+  const mu = -avgH;                                   // 主队进球优势（亚盘线取反）
+  const tot = deriveTotals(match);
+  const T = tot.avgLine;
+  const lh = Math.max(0.15, (T + mu) / 2);             // 主队期望进球
+  const la = Math.max(0.15, (T - mu) / 2);             // 客队期望进球
+  return { avgH, mu, tot, T, lh, la };
+}
+
+// 让球胜平负（3 路，竞彩式整数盘）：用整数让球数 + 泊松进球模型，平局腿恒非零
+function deriveHandicap(gm) {
+  const L = -Math.round(gm.avgH);                     // avgH<0(主强)→L>0 主让；avgH>0(客强)→L<0 客让
+  const { lh, la } = gm;
+  let ph = 0, pd = 0, pa = 0;
+  for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+    const p = poisson(i, lh) * poisson(j, la);
+    if (i - j > L) ph += p; else if (i - j === L) pd += p; else pa += p;
+  }
+  const sum = ph + pd + pa || 1;
+  const lineLabel = L > 0 ? `主让${L}球` : (L < 0 ? `客让${-L}球` : `平手盘`);
+  return { line: L, lineLabel, h: ph / sum, d: pd / sum, a: pa / sum, src: "model" };
 }
 
 // 总进球：优先用大小球盘，否则按让球盘幅度反推期望进球
@@ -207,43 +220,42 @@ function goalsRange(avgLine, pOver) {
   return `${lo}-${hi} 球`;
 }
 
-// 比分区间（最多 3 个）：从 1X2 与总进球反推两队期望进球，独立泊松取 Top3
-function deriveScores(ox, tot) {
-  const T = tot.avgLine;
-  const { h: ph, d: pd } = ox;
-  let diff;
-  if (ph > 0.999) diff = 5; else if (ph < 0.001) diff = -5;
-  else diff = -1.3 * Math.log((1 - ph) / ph);
-  let lh = Math.max(0.05, (T + diff) / 2), la = Math.max(0.05, (T - diff) / 2);
+// 比分区间（最多 3 个）：独立泊松取 Top3，共享统一进球模型
+function deriveScores(gm) {
+  const { lh, la } = gm;
   const grid = [];
   for (let i = 0; i <= 6; i++) for (let j = 0; j <= 6; j++) grid.push({ h: i, a: j, p: poisson(i, lh) * poisson(j, la) });
   grid.sort((x, y) => y.p - x.p);
   return grid.slice(0, 3).map(g => `${g.h}-${g.a}`);
 }
 
-// 推理过程：取方向规则前 2 条 + 风险 1 条，拼接为可读短句
-function buildReasoning(res) {
+// 推理过程：模型汇总行 + 方向规则前 2 条 + 风险 1 条，拼接为可读短句
+function buildReasoning(res, onex, hwdl, tot) {
   const lines = [];
+  const o = `${Math.round(onex.h * 100)}/${Math.round(onex.d * 100)}/${Math.round(onex.a * 100)}`;
+  const srcTxt = onex.src === "onex" ? "欧指隐含" : "盘口反推";
+  lines.push(`胜平负模型 ${o}（${srcTxt}）· 让球${hwdl.lineLabel} 主胜${Math.round(hwdl.h * 100)}% · 总进球${tot.avgLine.toFixed(1)}（大${Math.round(tot.pOver * 100)}%）`);
   res.hits.slice(0, 2).forEach(h => {
-    const dir = h.direction > 0 ? "上盘" : (h.direction < 0 ? "下盘" : "");
-    lines.push(`${h.id} ${h.name}：${h.evidence}${dir ? " → 倾向" + dir : ""}`);
+    const dir = h.direction > 0 ? "上盘" : (h.direction < 0 ? "下盘" : "中");
+    lines.push(`${h.id} ${h.name}：${h.evidence}${h.direction ? " → 倾向" + dir : ""}`);
   });
   res.risks.slice(0, 1).forEach(r => { lines.push(`⚠ ${r.id} ${r.name}：${r.evidence}`); });
-  if (!lines.length) lines.push("暂无明确规则信号，建议观望。");
+  if (res.hits.length === 0 && res.risks.length === 0) lines.push("暂无明确规则信号，建议观望。");
   return lines;
 }
 
 // 主入口：组装首页所需的 4 项结论 + 推理
 function marketSummary(match, f, res) {
   const onex = deriveOnex(match);
-  const hwdl = deriveHandicap(match);
-  const tot = deriveTotals(match);
+  const gm = goalModel(match);
+  const hwdl = deriveHandicap(gm);
+  const tot = gm.tot;
   return {
     onex, hwdl,
     goals: goalsRange(tot.avgLine, tot.pOver),
     goalsPct: Math.round(tot.pOver * 100),
-    scores: deriveScores(onex, tot),
-    reasoning: buildReasoning(res),
+    scores: deriveScores(gm),
+    reasoning: buildReasoning(res, onex, hwdl, tot),
     verdict: res.verdict,
     confidence: res.confidence
   };

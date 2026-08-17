@@ -483,6 +483,37 @@ function showConfirm(title, msg, onConfirm) {
   document.body.appendChild(overlay);
 }
 
+// 通用弹窗（表单型）：actions=[{label,cls,onClick}]，onClick 返回 false 可阻止关闭
+function showModal(title, innerHtml, actions, onMount) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal">
+    <div class="modal-hd">${title}</div>
+    <div class="modal-bd">${innerHtml}</div>
+    <div class="modal-ft"></div>
+  </div>`;
+  const ft = overlay.querySelector(".modal-ft");
+  actions.forEach(a => {
+    const b = document.createElement("button");
+    b.className = "btn sm " + (a.cls || "");
+    b.textContent = a.label;
+    b.onclick = () => { if (!a.onClick || a.onClick(overlay)) overlay.remove(); };
+    ft.appendChild(b);
+  });
+  document.body.appendChild(overlay);
+  if (onMount) onMount(overlay);
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function downloadJson(filename, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+  toast("已导出 " + filename);
+}
+
 // ============================ 规则库（含特征目录 tab） ============================
 function renderRulesPage() {
   const tab = state.ruleTab;
@@ -495,7 +526,7 @@ function setRuleTab(t) { state.ruleTab = t; document.getElementById("main").inne
 function renderRulesLibrary() {
   const chips = [["all", "全部"], ["temporal", "时序"], ["cross", "横截面"], ["resonance", "共振"], ["anomaly", "异常"], ["onex", "欧指"], ["betfair", "必发"], ["unknown", "占位"]];
   return `<div class="page-head"><div><div class="ph-title">规则库</div><div class="ph-sub">${RULES.length} 条规则 · 覆盖让球盘 / 欧指 / 必发三数据源</div></div>
-    <div class="ph-actions"><button class="btn sm" onclick="toast('规则库导出中（占位）')">${ICON.download}导出</button><button class="btn sm primary" onclick="toast('新建规则向导开发中')">${ICON.plus}新建规则</button></div></div>
+    <div class="ph-actions"><button class="btn sm" onclick="downloadRules()">${ICON.download}导出</button><button class="btn sm primary" onclick="newRule()">${ICON.plus}新建规则</button></div></div>
     <div class="card"><div class="card-hd">
       <div class="filter-chips">${chips.map(([k, l]) => `<span class="chip ${state.ruleFamFilter === k ? "active" : ""}" onclick="setRuleFam('${k}')">${l}</span>`).join("")}</div>
       <input class="inp" id="rule-search-input" style="width:200px" placeholder="搜索规则名称 / ID…" value="${state.ruleSearch}" autocomplete="off">
@@ -522,7 +553,7 @@ function buildRuleRows() {
       <td>${r.hasThreshold ? `<span class="num mono">${state.thresholds[r.id]}</span>` : '<span class="muted">—</span>'}</td>
       <td>${status}</td>
       <td class="num muted mono">v1</td>
-      <td><button class="btn sm" onclick="toast('规则编辑器开发中：${r.id}')">编辑</button></td></tr>`;
+      <td><button class="btn sm" onclick="editRule('${r.id}')">编辑</button></td></tr>`;
   }).join("");
 }
 
@@ -568,7 +599,7 @@ function renderFeatureCatalog() {
         <div style="text-align:right"><span class="badge brand">${type}</span><div class="muted" style="font-size:11px;margin-top:4px">输入：${inputs}</div></div></div>`).join("")}</div></div>`;
   }).join("");
   return `<div class="page-head"><div><div class="ph-title">特征目录</div><div class="ph-sub">${FEATURE_CATALOG.length} 个特征定义 · 四族分类 · point-in-time 纯函数 · 版本化不可变</div></div>
-    <div class="ph-actions"><button class="btn sm" onclick="toast('特征契约导出中（占位）')">${ICON.download}导出契约</button><button class="btn sm primary" onclick="toast('新建特征开发中')">${ICON.plus}新建特征</button></div></div>
+    <div class="ph-actions"><button class="btn sm" onclick="downloadFeatures()">${ICON.download}导出契约</button><button class="btn sm primary" onclick="newFeature()">${ICON.plus}新建特征</button></div></div>
     <div class="grid-2">${cards}</div>`;
 }
 
@@ -602,14 +633,122 @@ function renderAI() {
       <td>${actions}</td></tr>`;
   }).join("");
   return `<div class="page-head"><div><div class="ph-title">AI 引擎</div><div class="ph-sub">规则自动挖掘 · 沙箱审核 · 模型表现监控</div></div>
-    <div class="ph-actions"><button class="btn sm primary" onclick="toast('挖掘任务已提交（占位）')">${ICON.spark}新建挖掘任务</button></div></div>
+    <div class="ph-actions"><button class="btn sm primary" onclick="newMiningTask()">${ICON.spark}新建挖掘任务</button></div></div>
     ${kpiHtml}
     <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">${ICON.cpu}挖掘流水线</div><div class="extra">实时</div></div><div class="card-bd">${stepper}</div></div>
     <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">候选规则 (${AI_CANDIDATES.length})</div><div class="extra">采纳后转正入规则库</div></div>
       <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">ID</th><th class="l">规则描述</th><th>样本</th><th>命中率</th><th>edge</th><th>状态</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
-function adoptCandidate(id) { const c = AI_CANDIDATES.find(x => x.id === id); if (c) c.status = "adopted"; render(); toast(`已采纳 ${id}`); }
+function adoptCandidate(id) {
+  const c = AI_CANDIDATES.find(x => x.id === id); if (!c) return;
+  c.status = "adopted";
+  if (!RULES.find(r => r.id === id)) {
+    const dir = c.desc.includes("上盘") ? 1 : (c.desc.includes("下盘") ? -1 : 0);
+    RULES.push({ id, name: c.desc, family: "unknown", direction: dir, weight: 1, hasThreshold: false, placeholder: false, desc: c.desc, test: () => null, evidence: () => "" });
+    state.enabled[id] = true;
+  }
+  toast(`已采纳并转正入库：${id}`);
+  render();
+}
 function rejectCandidate(id) { const c = AI_CANDIDATES.find(x => x.id === id); if (c) c.status = "rejected"; render(); toast(`已驳回 ${id}`); }
+
+function newMiningTask() {
+  const id = "C" + (AI_CANDIDATES.length + 1).toString().padStart(3, "0");
+  const samples = Math.floor(60 + Math.random() * 120);
+  const acc = Math.round((0.50 + Math.random() * 0.16) * 100) / 100;
+  const edge = Math.round((Math.random() * 0.2 - 0.04) * 1000) / 1000;
+  const descs = ["主水集体下调后临场升盘", "必发客胜资金骤增", "欧指平赔异常走低", "多机构同步降盘"];
+  AI_CANDIDATES.push({ id, desc: `自定义挖掘产出（示例）：${descs[AI_CANDIDATES.length % descs.length]} → 待审核`, samples, acc, edge, status: "pending" });
+  toast(`挖掘任务已提交，沙箱产出候选 ${id}`);
+  render();
+}
+
+// ============================ 规则库 / 特征目录 · 壳层 CRUD ============================
+function downloadRules() {
+  const data = RULES.map(r => ({
+    id: r.id, name: r.name, family: r.family,
+    direction: (typeof r.direction === "function") ? "动态" : r.direction,
+    enabled: state.enabled[r.id] !== false,
+    threshold: state.thresholds[r.id] != null ? state.thresholds[r.id] : (r.threshold != null ? r.threshold : null)
+  }));
+  downloadJson("odds-edge-rules.json", { exportedAt: Date.now(), count: RULES.length, rules: data });
+}
+
+function newRule() {
+  const fams = ["temporal", "cross", "resonance", "anomaly", "onex", "betfair", "unknown"];
+  const inner = `
+    <div class="setting-row col"><label>规则名称</label><input class="inp" id="nr-name" placeholder="例如：主水集体下调"></div>
+    <div class="setting-row col"><label>家族</label><select class="inp" id="nr-fam">${fams.map(f => `<option>${f}</option>`).join("")}</select></div>
+    <div class="setting-row col"><label>方向</label><select class="inp" id="nr-dir"><option value="1">上盘</option><option value="-1">下盘</option><option value="0">风险</option></select></div>
+    <div class="setting-row col"><label>阈值（可选）</label><input class="inp" id="nr-thr" type="number" placeholder="留空表示无阈值"></div>
+    <div class="setting-note">原型新建规则含占位判定（test 返回 null），不参与引擎打分；真实判定逻辑在 Phase 2 实现。</div>`;
+  showModal("新建规则", inner, [
+    { label: "取消", cls: "", onClick: () => true },
+    { label: "创建", cls: "primary", onClick: (ov) => {
+      const name = ov.querySelector("#nr-name").value.trim();
+      if (!name) { toast("请填写规则名称"); return false; }
+      const fam = ov.querySelector("#nr-fam").value;
+      const dir = parseInt(ov.querySelector("#nr-dir").value, 10);
+      const thrRaw = ov.querySelector("#nr-thr").value.trim();
+      const id = "R" + (RULES.length + 1).toString().padStart(3, "0");
+      const nr = { id, name, family: fam, direction: dir, weight: 1, hasThreshold: thrRaw !== "", threshold: thrRaw !== "" ? parseFloat(thrRaw) : undefined, placeholder: false, test: () => null, evidence: () => "" };
+      if (nr.hasThreshold) { nr.thrKey = "ratio"; state.thresholds[id] = parseFloat(thrRaw); }
+      RULES.push(nr); state.enabled[id] = true;
+      toast("规则已创建：" + id);
+      return true;
+    } }
+  ]);
+}
+
+function editRule(id) {
+  const r = RULES.find(x => x.id === id); if (!r) return;
+  const inner = `
+    <div class="setting-row col"><label>规则名称</label><input class="inp" id="er-name" value="${r.name}"></div>
+    <div class="setting-row col"><label>默认启用</label><select class="inp" id="er-en"><option value="1" ${state.enabled[id] !== false ? "selected" : ""}>启用</option><option value="0" ${state.enabled[id] === false ? "selected" : ""}>停用</option></select></div>
+    <div class="setting-row col"><label>阈值（可选）</label><input class="inp" id="er-thr" type="number" value="${r.hasThreshold ? (state.thresholds[id] != null ? state.thresholds[id] : r.threshold) : ""}" placeholder="留空表示无阈值"></div>`;
+  showModal("编辑规则 · " + id, inner, [
+    { label: "取消", cls: "", onClick: () => true },
+    { label: "保存", cls: "primary", onClick: (ov) => {
+      const name = ov.querySelector("#er-name").value.trim();
+      if (name) r.name = name;
+      state.enabled[id] = ov.querySelector("#er-en").value === "1";
+      const thrRaw = ov.querySelector("#er-thr").value.trim();
+      if (r.hasThreshold) state.thresholds[id] = thrRaw !== "" ? parseFloat(thrRaw) : (r.threshold || 0);
+      toast("规则已更新：" + id);
+      return true;
+    } }
+  ]);
+}
+
+function downloadFeatures() {
+  downloadJson("odds-edge-features.json", {
+    count: FEATURE_CATALOG.length,
+    features: FEATURE_CATALOG.map(f => ({ id: f[0], name: f[1], family: f[2], type: f[3], def: f[4], inputs: f[5] }))
+  });
+}
+
+function newFeature() {
+  const fams = ["cross", "temporal", "resonance", "anomaly", "onex", "betfair"];
+  const inner = `
+    <div class="setting-row col"><label>特征名称</label><input class="inp" id="nf-name" placeholder="例如：临场主水标准差"></div>
+    <div class="setting-row col"><label>家族</label><select class="inp" id="nf-fam">${fams.map(f => `<option>${f}</option>`).join("")}</select></div>
+    <div class="setting-row col"><label>类型</label><select class="inp" id="nf-type"><option value="scalar">scalar</option><option value="int">int</option><option value="bool">bool</option><option value="enum">enum</option></select></div>
+    <div class="setting-row col"><label>计算定义</label><input class="inp" id="nf-def" placeholder="例如：std(临主水)"></div>`;
+  showModal("新建特征", inner, [
+    { label: "取消", cls: "", onClick: () => true },
+    { label: "创建", cls: "primary", onClick: (ov) => {
+      const name = ov.querySelector("#nf-name").value.trim();
+      if (!name) { toast("请填写特征名称"); return false; }
+      const fam = ov.querySelector("#nf-fam").value;
+      const type = ov.querySelector("#nf-type").value;
+      const def = ov.querySelector("#nf-def").value.trim() || "—";
+      const id = "cust." + name.replace(/\s+/g, "_");
+      FEATURE_CATALOG.push([id, name, fam, type, def, "用户自定义"]);
+      toast("特征已创建：" + id);
+      return true;
+    } }
+  ]);
+}
 
 // ============================ 设置 ============================
 function renderSettings() {

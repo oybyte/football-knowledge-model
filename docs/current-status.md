@@ -21,4 +21,5 @@
 
 - 原型：`active`，仅用于功能验证。
 - 架构文档：`design-baseline`，持续打磨。
+- DSL 与实施计划：`design-baseline`，已纳入 1.0.0 文档体系。
 - 生产部署：`not-applicable`，当前没有后端或部署服务。

@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>实施计划 1.0.0 — 详细实现步骤</title>
+<style>
+:root {
+  --bg: #0b0e14; --bg2: #131820; --bg3: #1a2235;
+  --ink: #e2e8f0; --muted: #8899b0; --muted2: #5a6a80;
+  --rule: #1e2a3a; --accent: #60a5fa; --accent2: #34d399;
+  --accent3: #fbbf24; --danger: #f87171; --warn: #f59e0b;
+  --success: #34d399; --purple: #a78bfa; --pink: #f472b6; --orange: #fb923c;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7; font-size: 15px;
+}
+.page-wrapper { display: flex; min-height: 100vh; }
+.toc-sidebar {
+  width: 260px; flex-shrink: 0; background: var(--bg2);
+  border-right: 1px solid var(--rule); position: sticky; top: 0;
+  height: 100vh; overflow-y: auto; padding: 24px 16px;
+}
+.toc-sidebar h2 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted2); margin-bottom: 12px; padding: 0 8px;
+}
+.toc-sidebar nav ul { list-style: none; }
+.toc-sidebar nav li { margin-bottom: 2px; }
+.toc-sidebar nav a {
+  display: block; padding: 6px 12px; font-size: 13px;
+  color: var(--muted); text-decoration: none; border-radius: 4px;
+  border-left: 2px solid transparent; transition: all 0.15s;
+}
+.toc-sidebar nav a:hover { color: var(--ink); background: var(--bg3); }
+.toc-sidebar nav a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(96,165,250,0.08); }
+.content-area { flex: 1; max-width: 920px; margin: 0 auto; padding: 48px 40px 80px; }
+
+h1 { font-size: 30px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+h1 + .subtitle { font-size: 15px; color: var(--muted); margin-bottom: 28px; }
+h2 {
+  font-size: 22px; font-weight: 700;
+  margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule); letter-spacing: -0.01em;
+}
+h3 { font-size: 17px; font-weight: 700; color: var(--accent); margin-top: 32px; margin-bottom: 12px; }
+h4 { font-size: 15px; font-weight: 700; margin-top: 20px; margin-bottom: 8px; }
+p { margin-bottom: 14px; }
+code {
+  font-family: 'JetBrainsMono', 'Consolas', monospace; font-size: 0.88em;
+  background: var(--bg3); padding: 2px 6px; border-radius: 3px; color: var(--accent2);
+}
+pre {
+  background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 16px 20px; overflow-x: auto; margin: 16px 0; font-size: 13px; line-height: 1.6;
+}
+pre code { background: none; padding: 0; color: var(--ink); font-size: 13px; }
+.t-keyword { color: var(--purple); } .t-type { color: var(--accent); } .t-string { color: var(--success); }
+.t-comment { color: var(--muted2); } .t-number { color: var(--orange); } .t-property { color: var(--accent2); }
+
+.table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--rule); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; padding: 10px 14px; background: var(--bg3);
+  color: var(--muted); font-weight: 600; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--rule); white-space: nowrap;
+}
+td { padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(96,165,250,0.03); }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-p0 { background: rgba(248,113,113,0.15); color: var(--danger); }
+.badge-p1 { background: rgba(245,158,11,0.15); color: var(--warn); }
+.badge-green { background: rgba(52,211,153,0.15); color: var(--accent2); }
+.badge-yellow { background: rgba(245,158,11,0.15); color: var(--warn); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--danger); }
+.badge-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
+.badge-cyan { background: rgba(52,211,153,0.15); color: var(--accent2); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--accent); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: rgba(96,165,250,0.06);
+  padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 14px;
+}
+.callout.warn { border-left-color: var(--warn); background: rgba(245,158,11,0.06); }
+.callout.danger { border-left-color: var(--danger); background: rgba(248,113,113,0.06); }
+.callout.success { border-left-color: var(--success); background: rgba(52,211,153,0.06); }
+.callout-title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
+
+.card { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 20px; margin: 16px 0; }
+.card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 16px 0; }
+.card-item { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; }
+.card-item h4 { margin-top: 0; }
+
+.doc-header { margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
+.doc-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 12px; }
+.doc-meta span { display: flex; align-items: center; gap: 4px; }
+
+ul, ol { margin-bottom: 14px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
+
+.step {
+  background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 16px 20px; margin: 14px 0;
+}
+.step-title { font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.step-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.step-grid .item { font-size: 13px; }
+.step-grid .item .label { color: var(--muted2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+
+.milestone {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 14px 20px; margin: 12px 0;
+}
+.milestone .m-num {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px;
+}
+.milestone .m-body { flex: 1; }
+.milestone .m-title { font-weight: 700; }
+.milestone .m-desc { font-size: 13px; color: var(--muted); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+
+@media (max-width: 900px) {
+  .toc-sidebar { display: none; }
+  .content-area { padding: 32px 20px 60px; }
+  .card-grid, .step-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+<aside class="toc-sidebar">
+  <h2>目录</h2>
+  <nav>
+    <ul>
+      <li><a href="#sec-0">0. 总体路线与原则</a></li>
+      <li><a href="#sec-p0">阶段 0 · 补齐 P0 设计</a></li>
+      <li><a href="#sec-p1">阶段 1 · 建地基</a></li>
+      <li><a href="#sec-p2">阶段 2 · 规则先行</a></li>
+      <li><a href="#sec-p3">阶段 3 · 模型接入融合</a></li>
+      <li><a href="#sec-m">里程碑与验收</a></li>
+      <li><a href="#sec-effort">工作量与时间估算</a></li>
+      <li><a href="#sec-risk">风险与依赖</a></li>
+      <li><a href="#sec-org">目录与工程规范</a></li>
+    </ul>
+  </nav>
+</aside>
+
+<main class="content-area">
+
+<div class="doc-header">
+  <h1>实施计划 1.0.0</h1>
+  <div class="subtitle">详细实现步骤 — 从设计基线到可运行系统</div>
+  <div class="doc-meta">
+    <span>版本: 1.0.0</span>
+    <span>日期: 2026-08-17</span>
+    <span>状态: <span class="badge badge-blue">计划</span></span>
+    <span>前置: architecture-1.0.0 / retrieval-engine-1.0.0 / dsl-syntax-1.0.0</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 0 -->
+<!-- ============================================================ -->
+<h2 id="sec-0">0. 总体路线与原则</h2>
+
+<h3>0.1 总体路线</h3>
+
+<p>基于"先建地基，规则先行，模型随后接入融合"的方向，实施分四个阶段推进：</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>阶段</th><th>名称</th><th>目标</th><th>完成标志</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="badge badge-p0">阶段 0</span></td><td>补齐 P0 设计</td><td>完成编码前的 4 项关键设计（G9/G12/G1/G6）</td><td>设计文档齐备，可进入编码</td></tr>
+<tr><td><span class="badge badge-blue">阶段 1</span></td><td>建地基</td><td>数据接入 / 特征工程 / 规则存储 / DSL 引擎 / 回测框架</td><td>端到端可跑通（数据→特征→规则→回测）</td></tr>
+<tr><td><span class="badge badge-green">阶段 2</span></td><td>规则先行</td><td>文字规则 → DSL → 回测验证 → 转正上线</td><td>首批规则进入 active 状态</td></tr>
+<tr><td><span class="badge badge-purple">阶段 3</span></td><td>模型接入融合</td><td>统计模型接入三路融合决策层</td><td>融合预测可追溯</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>0.2 实施原则</h3>
+
+<ul>
+<li><strong>设计先行</strong>：每个阶段开始前完成对应设计文档，设计状态与实现状态分离维护。</li>
+<li><strong>增量交付</strong>：每个任务有可验证的交付物与验收标准，不出现"半成品"。</li>
+<li><strong>不可变性</strong>：规则与证据存储 append-only，存储层强制禁止 UPDATE/DELETE。</li>
+<li><strong>时间完整性</strong>：所有数据强制三时间戳（observed_at / received_at / match_time）。</li>
+<li><strong>验证门槛</strong>：每个里程碑设置明确验收标准，达标才进入下一阶段。</li>
+<li><strong>语义化版本</strong>：后续演进使用语义化版本，不创建并列版本目录。</li>
+</ul>
+
+<h3>0.3 技术栈</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>层</th><th>选型</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td>后端</td><td>Node.js + TypeScript</td><td>与架构文档代码示例一致，与原型同语言</td></tr>
+<tr><td>存储</td><td>PostgreSQL</td><td>规则 / 证据 / 比赛 / 特征 / 预测 / 审计</td></tr>
+<tr><td>缓存 / 队列</td><td>Redis</td><td>规则缓存、分析任务队列、并发锁</td></tr>
+<tr><td>测试</td><td>Vitest</td><td>单元 + 集成测试</td></tr>
+<tr><td>回测 / ML</td><td>阶段 3 引入 Python 服务</td><td>pandas / scikit-learn / LightGBM，独立服务接入</td></tr>
+<tr><td>可观测性</td><td>阶段 1 后期引入</td><td>结构化日志先行，OTel/Jaeger/Prometheus 后置</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <div class="callout-title">技术栈说明</div>
+  <p>阶段 1 优先保证核心功能可运行，可观测性（日志/追踪/指标）在核心链路稳定后按 retrieval-engine-1.0.0 规范补齐。ML 服务（阶段 3）独立部署，通过 API 与主系统交互，不污染主链路。AI 引擎（阶段 2）通过多模型适配层接入，凭证走环境变量隔离。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Phase 0 -->
+<!-- ============================================================ -->
+<h2 id="sec-p0">阶段 0 · 补齐 P0 设计</h2>
+
+<p>评审结论（architecture-review-1.0.0）指出 G1 / G6 / G9 / G12 四个严重缺陷直接影响代码可交付性，必须编码前完成。当前 G9 已完成，剩余 3 项。</p>
+
+<h3>0.1 G12 数据模型定义 <span class="badge badge-p0">P0 · 下一步</span></h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>定义全部表结构 + DDL + 字段注册表 JSON Schema，覆盖架构中所有实体。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>规则表 <code>qd_rule_versions</code>（append-only）</li>
+        <li>证据表 <code>qd_evidence_snapshots</code>（不可变）</li>
+        <li>比赛表 <code>qd_matches</code> + 盘口快照 <code>qd_odds_snapshots</code></li>
+        <li>特征表 <code>qd_match_features</code></li>
+        <li>预测表 <code>qd_predictions</code> + 分析命令 <code>qd_analysis_commands</code></li>
+        <li>审计表 <code>qd_audit_log</code></li>
+        <li>字段注册表 JSON Schema（dsl-syntax 字段注册表 → JSON）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>docs/design/data-model-1.0.0/data-model-1.0.0.html</code><br><code>server/migrations/*.sql</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>表结构覆盖架构全部实体</li>
+        <li>append-only 约束在 DB 层强制（触发器/权限）</li>
+        <li>三时间戳字段非空约束</li>
+        <li>主键/外键/索引设计完整</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>G9 DSL 语法（已完成）— 字段注册表直接复用</p>
+    </div>
+  </div>
+</div>
+
+<h3>0.2 G1 API 契约 + G4 安全与权限 <span class="badge badge-p0">P0</span></h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>定义 OpenAPI 3.0 规范，覆盖规则、分析、回测、数据源、认证全部接口；同时落地 RBAC 权限模型与认证实现。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>规则接口（版本化 CRUD + 状态转换）</li>
+        <li>分析接口（提交 / 轮询 / 结果）</li>
+        <li>回测接口（作业提交 / 结果）</li>
+        <li>数据源管理接口</li>
+        <li>认证与 RBAC 权限矩阵映射（Viewer / Analyst / Reviewer / Admin）</li>
+        <li>幂等键 / 限流 / 错误码规范</li>
+        <li><strong>G4 认证实现</strong>：JWT 认证 + 角色中间件 + 权限校验</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>docs/design/api-contract-1.0.0/api-contract-1.0.0.html</code><br><code>server/openapi/openapi.yaml</code><br><code>server/src/auth/*</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>覆盖 retrieval-engine-1.0.0 的 RBAC 权限矩阵</li>
+        <li>分析接口含幂等键与限流定义</li>
+        <li>错误码与 dsl-syntax 错误码体系一致</li>
+        <li>角色中间件生效，越权访问被拒绝</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>G12 数据模型（接口字段来自表结构）</p>
+    </div>
+  </div>
+</div>
+
+<h3>0.3 G6 性能模型 <span class="badge badge-p0">P0</span></h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>容量估算 + 延迟目标 + 缓存策略 + 基准计划。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>QPS / 并发估算（分析请求、规则查询）</li>
+        <li>P95 延迟目标定义</li>
+        <li>缓存策略（规则缓存、特征缓存、TTL）</li>
+        <li>队列深度与 Worker 数估算</li>
+        <li>基准测试计划</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>docs/design/performance-model-1.0.0/performance-model-1.0.0.html</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>明确 P95 延迟目标（参考：分析 ≤3000ms）</li>
+        <li>缓存命中率目标（参考：≥0.5）</li>
+        <li>扩容策略可执行</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>G12 数据模型（估算基于表规模）</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Phase 1 -->
+<!-- ============================================================ -->
+<h2 id="sec-p1">阶段 1 · 建地基</h2>
+
+<p>核心实现阶段。五个模块按依赖顺序推进：数据接入 → 特征工程 → 规则存储 → DSL 引擎 → 回测框架。每个模块独立可测。</p>
+
+<h3>1.1 数据接入层 + 数据治理（G2）+ 凭证隔离</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>真实数据源接入 + 三时间戳强制 + 归一化 + 信任级别标注 + 数据源注册表 + 凭证隔离。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>数据源抽象接口（机构盘口 / 赔率 / 赛果）</li>
+        <li>归一化：机构名称、盘口格式、水位格式</li>
+        <li>三时间戳强制非空（observed_at / received_at / match_time）</li>
+        <li>数据源信任级别标注（trusted / provisional / untrusted）</li>
+        <li>mock 数据源（明确标注"模拟"，用于开发联调）</li>
+        <li><strong>G2 数据治理</strong>：数据源注册表（source_id / 类型 / 信任级别 / 状态）+ 数据质量校验（缺失率 / 异常值）+ 治理流程</li>
+        <li><strong>凭证隔离</strong>：CredentialVault 实现（数据源凭证 / 系统凭证分离，AI 模块无凭证权限，访问审计）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/data/*</code>（接口 + 实现 + mock）<br><code>server/src/vault/*</code>（CredentialVault）</p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>数据入库全部带三时间戳，缺一拒绝</li>
+        <li>归一化规则文档化</li>
+        <li>mock 数据源带"模拟"标记，不污染正式数据</li>
+        <li>数据源注册表可查询，信任级别可追溯</li>
+        <li>凭证访问全部记录审计日志，AI 模块无凭证权限</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>G12 数据模型（表结构）</p>
+    </div>
+  </div>
+</div>
+
+<h3>1.2 特征工程服务</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>20 字段计算服务化，point-in-time 计算防泄漏。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>复用原型 <code>features.js</code> 逻辑 → TS 服务</li>
+        <li>四族特征：横截面 / 时序 / 共振 / 异常</li>
+        <li>point-in-time 计算（只使用 T 时点前可得数据）</li>
+        <li>特征缓存（Redis，TTL 按 G6 定义）</li>
+        <li>特征值一致性测试（与原型对比）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/features/*</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>特征值与原型一致（同一输入同一输出）</li>
+        <li>point-in-time 校验通过（无未来数据）</li>
+        <li>字段名与 dsl-syntax 字段注册表一致</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>1.1 数据接入层</p>
+    </div>
+  </div>
+</div>
+
+<h3>1.3 规则存储 + 生命周期状态机 + 可观测性基础（G3）</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>append-only 规则存储 + 8 态状态机 + 并发锁 + 审计 + 结构化日志。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li><code>qd_rule_versions</code> 表 + append-only 约束（DB 触发器禁止 UPDATE/DELETE）</li>
+        <li>状态机：draft→proposed→experiment→validated→approved→active（+superseded/deprecated）</li>
+        <li>并发锁：规则级排他锁（Redis，超时 30s / 心跳续期 10s）</li>
+        <li>审计日志：所有状态转换记录（actor / prev / new）</li>
+        <li>状态转换合法性校验 + 前置条件检查</li>
+        <li><strong>G3 结构化日志</strong>：统一日志规范（timestamp / level / service / trace_id / message），敏感字段脱敏</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/rules/*</code>（store + stateMachine + lockManager）<br><code>server/src/lib/logger.ts</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>非法状态转换被拒绝</li>
+        <li>并发转换安全（锁生效）</li>
+        <li>审计记录完整可追溯</li>
+        <li>DB 层 UPDATE/DELETE 被阻止</li>
+        <li>日志行含强制字段，敏感信息脱敏</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>G12 数据模型</p>
+    </div>
+  </div>
+</div>
+
+<h3>1.4 DSL 引擎</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>按 dsl-syntax-1.0.0 实现解析器 + 求值器 + 模糊匹配。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>DSL 解析器（JSON 表示 → 条件树）</li>
+        <li>求值器（时间校验先行 → 短路求值 → 推理链输出）</li>
+        <li>模糊匹配（加权 Jaccard 相似度）</li>
+        <li>14 条规则 DSL 映射作为测试用例基线</li>
+        <li>编译期校验（8 项）+ 错误码（6 个）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/dsl/*</code>（parser + evaluator + matcher）</p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>14 条规则求值全部正确</li>
+        <li>时间泄漏校验阻断生效</li>
+        <li>推理链输出完整（每个原子条件结果）</li>
+        <li>错误码与 dsl-syntax 一致</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>G9 DSL 语法（已完成）+ 1.2 特征工程</p>
+    </div>
+  </div>
+</div>
+
+<h3>1.5 回测框架 + 跨域时序（G19）</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>point-in-time 回测 + 5 项准入校验（statistics_eligible）+ 6 项指标 + 跨域依赖时序。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>回测调度（按时间顺序遍历比赛）</li>
+        <li>时间泄漏校验（5 项准入：时间完整性 / 接收一致性 / 结果可用 / 快照完整 / 规则有效）</li>
+        <li>证据快照生成（不可变，锁定）</li>
+        <li>指标计算：命中率 ≥55% / ROI ≥3% / 最大回撤 ≤15% / 样本量 ≥30 / 时间稳定性 ≤0.05 / 联赛覆盖度 ≥2</li>
+        <li>回测报告生成（达标 → validated；不达标 → proposed + 失败报告）</li>
+        <li><strong>statistics_eligible 显式化</strong>：通过 5 项校验的证据标记 eligible，仅 eligible 证据纳入正式评估</li>
+        <li><strong>G19 跨域时序</strong>：回测置信度更新与检索 Worker 的时序定义（回测结果写入先于检索读取，避免读到过期置信度）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/backtest/*</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>6 项指标计算正确</li>
+        <li>时间泄漏数据被阻断并告警</li>
+        <li>证据准入校验通过才标记 eligible（statistics_eligible）</li>
+        <li>回测报告可追溯</li>
+        <li>置信度更新与检索读取时序无竞态</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>1.2 特征工程 + 1.3 规则存储 + 1.4 DSL 引擎</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Phase 2 -->
+<!-- ============================================================ -->
+<h2 id="sec-p2">阶段 2 · 规则先行</h2>
+
+<h3>2.1 文字规则 → DSL 转换</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>把积累的文字规则转换为可入库的 DSL 规则（draft 状态）。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>盘点文字规则 → 规则清单（编号 / 原文 / 要素拆解）</li>
+        <li>人工转换核心规则（精炼的，按 DSL 语法手写）</li>
+        <li>AI 辅助批量转换（untrusted 标记 → 人工审核）</li>
+        <li>转换规则入库（draft 状态，编译校验通过）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p>规则清单 + DSL 映射 + 入库脚本</p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>每条规则有合法 DSL 表达式（编译通过）</li>
+        <li>AI 转换的规则带 untrusted 标记</li>
+        <li>规则全部为 draft 状态，未进入预测链</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>1.4 DSL 引擎（编译校验）</p>
+    </div>
+  </div>
+</div>
+
+<h3>2.2 回测验证 → 转正</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>对每条规则跑回测，达标转正，不达标修正或废弃。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>draft → proposed（提案评审）</li>
+        <li>proposed → experiment（激活实验）</li>
+        <li>跑回测（1.5 框架）→ 达标 → validated</li>
+        <li>validated → approved（人工审批）→ active（发布）</li>
+        <li>不达标 → 修正条件/权重后重测，或废弃</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p>转正规则集 + 回测报告库</p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>达标规则进入 active，参与正式预测</li>
+        <li>不达标规则有失败报告（指标明细）</li>
+        <li>全程状态转换有审计记录</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>1.5 回测框架 + 1.3 状态机</p>
+    </div>
+  </div>
+</div>
+
+<h3>2.3 预测链接入</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>检索引擎 + 冲突仲裁 + 预测输出，形成可追溯的正式预测链。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>检索引擎（matchExact / matchFuzzy / traceRuleChain）</li>
+        <li>冲突仲裁（三层：优先级 / 置信度加权 / 冲突仲裁 + 人工复核）</li>
+        <li>预测输出（方向 + 置信度 + 推理链 + 审计 ID）</li>
+        <li>证据快照写入（不可变锁定）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/engine/*</code>（retrieval + arbitration + prediction）</p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>单场预测可追溯完整推理链</li>
+        <li>冲突规则触发人工复核工单</li>
+        <li>预测审计记录不可变</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>1.4 DSL 引擎 + 2.2 转正规则</p>
+    </div>
+  </div>
+</div>
+
+<h3>2.4 AI 引擎模块</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>多模型适配层 + 规则挖掘 + 单场解读，输出 untrusted 候选，经人工审核转正。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li><strong>多模型适配层</strong>：Provider 抽象接口（DeepSeek / OpenAI 等），配置驱动（ai-providers.json），凭证走环境变量隔离，路由 / 降级 / 重试策略</li>
+        <li><strong>规则挖掘</strong>：输入历史数据 + 特征工程 → 候选规则（带样本量 / 命中率 / edge 指标），输出 untrusted</li>
+        <li><strong>单场解读</strong>：输入单场数据 → 解读报告（供分析师参考），输出 untrusted</li>
+        <li><strong>候选规则结构</strong>：AI 输出 → 结构化候选（条件 / 方向 / 权重 / 证据），解析校验</li>
+        <li><strong>审核转正路径</strong>：候选规则 → 人工审核 → 转化为 proposed 状态（进入生命周期）</li>
+        <li><strong>Containment 边界</strong>：AI 输出标记 untrusted，仅隔离区运行，不入融合决策层</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/ai/*</code>（provider + mining + interpretation + review）<br><code>server/config/ai-providers.json</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>切换模型不改业务代码（配置驱动）</li>
+        <li>AI 输出全部带 untrusted 标记</li>
+        <li>候选规则可解析为合法 DSL（编译通过）</li>
+        <li>审核转正后进入 proposed，不直接生效</li>
+        <li>AI 模块无数据源凭证访问权限</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>1.2 特征工程 + 1.4 DSL 引擎 + 1.3 状态机</p>
+    </div>
+  </div>
+</div>
+
+<h3>2.5 原型-后端集成</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>现有原型（prototype-1.0.0）接入后端 API，UI 消费真实服务能力。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>API 客户端层（封装规则 / 分析 / 回测接口）</li>
+        <li>原型数据源切换：localStorage → 后端 API（保留 mock 模式开关）</li>
+        <li>规则库页接入后端规则存储（版本化 + 状态展示）</li>
+        <li>详细分析页接入检索引擎结果（推理链展示）</li>
+        <li>AI 引擎页接入（候选规则列表 + 审核操作）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>prototype-1.0.0/src/api-client/*</code>（或等价改造）</p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>原型页面可消费后端数据，无跨域问题</li>
+        <li>mock 模式与真实模式可切换</li>
+        <li>规则状态 / 推理链 / 候选审核 UI 正常</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>0.2 G1 API 契约 + 阶段 1 地基 + 2.4 AI 引擎</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Phase 3 -->
+<!-- ============================================================ -->
+<h2 id="sec-p3">阶段 3 · 模型接入融合</h2>
+
+<h3>3.1 异常检测引擎</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>三路融合中的第三路——异常检测，识别盘口/赔率异常信号并输出风险等级。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>异常检测规则集（盘口突变 / 水位异常 / 机构分歧异常）</li>
+        <li>统计异常检测（z-score / IQR 离群检测）</li>
+        <li>异常输出结构（异常类型 + 风险等级 + 触发特征）</li>
+        <li>异常检测结果写入预测审计</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/anomaly/*</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>异常检测输出带风险等级</li>
+        <li>异常结果可追溯触发特征</li>
+        <li>与融合决策层接口对接正常</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>1.2 特征工程</p>
+    </div>
+  </div>
+</div>
+
+<h3>3.2 统计模型训练</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>数据积累到一定量级后，训练统计模型作为"统计模型辅助"路径。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>数据积累（数千场，含赛果）</li>
+        <li>特征 → 训练集（point-in-time 时间切分，禁止随机切分）</li>
+        <li>GBDT 模型训练（Python 服务：LightGBM）</li>
+        <li>输出概率预测 + 特征重要性</li>
+        <li>模型评估（准确率 / 校准 / 时间外验证）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>ml-service/</code>（独立 Python 服务）</p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>时间切分无泄漏（训练集全部早于测试集）</li>
+        <li>模型输出带特征重要性</li>
+        <li>模型输出标记为统计辅助（非正式预测）</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>阶段 1 地基 + 数据积累</p>
+    </div>
+  </div>
+</div>
+
+<h3>3.3 融合决策层</h3>
+
+<div class="step">
+  <div class="step-title">目标</div>
+  <p>三路融合（规则 / 模型 / 异常检测）加权合成正式预测。</p>
+  <div class="step-grid">
+    <div class="item"><div class="label">任务</div>
+      <ol>
+        <li>三路输入接口（rule_output / model_output / anomaly_output）</li>
+        <li>动态权重（默认 rule 0.5 / model 0.3 / anomaly 0.2）</li>
+        <li>融合输出（方向 + 置信度 + 推理链 + 审计 ID）</li>
+        <li>权重可配置（按数据完整度调整）</li>
+      </ol>
+    </div>
+    <div class="item"><div class="label">交付物</div>
+      <p><code>server/src/fusion/*</code></p>
+    </div>
+  </div>
+  <div class="step-grid">
+    <div class="item"><div class="label">验收标准</div>
+      <ul>
+        <li>融合输出可追溯三路来源</li>
+        <li>权重配置生效</li>
+        <li>AI 输出仍被 containment（不入融合层）</li>
+      </ul>
+    </div>
+    <div class="item"><div class="label">依赖</div>
+      <p>2.3 预测链 + 3.1 模型服务</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Milestones -->
+<!-- ============================================================ -->
+<h2 id="sec-m">里程碑与验收</h2>
+
+<div class="milestone">
+  <div class="m-num" style="background:rgba(96,165,250,0.15);color:var(--accent);">M0</div>
+  <div class="m-body">
+    <div class="m-title">设计齐备</div>
+    <div class="m-desc">G9/G12/G1(G4)/G6 四份设计文档评审通过，可进入编码。</div>
+  </div>
+</div>
+
+<div class="milestone">
+  <div class="m-num" style="background:rgba(52,211,153,0.15);color:var(--accent2);">M1</div>
+  <div class="m-body">
+    <div class="m-title">地基可用</div>
+    <div class="m-desc">端到端跑通：mock 数据上完成 ≥3 条规则完整回测（数据→特征→DSL→回测→报告），6 项指标计算结果正确，时间泄漏数据被阻断。</div>
+  </div>
+</div>
+
+<div class="milestone">
+  <div class="m-num" style="background:rgba(167,139,250,0.15);color:var(--purple);">M2</div>
+  <div class="m-body">
+    <div class="m-title">规则转正</div>
+    <div class="m-desc">文字规则转换完成 ≥10 条，≥3 条经过回测验证转正（active 状态），首次正式预测产出且推理链可追溯。AI 引擎支持通过配置切换模型，候选规则可审核转正。</div>
+  </div>
+</div>
+
+<div class="milestone">
+  <div class="m-num" style="background:rgba(244,114,182,0.15);color:var(--pink);">M3</div>
+  <div class="m-body">
+    <div class="m-title">融合预测</div>
+    <div class="m-desc">三路融合（规则 / 模型 / 异常检测）可追溯合成正式预测。模型训练时间切分无泄漏，输出来自独立 Python 服务，权重配置生效。</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Effort -->
+<!-- ============================================================ -->
+<h2 id="sec-effort">工作量与时间估算</h2>
+
+<p>以下为单人多角色（设计 + 开发 + 验证）的粗略估算，单位为人日。实际以里程碑验收为准，可并行任务已标注。</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>阶段</th><th>任务</th><th>估算</th><th>累计</th><th>并行性</th></tr>
+</thead>
+<tbody>
+<tr><td rowspan="3">阶段 0</td><td>G12 数据模型</td><td>3 人日</td><td rowspan="3">8 人日</td><td>—</td></tr>
+<tr><td>G1 API + G4 认证</td><td>3 人日</td><td>依赖 G12</td></tr>
+<tr><td>G6 性能模型</td><td>2 人日</td><td>依赖 G12</td></tr>
+<tr><td rowspan="5">阶段 1</td><td>1.1 数据接入 + G2 + 凭证</td><td>5 人日</td><td rowspan="5">22 人日</td><td>—</td></tr>
+<tr><td>1.2 特征工程</td><td>4 人日</td><td>依赖 1.1</td></tr>
+<tr><td>1.3 规则存储 + 状态机 + 日志</td><td>5 人日</td><td>可与 1.2 并行</td></tr>
+<tr><td>1.4 DSL 引擎</td><td>5 人日</td><td>依赖 1.2</td></tr>
+<tr><td>1.5 回测框架 + G19</td><td>3 人日</td><td>依赖 1.3/1.4</td></tr>
+<tr><td rowspan="5">阶段 2</td><td>2.1 文字规则 → DSL</td><td>3 人日</td><td rowspan="5">17 人日</td><td>依赖 1.4</td></tr>
+<tr><td>2.2 回测验证 → 转正</td><td>3 人日</td><td>依赖 2.1</td></tr>
+<tr><td>2.3 预测链接入</td><td>3 人日</td><td>依赖 2.2</td></tr>
+<tr><td>2.4 AI 引擎模块</td><td>5 人日</td><td>可与 2.1 并行</td></tr>
+<tr><td>2.5 原型-后端集成</td><td>3 人日</td><td>依赖 0.2 + 2.4</td></tr>
+<tr><td rowspan="3">阶段 3</td><td>3.1 异常检测引擎</td><td>3 人日</td><td rowspan="3">12 人日</td><td>依赖 1.2</td></tr>
+<tr><td>3.2 统计模型训练</td><td>5 人日</td><td>依赖数据积累</td></tr>
+<tr><td>3.3 融合决策层</td><td>4 人日</td><td>依赖 3.1/3.2</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout">
+  <div class="callout-title">估算说明</div>
+  <p>总计约 <strong>59 人日</strong>。阶段 0 约 8 人日、阶段 1 约 22 人日、阶段 2 约 17 人日、阶段 3 约 12 人日。阶段 3 的模型训练受真实数据积累进度制约，实际工期可能更长。估算不含数据源商务对接与规则内容梳理（2.1 的规则盘点取决于你的规则数量）。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Risks -->
+<!-- ============================================================ -->
+<h2 id="sec-risk">风险与依赖</h2>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>风险</th><th>等级</th><th>影响</th><th>缓解措施</th></tr>
+</thead>
+<tbody>
+<tr><td>真实数据获取</td><td><span class="badge badge-red">高</span></td><td>两条路线的共同前提，无数据则回测/训练无法进行</td><td>先接 1-2 个数据源；mock 数据源标注"模拟"用于开发</td></tr>
+<tr><td>样本量不足</td><td><span class="badge badge-red">高</span></td><td>规则回测 ≥30 样本、模型需数千场</td><td>规则先行（低样本需求）；模型等数据积累</td></tr>
+<tr><td>时间泄漏</td><td><span class="badge badge-yellow">中</span></td><td>回测结果虚高，规则误转正</td><td>三时间戳强制 + 5 项准入校验 + 泄漏告警</td></tr>
+<tr><td>规则有效性</td><td><span class="badge badge-yellow">中</span></td><td>部分文字规则回测可能不达标</td><td>不达标修正或废弃，保留失败报告</td></tr>
+<tr><td>规则冲突</td><td><span class="badge badge-yellow">中</span></td><td>方向相反规则同时触发</td><td>三层仲裁 + 人工复核工单</td></tr>
+<tr><td>ML 过拟合</td><td><span class="badge badge-yellow">中</span></td><td>小样本下模型拟合噪声</td><td>时间外验证 + 特征重要性审查</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout danger">
+  <div class="callout-title">最大前提</div>
+  <p>整个计划的<strong>最大外部依赖是真实数据获取</strong>。阶段 1 的地基可以在 mock 数据上开发验证，但阶段 2 的规则转正和阶段 3 的模型训练都必须基于真实历史数据（带三时间戳）。建议尽早启动数据源接入。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Organization -->
+<!-- ============================================================ -->
+<h2 id="sec-org">目录与工程规范</h2>
+
+<h3>目录结构</h3>
+
+<pre><code>football-knowledge-model/
+├── prototype-1.0.0/          # 现役前端原型（阶段 2.5 接入后端）
+├── docs/
+│   ├── architecture/         # 架构设计基线（保持）
+│   └── design/
+│       ├── dsl-syntax-1.0.0/             # ✅ 已完成
+│       ├── implementation-plan-1.0.0/    # 本文档
+│       ├── data-model-1.0.0/             # 阶段 0.1
+│       ├── api-contract-1.0.0/           # 阶段 0.2
+│       └── performance-model-1.0.0/      # 阶段 0.3
+├── server/                   # 后端服务（阶段 1 新建）
+│   ├── src/
+│   │   ├── data/             # 数据接入层 + 数据治理（G2）
+│   │   ├── features/         # 特征工程
+│   │   ├── rules/            # 规则存储 + 状态机
+│   │   ├── dsl/              # DSL 引擎
+│   │   ├── backtest/         # 回测框架（含 G19 时序）
+│   │   ├── engine/           # 检索引擎 + 仲裁 + 预测
+│   │   ├── ai/               # AI 引擎（provider + mining + interpretation）
+│   │   ├── anomaly/          # 异常检测引擎（阶段 3）
+│   │   ├── fusion/           # 融合决策层（阶段 3）
+│   │   ├── auth/             # 认证与 RBAC（G4）
+│   │   ├── vault/            # 凭证隔离（CredentialVault）
+│   │   └── lib/              # 日志 / 通用工具
+│   ├── migrations/           # PostgreSQL DDL
+│   ├── openapi/              # OpenAPI 规范
+│   ├── config/               # 配置（含 ai-providers.json）
+│   └── package.json
+└── ml-service/               # Python ML 服务（阶段 3）
+</code></pre>
+
+<h3>工程规范</h3>
+
+<ul>
+<li>变更 JS 文件后执行 <code>node --check</code> 校验语法。</li>
+<li>交付前验证本地 HTML 资源（文档/原型）可正常打开。</li>
+<li>规则与证据存储 append-only，禁止 UPDATE/DELETE。</li>
+<li>所有数据强制三时间戳，缺一拒绝入库。</li>
+<li>原型置信度不得描述为生产准确率或 ROI。</li>
+<li>设计文档与实现状态分离维护（见 <code>docs/current-status.md</code>）。</li>
+</ul>
+
+</main>
+</div>
+</body>
+</html>
