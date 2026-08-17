@@ -351,9 +351,11 @@ function renderRulesPanel() {
       thr = `<div class="rule-thr"><span>阈值</span><input type="range" min="${cfg.min}" max="${cfg.max}" step="${cfg.step}" value="${v}" oninput="updateThrDisplay(this,'${r.id}','${r.thrKey}')" onchange="changeThr('${r.id}','${r.thrKey}',this.value)"><span class="v">${v}</span></div>`;
     }
     const ev = hit ? `<div class="rule-ev">${ICON.warn.replace('var(--risk)', 'var(--t-3)')}<span>${hit.evidence}</span></div>` : "";
-    return `<div class="rule ${hit ? "hit" : ""} ${edgeCls} ${r.placeholder ? "placeholder" : ""}>
+    const cls = ["rule", hit ? "hit" : "", edgeCls, r.placeholder ? "placeholder" : ""].filter(Boolean).join(" ");
+    const ck = state.enabled[r.id] ? "checked" : "";
+    return `<div class="${cls}">
       <div class="rule-top">
-        <label class="switch"><input type="checkbox" ${state.enabled[r.id] ? "checked" : ""} onchange="toggleRule('${r.id}',this.checked)"><span class="track"></span></label>
+        <label class="switch"><input type="checkbox" ${ck} onchange="toggleRule('${r.id}',this.checked)"><span class="track"></span></label>
         <span class="rule-id">${r.id}</span><span class="rule-name">${r.name}</span>
         <span class="rule-fam">${r.family}</span>${dirBadge}
       </div>${thr}${ev}</div>`;
