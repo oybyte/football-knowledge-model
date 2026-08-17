@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Odds Edge · 盘口差异分析</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">O</div>
+        <div class="name">Odds Edge<span class="sub">盘口差异分析</span></div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-foot">
+        <div class="sf-dot"></div>
+        <div class="sf-text">
+          <div class="sf-version">v0.5 · 交互原型</div>
+          <div class="sf-hint">竞彩官方接口（模拟）</div>
+        </div>
+      </div>
+    </aside>
+    <div class="main-area">
+      <header class="topbar">
+        <div class="topbar-left" id="topbar-title"></div>
+        <div class="topbar-right">
+          <div class="search" id="global-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="global-search-input" placeholder="搜索比赛 / 规则 / 特征…" autocomplete="off" />
+            <div class="search-popover" id="search-popover"></div>
+          </div>
+          <div class="icon-btn" title="通知" onclick="toast('暂无新通知')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          </div>
+          <div class="avatar">L</div>
+        </div>
+      </header>
+      <div class="main" id="main"></div>
+    </div>
+  </div>
+  <script src="data.js"></script>
+  <script src="features.js"></script>
+  <script src="rules.js"></script>
+  <script src="lottery.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

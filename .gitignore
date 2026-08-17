@@ -1,0 +1,13 @@
+# IDE
+.idea/
+.vscode/
+
+# Local workspace memory
+.workbuddy/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

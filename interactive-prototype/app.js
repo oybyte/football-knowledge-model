@@ -1,0 +1,666 @@
+// ============================================================================
+// Odds Edge · UI 层 —— 产品级原型 v0.5（后续开发照此实现）
+// 路由：首页(竞彩) / 历史记录(复盘) / 规则库 / AI引擎 / 设置
+// 数据层 data.js · 特征层 features.js · 规则层 rules.js 已解耦，UI 不掺算法
+// ============================================================================
+
+const ICON = {
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>',
+  book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+  layers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>',
+  replay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-7 3.3"/><path d="M3 3v6h6"/></svg>',
+  cpu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>',
+  ball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m12 7 4 3-1.5 5h-5L8 10z"/><path d="M12 2v5M2 12h5M12 22v-5M22 12h-5"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  filter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3z"/></svg>',
+  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg>',
+  trending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>',
+  spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><path d="m6.3 6.3 2.4 2.4M15.3 15.3l2.4 2.4M17.7 6.3l-2.4 2.4M8.7 15.3l-2.4 2.4"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+};
+
+const NAV = [
+  { id: "home",     label: "首页",     icon: "home" },
+  { id: "history",  label: "历史记录", icon: "replay" },
+  { id: "rules",    label: "规则库",   icon: "book" },
+  { id: "ai",       label: "AI引擎",   icon: "cpu" },
+  { id: "settings", label: "设置",     icon: "gear" }
+];
+const PAGE_TITLES = {
+  home:    ["首页",   "中国体育彩票 · 竞彩足球"],
+  history: ["历史记录", "已分析比赛复盘"],
+  rules:   ["规则库", "规则引擎与特征目录"],
+  ai:      ["AI 引擎", "规则挖掘沙箱"],
+  settings:["设置",   "数据源与引擎参数"]
+};
+function topbarTitleHtml() {
+  if (state.page === "home" && state.analyzeId) {
+    const m = getMatch();
+    return `<span class="tt-title">比赛分析</span><span class="tt-sep">/</span><span class="tt-sub">${m.home} vs ${m.away} · ${m.league}</span>`;
+  }
+  const t = PAGE_TITLES[state.page] || ["", ""];
+  return `<span class="tt-title">${t[0]}</span><span class="tt-sep">/</span><span class="tt-sub">${t[1]}</span>`;
+}
+
+// ------------------------------ 全局状态 ------------------------------
+const SET_KEY = "oddsedge.settings.v1";
+const HIST_KEY = "oddsedge.history.v1";
+
+function defaultSettings() {
+  return {
+    apiUrl: LOTTERY_API, apiKey: "", sync: "30m",
+    confMetric: "hit", riskPref: "balanced",
+    families: { temporal: true, cross: true, resonance: true, anomaly: true, onex: true, betfair: true, unknown: false }
+  };
+}
+function loadSettings() {
+  try { return Object.assign(defaultSettings(), JSON.parse(localStorage.getItem(SET_KEY)) || {}); }
+  catch (e) { return defaultSettings(); }
+}
+function persistSettings() { localStorage.setItem(SET_KEY, JSON.stringify(state.settings)); }
+
+function loadHistory() { try { return JSON.parse(localStorage.getItem(HIST_KEY)) || {}; } catch (e) { return {}; } }
+function saveHistoryMap(map) { localStorage.setItem(HIST_KEY, JSON.stringify(map)); }
+
+const state = {
+  page: "home",
+  analyzeId: null,
+  matchId: MATCHES[0].id,
+  view: "handicap",
+  matchFilter: "all",
+  enabled: {},
+  thresholds: {},
+  ruleFamFilter: "all",
+  ruleSearch: "",
+  ruleTab: "rules",
+  lotteryGroup: "all",
+  followed: {},
+  settings: loadSettings()
+};
+RULES.forEach(r => {
+  state.enabled[r.id] = true;
+  if (r.hasThreshold) state.thresholds[r.id] = r.threshold;
+});
+
+const BM_COLORS = { "澳*": "#f59e0b", "澳门": "#f59e0b", "36*": "#38bdf8", "威*": "#8b5cf6", "立*": "#10b981", "皇冠": "#f43f5e", "Bet365": "#22c55e", "Betfai*": "#ec4899", "Interwet*": "#64748b" };
+const THR_CFG = { dropN: { min: 1, max: 5, step: 1 }, riseN: { min: 1, max: 5, step: 1 }, ratio: { min: 0.30, max: 0.70, step: 0.05 }, kelly: { min: 0.90, max: 1.10, step: 0.01 } };
+const FAM_COLOR = { cross: "#8b5cf6", temporal: "#38bdf8", resonance: "#10b981", anomaly: "#f59e0b", betfair: "#ec4899", onex: "#22c55e", unknown: "#64748b" };
+
+function fmt(v, n) { if (v == null || (typeof v === "number" && isNaN(v))) return "—"; return (typeof v === "number") ? v.toFixed(n == null ? 2 : n) : v; }
+function getMatch() { return MATCHES.find(m => m.id === state.matchId); }
+function compute() { const m = getMatch(); const f = computeFeatures(m); const res = evaluate(RULES, f, m, state); return { m, f, res }; }
+function bmColor(name) { for (const k in BM_COLORS) if (name.includes(k)) return BM_COLORS[k]; return "#64748b"; }
+function fmtTime(ts) { const d = new Date(ts); const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+function toast(msg) {
+  let t = document.getElementById("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add("show"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 1600);
+}
+function ringSmall(pct, cls) {
+  const C = 2 * Math.PI * 18, off = C * (1 - pct);
+  return `<div class="ring sm ${cls}"><svg width="44" height="44"><circle class="bg-c" cx="22" cy="22" r="18" fill="none" stroke-width="4"/><circle class="fg-c" cx="22" cy="22" r="18" fill="none" stroke-width="4" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" stroke-linecap="round"/></svg><div class="pct">${(pct * 100).toFixed(0)}%</div></div>`;
+}
+
+// ============================ 路由 ============================
+function render() {
+  document.getElementById("nav").innerHTML = NAV.map(n =>
+    `<div class="nav-item ${state.page === n.id ? "active" : ""}" onclick="setPage('${n.id}')">${ICON[n.icon]}${n.label}</div>`).join("");
+  const tt = document.getElementById("topbar-title");
+  if (tt) tt.innerHTML = topbarTitleHtml();
+  const main = document.getElementById("main");
+  if (state.page === "home") main.innerHTML = state.analyzeId ? renderAnalysisShell() : renderLotteryList();
+  else if (state.page === "history") main.innerHTML = `<div class="page">${renderHistory()}</div>`;
+  else if (state.page === "rules") { main.innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
+  else if (state.page === "ai") main.innerHTML = `<div class="page">${renderAI()}</div>`;
+  else if (state.page === "settings") main.innerHTML = `<div class="page">${renderSettings()}</div>`;
+}
+function setPage(p) { state.page = p; render(); }
+
+// ============================ 首页 · 竞彩赛事列表 ============================
+function renderLotteryList() {
+  const active = state.lotteryGroup;
+  let matches = LOTTERY_MATCHES;
+  if (active !== "all") matches = matches.filter(m => m.dateGroup === active);
+  const datebar = `<div class="lottery-datebar"><span class="chip ${active === "all" ? "active" : ""}" onclick="setLotteryGroup('all')">全部</span>${LOTTERY_GROUPS.map(g => `<span class="chip ${active === g.id ? "active" : ""}" onclick="setLotteryGroup('${g.id}')">${g.label}</span>`).join("")}</div>`;
+  const cards = matches.map(m => {
+    const hist = loadHistory()[m.id];
+    const bt = m.betTypes.map(b => `<span class="play-chip ${b.data ? "on" : ""}">${b.label}</span>`).join("");
+    return `<div class="match-card">
+      <div class="mc-top"><span class="mc-league">${m.league}</span><span class="mc-serial">${m.serial}</span>${m.real ? '<span class="badge real">真实</span>' : '<span class="badge mock">Mock</span>'}</div>
+      <div class="mc-teams">
+        <div class="mc-team"><span class="mc-tn">${m.home}</span><span class="mc-pos">主</span></div>
+        <div class="mc-vs">VS</div>
+        <div class="mc-team right"><span class="mc-pos">${m.neutral ? "中" : "客"}</span><span class="mc-tn">${m.away}</span></div>
+      </div>
+      <div class="mc-meta"><span>${m.kickoff}</span><span class="mc-deadline">截止 ${m.deadline}</span>${m.salesOpen ? '<span class="dot up"></span>在售' : '<span class="dot idle"></span>停售'}</div>
+      <div class="mc-plays">${bt}</div>
+      <div class="mc-foot">
+        <button class="btn sm primary" onclick="enterAnalysis('${m.id}')">${ICON.chart}分析</button>
+        ${hist ? `<span class="mc-analyzed">已复盘 · ${hist.verdict}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+  return `<div class="home-list">
+    <div class="home-banner">
+      <div class="hb-left"><div class="hb-title">中国体育彩票 · 竞彩足球</div><div class="hb-sub">数据来源：竞彩官方接口（原型以本地赛事模拟）· 共 ${LOTTERY_MATCHES.length} 场在售</div></div>
+      <div class="hb-right"><button class="btn sm" onclick="refreshLottery()">${ICON.replay}刷新赛事</button></div>
+    </div>
+    ${datebar}
+    <div class="match-grid">${cards}</div>
+  </div>`;
+}
+function setLotteryGroup(g) { state.lotteryGroup = g; render(); }
+function refreshLottery() { render(); toast("赛事列表已刷新"); }
+
+function enterAnalysis(id) {
+  state.page = "home"; state.analyzeId = id; state.matchId = id;
+  render();
+}
+function exitAnalysis() { state.analyzeId = null; render(); }
+function saveCurrentAnalysis() {
+  const m = getMatch(); const { res } = compute();
+  const map = loadHistory();
+  map[state.matchId] = {
+    matchId: state.matchId, label: `${m.home} vs ${m.away}`, ts: Date.now(),
+    verdict: res.verdict, confidence: res.confidence, score: res.score, pos: res.pos, neg: res.neg,
+    hits: res.hits.map(h => ({ id: h.id, name: h.name, direction: h.direction })),
+    risks: res.risks.map(r => ({ id: r.id, name: r.name }))
+  };
+  saveHistoryMap(map); toast("复盘已保存");
+}
+
+// ============================ 分析壳（三栏复用） ============================
+function renderAnalysisShell() {
+  const m = getMatch();
+  return `<div class="analysis-shell">
+    <div class="analysis-bar">
+      <button class="btn sm" onclick="exitAnalysis()">${ICON.back} 返回列表</button>
+      <div class="ab-title">${m.home} <span class="muted">vs</span> ${m.away}</div>
+      <div class="ab-spacer"></div>
+      <button class="btn sm" onclick="saveCurrentAnalysis()">${ICON.check}保存复盘</button>
+    </div>
+    <div class="analysis-body">
+      ${renderMatchCol()}
+      <main class="page" style="flex:1 1 0;min-width:0;overflow:auto;padding:18px">${renderCenter()}</main>
+      <aside class="page" style="flex:0 0 332px;min-width:0;overflow-y:auto;border-left:1px solid var(--bd-1);background:var(--bg-1);padding:16px">${renderRulesPanel()}</aside>
+    </div>
+  </div>`;
+}
+
+function renderMatchCol() {
+  let list = MATCHES;
+  if (state.matchFilter === "real") list = MATCHES.filter(m => m.real);
+  else if (state.matchFilter === "mock") list = MATCHES.filter(m => !m.real);
+  const items = list.map(m => `
+    <div class="match-item ${m.id === state.matchId ? "active" : ""}" onclick="selectMatch('${m.id}')">
+      <div class="teams">${m.home} <span class="muted" style="font-weight:400">vs</span> ${m.away} ${m.real ? '<span class="badge real">真实</span>' : '<span class="badge mock">Mock</span>'}</div>
+      <div class="meta"><span>${m.league}</span><span>${m.kickoff}</span></div>
+    </div>`).join("");
+  return `<aside class="match-col">
+    <div class="hd">
+      <div class="section-title">比赛 (${MATCHES.length})</div>
+      <div class="filter-chips" style="margin-bottom:10px">
+        <span class="chip ${state.matchFilter === "all" ? "active" : ""}" onclick="setMatchFilter('all')">全部</span>
+        <span class="chip ${state.matchFilter === "real" ? "active" : ""}" onclick="setMatchFilter('real')">真实</span>
+        <span class="chip ${state.matchFilter === "mock" ? "active" : ""}" onclick="setMatchFilter('mock')">Mock</span>
+      </div>
+    </div>${items}
+  </aside>`;
+}
+
+function renderCenter() {
+  const { m, f } = compute();
+  const tabs = [["handicap", "让球盘", ICON.ball], ["onex", "欧指/凯利", ICON.trending], ["totals", "大小球", ICON.chart], ["betfair", "必发资金", ICON.filter]];
+  const tabHtml = `<div class="tabs">${tabs.map(([k, l, ic]) => `<div class="tab ${state.view === k ? "active" : ""}" onclick="switchView('${k}')">${ic}${l}</div>`).join("")}</div>`;
+  let body = "";
+  if (state.view === "handicap") body = viewHandicap(m, f);
+  else if (state.view === "onex") body = viewOnex(m, f);
+  else if (state.view === "totals") body = viewTotals(m, f);
+  else if (state.view === "betfair") body = viewBetfair(m, f);
+  return `<div class="page-head">
+      <div><div class="ph-title">${m.home} <span class="muted" style="font-weight:400">vs</span> ${m.away}</div>
+      <div class="ph-sub">${m.league} · ${m.kickoff} · ${m.neutral ? "中立场" : "主客场"} · ${m.handicap.length} 家机构</div></div>
+      <div class="ph-actions"><button class="btn sm" onclick="toast('分析报告导出中（占位）')">${ICON.download}导出</button><button class="btn sm primary" onclick="toggleFollow()">${ICON.plus}${state.followed && state.followed[state.matchId] ? "已关注" : "加入关注"}</button></div>
+    </div>${tabHtml}<div>${body}</div>`;
+}
+
+function viewHandicap(m, f) {
+  const rows = m.handicap.map(b => {
+    const hm = b.current.h - b.initial.h, wm = b.current.hw - b.initial.hw;
+    const hc = hm < -0.005 ? "up" : (hm > 0.005 ? "down" : "");
+    const wc = wm < -0.005 ? "up" : (wm > 0.005 ? "down" : "");
+    const hArr = hm < -0.005 ? "↑" : (hm > 0.005 ? "↓" : "");
+    const wArr = wm < -0.005 ? "↓" : (wm > 0.005 ? "↑" : "");
+    return `<tr>
+      <td class="l"><span class="bm-tag"><span class="bm-dot" style="background:${bmColor(b.name)}"></span>${b.name}</span></td>
+      <td class="num ${hc}">${fmt(b.initial.h)} ${hArr}</td><td class="num ${wc}">${fmt(b.initial.hw)} ${wArr}</td>
+      <td class="num ${hc}">${fmt(b.current.h)}</td><td class="num ${wc}">${fmt(b.current.hw)}</td>
+      <td class="num">${fmt(b.current.aw)}</td></tr>`;
+  }).join("");
+  const cd = f.cross, tp = f.temp, rs = f.reso, an = f.anom;
+  const feats = [
+    ["盘口离散", fmt(cd.handicap_dispersion), "cross", "max(临盘)−min(临盘)"],
+    ["主水离散", fmt(cd.home_water_dispersion), "cross", "max(临主水)−min(临主水)"],
+    ["盘口变动", fmt(tp.handicap_movement), "temporal", "avg(临盘−初盘)"],
+    ["主水变动", fmt(tp.home_water_movement), "temporal", "avg(临主水−初主水)"],
+    ["形态", tp.move_pattern, "temporal", "升/降盘 × 降/升水", true],
+    ["盘口冻结", tp.stability_flag ? "是" : "否", "temporal", "变动机构≤1家", true],
+    ["同步调盘", rs.sync_handicap_count + "家", "resonance", "同向变动最多家数", true],
+    ["共识方向", rs.consensus_direction, "resonance", "多数机构动作方向", true],
+    ["最大凯利", fmt(an.maxKelly), "anomaly", "max 让球盘凯利"],
+    ["量比均值", an.volume_anomaly != null ? fmt(an.volume_anomaly) + "x" : "—", "anomaly", "avg(量/基线)"]
+  ].map(([t, v, fam, fo, sm]) => `<div class="feat" title="${fo}"><span class="fam" style="background:${FAM_COLOR[fam]}"></span><div class="ft">${t}</div><div class="fv ${sm ? "small" : ""}">${v}</div><div class="ff">${fo}</div></div>`).join("");
+  let tl = "";
+  if (m.macauHandicapHistory) {
+    tl = `<div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">${ICON.replay}澳门让球变化时间轴</div><div class="extra">${m.macauHandicapHistory.length} 个时点</div></div>
+      <div class="card-bd"><div class="timeline">${m.macauHandicapHistory.slice().reverse().map((h, i) => `<div class="tl-row ${i === 0 ? "first" : ""}"><div class="tl-time">${h.time}</div><div class="tl-val mono">主水 ${fmt(h.hw)} · 盘 ${fmt(h.h)} · 客水 ${fmt(h.aw)}</div></div>`).join("")}</div></div></div>`;
+  }
+  return `<div class="card"><div class="card-hd"><div class="title">${ICON.ball}让球盘 · 多机构双水（初盘 → 临场）</div><div class="extra">↑ 数值变小 · ↓ 数值变大</div></div>
+    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">机构</th><th>初盘</th><th>初主水</th><th>临盘</th><th>临主水</th><th>临客水</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+    <div style="margin-top:14px"><div class="section-title">特征差异 · 四族</div><div class="feat-grid">${feats}</div></div>${tl}`;
+}
+
+function viewOnex(m, f) {
+  if (!m.onex || !m.onex.length) return emptyView("该场为让球盘演示场，暂无欧指/凯利数据。");
+  const rows = m.onex.map(o => {
+    const k = o.kelly || {};
+    const kcell = (x) => x == null ? "—" : `<span class="${x >= 1 ? "down" : (x <= 0.85 ? "up" : "")}">${fmt(x)}</span>`;
+    return `<tr><td class="l"><span class="bm-tag"><span class="bm-dot" style="background:${bmColor(o.name)}"></span>${o.name}</span></td>
+      <td class="num">${fmt(o.initial.h)}</td><td class="num">${fmt(o.initial.d)}</td><td class="num">${fmt(o.initial.a)}</td>
+      <td class="num">${fmt(o.current.h)}</td><td class="num">${fmt(o.current.d)}</td><td class="num">${fmt(o.current.a)}</td>
+      <td class="num mono">${kcell(k.h)}/${kcell(k.d)}/${kcell(k.a)}</td></tr>`;
+  }).join("");
+  const ox = f.onex || {};
+  const feats = [
+    ["主胜赔变", fmt(ox.home_odds_movement), "onex", "avg(临主胜−初主胜)"],
+    ["主胜凯利max", fmt(ox.kelly_home_max), "onex", "max 各机构主胜凯利"],
+    ["主胜凯利离散", fmt(ox.kelly_home_divergence), "onex", "max−min 主胜凯利"]
+  ].map(([t, v, fam, fo]) => `<div class="feat" title="${fo}"><span class="fam" style="background:${FAM_COLOR[fam]}"></span><div class="ft">${t}</div><div class="fv">${v}</div><div class="ff">${fo}</div></div>`).join("");
+  let tl = "";
+  if (m.macauOnexHistory) {
+    tl = `<div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">${ICON.replay}澳门欧指变化时间轴</div><div class="extra">${m.macauOnexHistory.length} 个时点</div></div>
+      <div class="card-bd"><div class="timeline">${m.macauOnexHistory.slice().reverse().map((h, i) => `<div class="tl-row ${i === 0 ? "first" : ""}"><div class="tl-time">${h.time}</div><div class="tl-val mono">主 ${fmt(h.h)} · 平 ${fmt(h.d)} · 客 ${fmt(h.a)} · 凯利 ${fmt(h.kh)}/${fmt(h.kd)}/${fmt(h.ka)}</div></div>`).join("")}</div></div></div>`;
+  }
+  return `<div class="card"><div class="card-hd"><div class="title">${ICON.trending}1X2 欧指 + 凯利指数</div><div class="extra">凯利 ≥1.0 红色 · ≤0.85 绿色</div></div>
+    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">机构</th><th>初主</th><th>初平</th><th>初客</th><th>临主</th><th>临平</th><th>临客</th><th>凯利(主/平/客)</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+    <div style="margin-top:14px"><div class="section-title">欧指特征</div><div class="feat-grid">${feats}</div></div>${tl}`;
+}
+
+function viewTotals(m, f) {
+  if (!m.totals || !m.totals.length) return emptyView("该场为让球盘演示场，暂无大小球数据。");
+  const rows = m.totals.map(o => {
+    const oc = o.current.over - o.initial.over, uc = o.current.under - o.initial.under;
+    return `<tr><td class="l"><span class="bm-tag"><span class="bm-dot" style="background:${bmColor(o.name)}"></span>${o.name}</span></td>
+      <td>${o.initial.line}</td><td class="num ${oc < -0.005 ? "up" : (oc > 0.005 ? "down" : "")}">${fmt(o.initial.over)}</td><td class="num ${uc < -0.005 ? "up" : (uc > 0.005 ? "down" : "")}">${fmt(o.initial.under)}</td>
+      <td>${o.current.line}</td><td class="num ${oc < -0.005 ? "up" : (oc > 0.005 ? "down" : "")}">${fmt(o.current.over)}</td><td class="num ${uc < -0.005 ? "up" : (uc > 0.005 ? "down" : "")}">${fmt(o.current.under)}</td></tr>`;
+  }).join("");
+  return `<div class="card"><div class="card-hd"><div class="title">${ICON.chart}大小球（大球 / 盘口 / 小球）</div><div class="extra">初盘 → 临场</div></div>
+    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">机构</th><th>初盘</th><th>初大</th><th>初小</th><th>临盘</th><th>临大</th><th>临小</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+
+function viewBetfair(m, f) {
+  if (!m.betfair || !f.betfair) return emptyView("该场为让球盘演示场，暂无必发资金数据。");
+  const bf = f.betfair, total = bf.turnover;
+  const barCls = { "胜": "b-up", "平": "b-draw", "负": "b-down" };
+  const rows = bf.rows.map(r => {
+    const w = (r.volume / total * 100).toFixed(0);
+    return `<tr><td class="l"><span class="bm-tag"><span class="bm-dot" style="background:${r.result === "胜" ? "var(--up)" : (r.result === "负" ? "var(--down)" : "var(--brand)")}"></span>${r.result}</span></td>
+      <td class="num">${fmt(r.odds)}</td><td class="num">${r.volume.toLocaleString()}</td>
+      <td style="min-width:120px"><div class="bar"><i class="${barCls[r.result]}" style="width:${w}%"></i><span class="bar-pct">${w}%</span></div></td>
+      <td class="num ${r.pnl >= 0 ? "down" : "up"}">${r.pnl >= 0 ? "+" : ""}${r.pnl.toLocaleString()}</td>
+      <td><div class="heat-gauge"><div class="heat-bar">${r.heat >= 0 ? `<i class="pos" style="width:${Math.min(r.heat / 2, 50)}%"></i>` : `<i class="neg" style="width:${Math.min(-r.heat / 2, 50)}%"></i>`}</div><span class="num ${r.heat > 0 ? "risk" : (r.heat < 0 ? "up" : "muted")}">${r.heat > 0 ? "+" : ""}${r.heat}</span></div></td></tr>`;
+  }).join("");
+  const feats = [
+    ["资金集中", bf.dominant_result, "betfair", `占比 ${(bf.dominant_ratio * 100).toFixed(0)}%`, true],
+    ["冷热极值", `${fmt(bf.heat_max)} / ${fmt(bf.heat_min)}`, "betfair", "max / min 冷热指数"],
+    ["总交易量", total.toLocaleString(), "betfair", "必发成交量"]
+  ].map(([t, v, fam, fo, sm]) => `<div class="feat" title="${fo}"><span class="fam" style="background:${FAM_COLOR[fam]}"></span><div class="ft">${t}</div><div class="fv ${sm ? "small" : ""}">${v}</div><div class="ff">${fo}</div></div>`).join("");
+  return `<div class="card"><div class="card-hd"><div class="title">${ICON.filter}必发交易盈亏 · 冷热指数</div><div class="extra">总交易量 ${total.toLocaleString()}</div></div>
+    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">结果</th><th>欧指</th><th>交易量</th><th>资金占比</th><th>盈亏</th><th>冷热</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+    <div style="margin-top:14px"><div class="section-title">资金面特征</div><div class="feat-grid">${feats}</div></div>`;
+}
+
+function emptyView(msg) { return `<div class="empty">${msg}</div>`; }
+
+function renderRulesPanel() {
+  const { f, res } = compute();
+  const vcls = res.verdict.includes("上盘") ? "up" : (res.verdict.includes("下盘") ? "down" : "none");
+  const C = 2 * Math.PI * 24;
+  const off = C * (1 - res.confidence);
+  const risks = res.risks.length ? res.risks.map(r => `<div class="ri">${ICON.warn}<span><b>${r.id}</b> ${r.name}：${r.evidence}</span></div>`).join("") : `<div class="risk-empty">无风险信号</div>`;
+  const verdictCard = `<div class="verdict-card ${vcls}">
+    <div class="vc-top"><div><div class="vc-label">综合倾向${state.settings.confMetric === "edge" ? " (edge)" : ""}</div><div class="vc-verdict ${vcls}">${res.verdict}</div></div>
+      <div class="ring"><svg width="56" height="56"><circle class="bg-c" cx="28" cy="28" r="24" fill="none" stroke-width="5"/><circle class="fg-c" cx="28" cy="28" r="24" fill="none" stroke-width="5" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" stroke-linecap="round"/></svg><div class="pct">${(res.confidence * 100).toFixed(0)}%</div></div></div>
+    <div class="vc-stats"><div class="vc-stat"><div class="k">方向规则命中</div><div class="v">${res.hits.length}</div></div><div class="vc-stat"><div class="k">风险信号</div><div class="v" style="color:var(--risk)">${res.risks.length}</div></div></div>
+    <div class="risk-list">${risks}</div></div>`;
+
+  const items = RULES.map(r => {
+    const hit = res.hits.find(h => h.id === r.id) || res.risks.find(h => h.id === r.id);
+    const dir = hit ? hit.direction : 0;
+    const dirBadge = !hit ? '<span class="badge mock">未命中</span>' : (dir > 0 ? '<span class="badge up">上盘</span>' : (dir < 0 ? '<span class="badge down">下盘</span>' : '<span class="badge risk">风险</span>'));
+    const edgeCls = hit ? (dir === 0 ? "risk-h" : (dir > 0 ? "up-h" : "down-h")) : "";
+    let thr = "";
+    if (r.hasThreshold) {
+      const cfg = THR_CFG[r.thrKey] || { min: 0, max: 9, step: 1 };
+      const v = state.thresholds[r.id];
+      thr = `<div class="rule-thr"><span>阈值</span><input type="range" min="${cfg.min}" max="${cfg.max}" step="${cfg.step}" value="${v}" oninput="updateThrDisplay(this,'${r.id}','${r.thrKey}')" onchange="changeThr('${r.id}','${r.thrKey}',this.value)"><span class="v">${v}</span></div>`;
+    }
+    const ev = hit ? `<div class="rule-ev">${ICON.warn.replace('var(--risk)', 'var(--t-3)')}<span>${hit.evidence}</span></div>` : "";
+    return `<div class="rule ${hit ? "hit" : ""} ${edgeCls} ${r.placeholder ? "placeholder" : ""}>
+      <div class="rule-top">
+        <label class="switch"><input type="checkbox" ${state.enabled[r.id] ? "checked" : ""} onchange="toggleRule('${r.id}',this.checked)"><span class="track"></span></label>
+        <span class="rule-id">${r.id}</span><span class="rule-name">${r.name}</span>
+        <span class="rule-fam">${r.family}</span>${dirBadge}
+      </div>${thr}${ev}</div>`;
+  }).join("");
+  return `${verdictCard}<div style="margin-top:16px"><div class="section-title">${ICON.book}规则引擎 (${RULES.length})</div>${items}
+    <button class="btn sm" style="width:100%;justify-content:center;margin-top:8px" onclick="resetRules()">${ICON.replay}重置全部</button></div>`;
+}
+
+// ============================ 历史记录 · 复盘 ============================
+function renderHistory() {
+  const map = loadHistory(); const ids = Object.keys(map);
+  if (!ids.length) return `<div class="placeholder-page"><div class="icon">${ICON.replay}</div><div class="pt">暂无复盘记录</div><div class="ps">在首页选择一场比赛点击「分析」即可生成复盘记录，之后可在此重新运行引擎。</div></div>`;
+  const items = ids.map(id => {
+    const h = map[id];
+    const vcls = h.verdict.includes("上盘") ? "up" : (h.verdict.includes("下盘") ? "down" : "none");
+    return `<div class="history-item">
+      <div class="hi-main"><div class="hi-title">${h.label}</div><div class="hi-time">${fmtTime(h.ts)} · ${h.hits.length} 命中 / ${h.risks.length} 风险</div></div>
+      <div class="hi-verdict ${vcls}">${h.verdict}</div>
+      ${ringSmall(h.confidence, vcls)}
+      <div class="hi-actions">
+        <button class="btn sm" onclick="enterAnalysis('${id}')">${ICON.replay}复盘</button>
+        <button class="btn sm" onclick="deleteHistory('${id}')">${ICON.x}删除</button>
+      </div>
+    </div>`;
+  }).join("");
+  return `<div class="page-head"><div><div class="ph-title">历史记录</div><div class="ph-sub">${ids.length} 场已分析比赛 · 点击复盘可重新运行引擎</div></div>
+    <div class="ph-actions"><button class="btn sm" onclick="clearHistory()">${ICON.warn}清空</button></div></div>
+    <div class="history-list">${items}</div>`;
+}
+function deleteHistory(id) {
+  showConfirm('删除复盘', '确定删除该复盘记录？', () => {
+    const map = loadHistory(); delete map[id]; saveHistoryMap(map); toast("已删除"); render();
+  });
+}
+function clearHistory() {
+  showConfirm('清空全部', '确认清空全部复盘记录？此操作不可撤销。', () => {
+    localStorage.removeItem(HIST_KEY); toast("已清空"); render();
+  });
+}
+
+// Custom confirm modal (replaces native confirm())
+function showConfirm(title, msg, onConfirm) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:999;backdrop-filter:blur(2px);animation:fadeIn .2s ease';
+  overlay.innerHTML = `
+    <div style="background:var(--bg-2);border:1px solid var(--bd-2);border-radius:var(--r-lg);width:360px;padding:0;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:modalIn .2s ease">
+      <div style="padding:16px 18px;border-bottom:1px solid var(--bd-1);font-weight:600;font-size:14px">${title}</div>
+      <div style="padding:16px 18px;font-size:13px;color:var(--t-2);text-align:center">${msg}</div>
+      <div style="padding:12px 18px;border-top:1px solid var(--bd-1);display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn sm" id="confirm-cancel">取消</button>
+        <button class="btn sm primary" id="confirm-ok" style="background:var(--down);border-color:var(--down)">确认</button>
+      </div>
+    </div>`;
+  const close = () => overlay.remove();
+  overlay.querySelector('#confirm-cancel').addEventListener('click', close);
+  overlay.querySelector('#confirm-ok').addEventListener('click', () => { close(); onConfirm(); });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
+// ============================ 规则库（含特征目录 tab） ============================
+function renderRulesPage() {
+  const tab = state.ruleTab;
+  const tabs = `<div class="tabs"><div class="tab ${tab === "rules" ? "active" : ""}" onclick="setRuleTab('rules')">${ICON.book}规则库</div><div class="tab ${tab === "features" ? "active" : ""}" onclick="setRuleTab('features')">${ICON.layers}特征目录</div></div>`;
+  const body = tab === "rules" ? renderRulesLibrary() : renderFeatureCatalog();
+  return `${tabs}${body}`;
+}
+function setRuleTab(t) { state.ruleTab = t; document.getElementById("main").innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
+
+function renderRulesLibrary() {
+  const chips = [["all", "全部"], ["temporal", "时序"], ["cross", "横截面"], ["resonance", "共振"], ["anomaly", "异常"], ["onex", "欧指"], ["betfair", "必发"], ["unknown", "占位"]];
+  return `<div class="page-head"><div><div class="ph-title">规则库</div><div class="ph-sub">${RULES.length} 条规则 · 覆盖让球盘 / 欧指 / 必发三数据源</div></div>
+    <div class="ph-actions"><button class="btn sm" onclick="toast('规则库导出中（占位）')">${ICON.download}导出</button><button class="btn sm primary" onclick="toast('新建规则向导开发中')">${ICON.plus}新建规则</button></div></div>
+    <div class="card"><div class="card-hd">
+      <div class="filter-chips">${chips.map(([k, l]) => `<span class="chip ${state.ruleFamFilter === k ? "active" : ""}" onclick="setRuleFam('${k}')">${l}</span>`).join("")}</div>
+      <input class="inp" id="rule-search-input" style="width:200px" placeholder="搜索规则名称 / ID…" value="${state.ruleSearch}" autocomplete="off">
+    </div>
+    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">ID</th><th class="l">名称</th><th>家族</th><th>方向</th><th>阈值</th><th>状态</th><th>版本</th><th></th></tr></thead><tbody id="rules-tbody">${buildRuleRows()}</tbody></table></div></div>`;
+}
+
+function buildRuleRows() {
+  let list = RULES;
+  if (state.ruleFamFilter !== "all") list = RULES.filter(r => r.family === state.ruleFamFilter);
+  if (state.ruleSearch) {
+    const q = state.ruleSearch.toLowerCase();
+    list = list.filter(r => (r.name + r.id).toLowerCase().includes(q));
+  }
+  return list.map(r => {
+    const d = (typeof r.direction === "function") ? "动态" : (r.direction > 0 ? "上盘" : (r.direction < 0 ? "下盘" : "风险"));
+    const dBd = d === "上盘" ? "up" : (d === "下盘" ? "down" : (d === "风险" ? "risk" : "brand"));
+    const status = r.placeholder ? '<span class="badge mock">占位</span>' : '<span class="badge up">活跃</span>';
+    return `<tr>
+      <td class="l"><span class="rule-id">${r.id}</span></td>
+      <td class="l">${r.name}${r.placeholder ? ' <span class="badge mock">占位</span>' : ""}</td>
+      <td><span class="badge brand">${r.family}</span></td>
+      <td><span class="badge ${dBd}">${d}</span></td>
+      <td>${r.hasThreshold ? `<span class="num mono">${state.thresholds[r.id]}</span>` : '<span class="muted">—</span>'}</td>
+      <td>${status}</td>
+      <td class="num muted mono">v1</td>
+      <td><button class="btn sm" onclick="toast('规则编辑器开发中：${r.id}')">编辑</button></td></tr>`;
+  }).join("");
+}
+
+function setRuleSearch(v) {
+  state.ruleSearch = v;
+  const tb = document.getElementById("rules-tbody");
+  if (tb) tb.innerHTML = buildRuleRows();
+}
+
+function bindRuleSearch() {
+  const el = document.getElementById("rule-search-input");
+  if (el && !el.dataset.bound) {
+    el.dataset.bound = "1";
+    el.addEventListener("input", (e) => setRuleSearch(e.target.value));
+  }
+}
+
+const FEATURE_CATALOG = [
+  ["inst.handicap_dispersion", "盘口离散", "cross", "scalar", "max(临盘) − min(临盘)", "各机构 current.handicap"],
+  ["inst.home_water_dispersion", "主水离散", "cross", "scalar", "max(临主水) − min(临主水)", "各机构 current.homeWater"],
+  ["temp.handicap_movement", "盘口变动", "temporal", "scalar", "avg(临盘 − 初盘)", "initial/current.handicap"],
+  ["temp.home_water_movement", "主水变动", "temporal", "scalar", "avg(临主水 − 初主水)", "initial/current.homeWater"],
+  ["temp.move_pattern", "盘水形态", "temporal", "enum", "升/降盘 × 降/升水 组合", "handicap_movement × water_movement"],
+  ["temp.stability_flag", "盘口冻结", "temporal", "bool", "盘口变动机构 ≤ 1 家", "所有机构 handicap 时序"],
+  ["temp.home_water_drop_count", "主水下调家数", "temporal", "int", "count(主水变动 ≤ −0.08)", "各机构 homeWater 时序"],
+  ["reso.sync_handicap_count", "同步调盘机构数", "resonance", "int", "同向变动最多家数", "各机构 handicap 时序"],
+  ["reso.consensus_direction", "共识方向", "resonance", "enum", "多数机构动作方向", "sync_handicap_count"],
+  ["anom.kelly_divergence", "凯利背离", "anomaly", "scalar", "max − min 让球盘凯利", "各机构 kelly"],
+  ["anom.volume_anomaly", "量比异常", "anomaly", "scalar", "avg(成交量 / 基线)", "volume / volumeBaseline"],
+  ["onex.home_odds_movement", "主胜赔变", "onex", "scalar", "avg(临主胜 − 初主胜)", "1X2 initial/current.home"],
+  ["onex.kelly_home_max", "主胜凯利最大值", "onex", "scalar", "max 各机构主胜凯利", "onex kelly.home"],
+  ["betfair.dominant_ratio", "资金集中占比", "betfair", "scalar", "max(交易量) / 总量", "betfair rows.volume"]
+];
+function renderFeatureCatalog() {
+  const groups = { cross: "横截面差异", temporal: "时序差异", resonance: "共振差异", anomaly: "衍生异常", onex: "欧指特征", betfair: "必发资金面" };
+  const famList = Object.keys(groups);
+  const cards = famList.map(fam => {
+    const items = FEATURE_CATALOG.filter(f => f[2] === fam);
+    if (!items.length) return "";
+    return `<div class="card"><div class="card-hd"><div class="title"><span class="dot" style="background:${FAM_COLOR[fam]}"></span>${groups[fam]}</div><div class="extra">${items.length} 个特征</div></div>
+      <div class="card-bd">${items.map(([id, name, fam, type, def, inputs]) => `
+        <div class="kv"><div><div style="font-weight:500">${name} <span class="muted mono" style="font-size:11px">${id}</span></div><div class="ff" style="font-family:var(--mono);font-size:11px;color:var(--t-3);margin-top:2px">${def}</div></div>
+        <div style="text-align:right"><span class="badge brand">${type}</span><div class="muted" style="font-size:11px;margin-top:4px">输入：${inputs}</div></div></div>`).join("")}</div></div>`;
+  }).join("");
+  return `<div class="page-head"><div><div class="ph-title">特征目录</div><div class="ph-sub">${FEATURE_CATALOG.length} 个特征定义 · 四族分类 · point-in-time 纯函数 · 版本化不可变</div></div>
+    <div class="ph-actions"><button class="btn sm" onclick="toast('特征契约导出中（占位）')">${ICON.download}导出契约</button><button class="btn sm primary" onclick="toast('新建特征开发中')">${ICON.plus}新建特征</button></div></div>
+    <div class="grid-2">${cards}</div>`;
+}
+
+// ============================ AI 引擎 · 规则挖掘沙箱 ============================
+const AI_CANDIDATES = [
+  { id: "C001", desc: "主胜凯利连续 3 家下调且盘口冻结 → 上盘", samples: 142, acc: 0.61, edge: 0.084, status: "pending" },
+  { id: "C002", desc: "必发主胜资金占比 >50% 且冷热为正 → 风险", samples: 88, acc: 0.55, edge: -0.021, status: "pending" },
+  { id: "C003", desc: "澳门初盘较其余均值深 0.5 且临场不降水 → 下盘", samples: 203, acc: 0.63, edge: 0.110, status: "adopted" },
+  { id: "C004", desc: "欧指主胜离散 >0.4 且主水分歧 → 风险", samples: 167, acc: 0.58, edge: 0.031, status: "pending" },
+  { id: "C005", desc: "升盘降水 + 同步调盘≥4 → 上盘(强信号)", samples: 120, acc: 0.67, edge: 0.150, status: "adopted" },
+  { id: "C006", desc: "降盘升水 + 成交量异常放量 → 下盘", samples: 95, acc: 0.60, edge: 0.070, status: "rejected" }
+];
+function renderAI() {
+  const pending = AI_CANDIDATES.filter(c => c.status === "pending").length;
+  const adopted = AI_CANDIDATES.filter(c => c.status === "adopted").length;
+  const kpis = [["待审候选", pending, "risk"], ["已转正", adopted, "up"], ["模型 AUC", "0.72", "brand"], ["最近挖掘", "2h前", "info"]];
+  const kpiHtml = `<div class="kpi-row">${kpis.map(([t, v, c]) => `<div class="kpi ${c}"><div class="kpi-v">${v}</div><div class="kpi-t">${t}</div></div>`).join("")}</div>`;
+  const steps = ["数据接入", "特征工程", "候选生成", "专家审核", "转正入库"];
+  const stepper = `<div class="ai-stepper">${steps.map((s, i) => `<div class="ai-step ${i < 3 ? "done" : ""} ${i === 3 ? "current" : ""}"><div class="ai-step-dot">${i < 3 ? "✓" : (i + 1)}</div><div class="ai-step-label">${s}</div></div>${i < steps.length - 1 ? '<div class="ai-step-line"></div>' : ""}`).join("")}</div>`;
+  const rows = AI_CANDIDATES.map(c => {
+    const st = c.status === "adopted" ? '<span class="badge up">已采纳</span>' : (c.status === "rejected" ? '<span class="badge down">已驳回</span>' : '<span class="badge risk">待审</span>');
+    const edgeCls = c.edge >= 0 ? "up" : "down";
+    const actions = c.status === "pending" ? `<button class="btn sm primary" onclick="adoptCandidate('${c.id}')">${ICON.check}采纳</button><button class="btn sm" onclick="rejectCandidate('${c.id}')">${ICON.x}驳回</button>` : '<span class="muted">—</span>';
+    return `<tr>
+      <td class="l"><span class="rule-id">${c.id}</span></td>
+      <td class="l">${c.desc}</td>
+      <td class="num">${c.samples}</td>
+      <td class="num">${(c.acc * 100).toFixed(0)}%</td>
+      <td class="num ${edgeCls}">${c.edge >= 0 ? "+" : ""}${c.edge.toFixed(3)}</td>
+      <td>${st}</td>
+      <td>${actions}</td></tr>`;
+  }).join("");
+  return `<div class="page-head"><div><div class="ph-title">AI 引擎</div><div class="ph-sub">规则自动挖掘 · 沙箱审核 · 模型表现监控</div></div>
+    <div class="ph-actions"><button class="btn sm primary" onclick="toast('挖掘任务已提交（占位）')">${ICON.spark}新建挖掘任务</button></div></div>
+    ${kpiHtml}
+    <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">${ICON.cpu}挖掘流水线</div><div class="extra">实时</div></div><div class="card-bd">${stepper}</div></div>
+    <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">候选规则 (${AI_CANDIDATES.length})</div><div class="extra">采纳后转正入规则库</div></div>
+      <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">ID</th><th class="l">规则描述</th><th>样本</th><th>命中率</th><th>edge</th><th>状态</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+function adoptCandidate(id) { const c = AI_CANDIDATES.find(x => x.id === id); if (c) c.status = "adopted"; render(); toast(`已采纳 ${id}`); }
+function rejectCandidate(id) { const c = AI_CANDIDATES.find(x => x.id === id); if (c) c.status = "rejected"; render(); toast(`已驳回 ${id}`); }
+
+// ============================ 设置 ============================
+function renderSettings() {
+  const s = state.settings;
+  const famList = [["temporal", "时序"], ["cross", "横截面"], ["resonance", "共振"], ["anomaly", "异常"], ["onex", "欧指"], ["betfair", "必发"], ["unknown", "占位"]];
+  const famChips = famList.map(([k, l]) => `<span class="chip ${s.families[k] ? "active" : ""}" onclick="toggleFam('${k}')">${l}</span>`).join("");
+  return `<div class="page-head"><div><div class="ph-title">设置</div><div class="ph-sub">数据源 · 引擎参数 · 外观</div></div>
+    <div class="ph-actions"><button class="btn sm primary" onclick="saveSettings()">${ICON.check}保存</button><button class="btn sm" onclick="resetSettings()">${ICON.replay}恢复默认</button></div></div>
+    <div class="settings-grid">
+      <div class="card"><div class="card-hd"><div class="title">${ICON.home}数据源（中国体育彩票）</div></div><div class="card-bd">
+        <div class="setting-row"><label>竞彩接口地址</label><input class="inp" value="${s.apiUrl}" oninput="updateSetting('apiUrl',this.value)" placeholder="https://api.sporttery.cn/..."></div>
+        <div class="setting-row"><label>接口密钥</label><input class="inp" type="password" value="${s.apiKey}" oninput="updateSetting('apiKey',this.value)" placeholder="在设置页配置"></div>
+        <div class="setting-row"><label>同步频率</label><select class="inp" onchange="updateSetting('sync',this.value)">${["5m", "15m", "30m", "1h", "手动"].map(o => `<option ${s.sync === o ? "selected" : ""}>${o}</option>`).join("")}</select></div>
+        <div class="setting-note">原型阶段以本地赛事模拟接口返回；接入真实竞彩接口后替换 lottery.js 的 fetchLotteryMatches()。</div>
+      </div></div>
+      <div class="card"><div class="card-hd"><div class="title">规则引擎</div></div><div class="card-bd">
+        <div class="setting-row"><label>置信度口径</label>
+          <div class="seg">
+            <button class="seg-btn ${s.confMetric === "hit" ? "active" : ""}" onclick="setConfMetric('hit')">命中率</button>
+            <button class="seg-btn ${s.confMetric === "edge" ? "active" : ""}" onclick="setConfMetric('edge')">edge / ROI</button>
+          </div>
+        </div>
+        <div class="setting-note ${s.confMetric === "edge" ? "warn" : ""}">${s.confMetric === "edge" ? "edge/ROI 度量已在路线图中，当前引擎仍以命中率加权（Phase 2 实现）。" : "让球盘基础胜率天然≈50%，建议后续切换为 edge/ROI 口径以度量真实优势。"}</div>
+        <div class="setting-row"><label>风险偏好</label>
+          <div class="seg">
+            <button class="seg-btn ${s.riskPref === "conservative" ? "active" : ""}" onclick="setRiskPref('conservative')">保守</button>
+            <button class="seg-btn ${s.riskPref === "balanced" ? "active" : ""}" onclick="setRiskPref('balanced')">平衡</button>
+            <button class="seg-btn ${s.riskPref === "aggressive" ? "active" : ""}" onclick="setRiskPref('aggressive')">激进</button>
+          </div>
+        </div>
+        <div class="setting-row col"><label>默认启用规则族</label><div class="filter-chips">${famChips}</div></div>
+      </div></div>
+      <div class="card"><div class="card-hd"><div class="title">关于</div></div><div class="card-bd">
+        <div class="setting-row"><label>版本</label><span class="muted mono">v0.5 (交互原型)</span></div>
+        <div class="setting-row"><label>数据来源</label><span class="muted">竞彩官方接口（模拟）</span></div>
+        <div class="setting-note">本原型为产品级交互验证，后续开发将完全照此实现。规则引擎(RULES) / 特征层(features) / 数据层(data) 已解耦。</div>
+      </div></div>
+    </div>`;
+}
+function updateSetting(k, v) { state.settings[k] = v; persistSettings(); }
+function setConfMetric(m) { state.settings.confMetric = m; persistSettings(); document.getElementById("main").innerHTML = `<div class="page">${renderSettings()}</div>`; }
+function setRiskPref(p) { state.settings.riskPref = p; persistSettings(); document.getElementById("main").innerHTML = `<div class="page">${renderSettings()}</div>`; }
+function toggleFam(k) { state.settings.families[k] = !state.settings.families[k]; persistSettings(); document.getElementById("main").innerHTML = `<div class="page">${renderSettings()}</div>`; }
+function saveSettings() { persistSettings(); toast("设置已保存"); }
+function resetSettings() { state.settings = defaultSettings(); persistSettings(); render(); toast("已恢复默认"); }
+
+// ============================ 交互 ============================
+function selectMatch(id) { state.matchId = id; render(); }
+function switchView(v) { state.view = v; render(); }
+function toggleFollow() { state.followed[state.matchId] = !state.followed[state.matchId]; render(); toast(state.followed[state.matchId] ? "已加入关注" : "已取消关注"); }
+function setMatchFilter(f) { state.matchFilter = f; render(); }
+function toggleRule(id, on) { state.enabled[id] = on; render(); }
+function updateThrDisplay(el, id, key) {
+  const v = (key === "ratio" || key === "kelly") ? parseFloat(el.value) : parseInt(el.value, 10);
+  state.thresholds[id] = v;
+  const vEl = el.parentElement.querySelector(".v");
+  if (vEl) vEl.textContent = v;
+}
+function changeThr(id, key, val) { state.thresholds[id] = (key === "ratio" || key === "kelly") ? parseFloat(val) : parseInt(val, 10); render(); }
+function setRuleFam(f) { state.ruleFamFilter = f; document.getElementById("main").innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
+function resetRules() { RULES.forEach(r => { state.enabled[r.id] = true; if (r.hasThreshold) state.thresholds[r.id] = r.threshold; }); render(); }
+
+// ============================ 顶栏全局搜索 ============================
+function bindGlobalSearch() {
+  const input = document.getElementById("global-search-input");
+  const pop = document.getElementById("search-popover");
+  if (!input || !pop) return;
+
+  input.addEventListener("input", () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { pop.classList.remove("show"); return; }
+    const mMatches = MATCHES.filter(m => (m.home + m.away + m.league).toLowerCase().includes(q)).slice(0, 4);
+    const rMatches = RULES.filter(r => (r.name + r.id).toLowerCase().includes(q)).slice(0, 4);
+    const fMatches = FEATURE_CATALOG.filter(f => (f[0] + f[1]).toLowerCase().includes(q)).slice(0, 4);
+    let html = "";
+    if (mMatches.length) html += `<div class="sp-group">比赛</div>` + mMatches.map(m => `<div class="sp-item" onclick="goSearchMatch('${m.id}')"><span>${m.home} vs ${m.away}</span><span class="sp-tag">${m.league}</span></div>`).join("");
+    if (rMatches.length) html += `<div class="sp-group">规则</div>` + rMatches.map(r => `<div class="sp-item" onclick="goSearchRule('${r.id}')"><span>${r.id} ${r.name}</span><span class="sp-tag">${r.family}</span></div>`).join("");
+    if (fMatches.length) html += `<div class="sp-group">特征</div>` + fMatches.map(f => `<div class="sp-item" onclick="goSearchFeature('${f[1]}')"><span>${f[1]}</span><span class="sp-tag mono">${f[0]}</span></div>`).join("");
+    if (!html) html = `<div class="sp-empty">未找到匹配项</div>`;
+    pop.innerHTML = html;
+    pop.classList.add("show");
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const q = input.value.trim().toLowerCase();
+      const m = MATCHES.find(m => (m.home + m.away).toLowerCase().includes(q));
+      if (m) { goSearchMatch(m.id); return; }
+      const r = RULES.find(r => (r.name + r.id).toLowerCase().includes(q));
+      if (r) { goSearchRule(r.id); return; }
+      toast("未找到匹配项");
+    }
+    if (e.key === "Escape") { pop.classList.remove("show"); input.blur(); }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#global-search")) pop.classList.remove("show");
+  });
+}
+
+function closeGlobalSearch() {
+  const pop = document.getElementById("search-popover");
+  if (pop) pop.classList.remove("show");
+  const input = document.getElementById("global-search-input");
+  if (input) input.value = "";
+}
+
+function goSearchMatch(id) { closeGlobalSearch(); enterAnalysis(id); }
+function goSearchRule(id) {
+  closeGlobalSearch();
+  state.page = "rules"; state.ruleTab = "rules"; state.ruleFamFilter = "all"; state.ruleSearch = id;
+  render();
+}
+function goSearchFeature(name) {
+  closeGlobalSearch();
+  state.page = "rules"; state.ruleTab = "features";
+  render();
+  toast(`特征：${name}`);
+}
+
+// ============================ 启动 ============================
+bindGlobalSearch();
+render();

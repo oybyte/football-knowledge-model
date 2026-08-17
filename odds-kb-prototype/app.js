@@ -13,7 +13,9 @@ const App = {
     selectedRule: null,
     editingRule: null,
     showModal: false,
-    modalMode: 'create' // 'create' | 'edit'
+    modalMode: 'create', // 'create' | 'edit'
+    expandedRules: new Set(),
+    pendingDelete: null
   },
 
   init() {
@@ -40,6 +42,7 @@ const App = {
     this.state.selectedRule = null;
     this.state.searchQuery = '';
     this.state.currentCategory = 'all';
+    this.state.expandedRules = new Set();
 
     // Update nav
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -151,22 +154,6 @@ const App = {
   // --- Rules ---
   renderRules() {
     const cat = this.state.currentCategory;
-    const q = this.state.searchQuery.toLowerCase();
-
-    let filtered = this.state.rules;
-    if (cat !== 'all') filtered = filtered.filter(r => r.category === cat);
-    if (q) filtered = filtered.filter(r =>
-      r.title.toLowerCase().includes(q) ||
-      r.tags.some(t => t.toLowerCase().includes(q)) ||
-      r.conclusion.toLowerCase().includes(q)
-    );
-
-    const catNames = { odds_change: '盘口变化', institution_diff: '机构差异', sensitivity: '数据敏感度', league_feature: '联赛特征' };
-    const dirNames = {
-      favor_upper: '利好上盘', favor_lower: '利好下盘', favor_home: '利好主队',
-      reversal: '反向操作', follow: '跟随方向', warning: '预警',
-      neutral: '中性', caution: '谨慎', under: '倾向小球', follow_volume: '跟随成交量'
-    };
 
     document.getElementById('rules-content').innerHTML = `
       <div class="search-bar">
@@ -174,7 +161,7 @@ const App = {
           <span class="search-icon">🔍</span>
           <input class="form-input" id="rule-search" type="text" placeholder="搜索规则标题、标签、结论..." value="${this.state.searchQuery}">
         </div>
-        <select class="form-select" id="rule-category-filter" style="width:auto;min-width:140px;">
+        <select class="form-select" id="rule-category-filter">
           <option value="all" ${cat === 'all' ? 'selected' : ''}>全部类别</option>
           <option value="odds_change" ${cat === 'odds_change' ? 'selected' : ''}>盘口变化</option>
           <option value="institution_diff" ${cat === 'institution_diff' ? 'selected' : ''}>机构差异</option>
@@ -198,72 +185,110 @@ const App = {
               <th>操作</th>
             </tr>
           </thead>
-          <tbody>
-            ${filtered.length === 0 ? `
-              <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">未找到匹配的规则</td></tr>
-            ` : filtered.map(r => `
-              <tr id="rule-row-${r.id}" class="rule-row" style="cursor:pointer;" onclick="App.toggleRuleDetail('${r.id}')">
-                <td><span style="font-family:var(--font-mono);font-size:12px;color:var(--accent-blue);">${r.id}</span></td>
-                <td>${catNames[r.category] || r.categoryName}</td>
-                <td style="font-weight:500;">${r.title}</td>
-                <td><span class="direction ${r.direction}">${dirNames[r.direction] || r.direction}</span></td>
-                <td>
-                  <div class="confidence-bar">
-                    <div class="bar-track">
-                      <div class="bar-fill ${r.confidence >= 0.7 ? 'high' : r.confidence >= 0.6 ? 'medium' : 'low'}" style="width:${(r.confidence * 100).toFixed(0)}%"></div>
-                    </div>
-                    <span class="bar-value">${(r.confidence * 100).toFixed(0)}%</span>
-                  </div>
-                </td>
-                <td style="font-family:var(--font-mono);">${r.evidenceCount}</td>
-                <td>
-                  ${r.tags.slice(0, 3).map(t => `<span class="tag tag-blue">${t}</span>`).join('')}
-                  ${r.tags.length > 3 ? `<span class="tag tag-blue">+${r.tags.length - 3}</span>` : ''}
-                </td>
-                <td>
-                  <button class="btn btn-sm" onclick="event.stopPropagation();App.openRuleModal('edit','${r.id}')">编辑</button>
-                  <button class="btn btn-sm" style="color:var(--accent-red);" onclick="event.stopPropagation();App.deleteRule('${r.id}')">删除</button>
-                </td>
-              </tr>
-              <tr id="rule-detail-${r.id}" style="display:none;">
-                <td colspan="8">
-                  <div class="rule-detail-panel">
-                    <div class="detail-row"><span class="detail-label">触发条件</span><span class="detail-value">${r.condition.pattern}</span></div>
-                    <div class="detail-row"><span class="detail-label">详细参数</span><span class="detail-value">${JSON.stringify(r.condition.trigger, null, 2)}</span></div>
-                    <div class="detail-row"><span class="detail-label">结论</span><span class="detail-value">${r.conclusion}</span></div>
-                    <div class="detail-row"><span class="detail-label">来源</span><span class="detail-value">${r.source}</span></div>
-                    <div class="detail-row"><span class="detail-label">关联规则</span><span class="detail-value">${r.relatedRules.length > 0 ? r.relatedRules.join(', ') : '无'}</span></div>
-                    <div class="detail-row"><span class="detail-label">创建时间</span><span class="detail-value">${r.createdAt}</span></div>
-                    <div class="detail-row"><span class="detail-label">更新时间</span><span class="detail-value">${r.updatedAt}</span></div>
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
+          <tbody id="rule-table-body"></tbody>
         </table>
       </div>
     `;
 
-    // Bind events
+    // Bind events (only once per full render, keeps input focus intact)
     document.getElementById('rule-search').addEventListener('input', (e) => {
       this.state.searchQuery = e.target.value;
-      this.renderRules();
+      this.renderRuleTable();
     });
     document.getElementById('rule-category-filter').addEventListener('change', (e) => {
       this.state.currentCategory = e.target.value;
-      this.renderRules();
+      this.renderRuleTable();
     });
+
+    this.renderRuleTable();
+  },
+
+  // Render only the table body — avoids rebuilding the search input (focus loss)
+  renderRuleTable() {
+    const tbody = document.getElementById('rule-table-body');
+    if (!tbody) return;
+
+    const cat = this.state.currentCategory;
+    const q = this.state.searchQuery.toLowerCase();
+
+    let filtered = this.state.rules;
+    if (cat !== 'all') filtered = filtered.filter(r => r.category === cat);
+    if (q) filtered = filtered.filter(r =>
+      r.title.toLowerCase().includes(q) ||
+      r.tags.some(t => t.toLowerCase().includes(q)) ||
+      r.conclusion.toLowerCase().includes(q)
+    );
+
+    const catNames = { odds_change: '盘口变化', institution_diff: '机构差异', sensitivity: '数据敏感度', league_feature: '联赛特征' };
+    const dirNames = {
+      favor_upper: '利好上盘', favor_lower: '利好下盘', favor_home: '利好主队',
+      reversal: '反向操作', follow: '跟随方向', warning: '预警',
+      neutral: '中性', caution: '谨慎', under: '倾向小球', follow_volume: '跟随成交量'
+    };
+
+    tbody.innerHTML = filtered.length === 0 ? `
+      <tr><td colspan="8" class="empty-cell">未找到匹配的规则</td></tr>
+    ` : filtered.map(r => {
+      const expanded = this.state.expandedRules.has(r.id);
+      return `
+        <tr id="rule-row-${r.id}" class="rule-row" onclick="App.toggleRuleDetail('${r.id}')">
+          <td><span class="rule-id">${r.id}</span></td>
+          <td>${catNames[r.category] || r.categoryName}</td>
+          <td class="rule-title-cell">
+            <span id="arrow-${r.id}" class="expand-arrow">${expanded ? '▼' : '▶'}</span>
+            ${r.title}
+          </td>
+          <td><span class="direction ${r.direction}">${dirNames[r.direction] || r.direction}</span></td>
+          <td>
+            <div class="confidence-bar">
+              <div class="bar-track">
+                <div class="bar-fill ${r.confidence >= 0.7 ? 'high' : r.confidence >= 0.6 ? 'medium' : 'low'}" style="width:${(r.confidence * 100).toFixed(0)}%"></div>
+              </div>
+              <span class="bar-value">${(r.confidence * 100).toFixed(0)}%</span>
+            </div>
+          </td>
+          <td class="mono-cell">${r.evidenceCount}</td>
+          <td>
+            ${r.tags.slice(0, 3).map(t => `<span class="tag tag-blue">${t}</span>`).join('')}
+            ${r.tags.length > 3 ? `<span class="tag tag-blue">+${r.tags.length - 3}</span>` : ''}
+          </td>
+          <td class="action-cell">
+            <button class="btn btn-sm" onclick="event.stopPropagation();App.openRuleModal('edit','${r.id}')">编辑</button>
+            <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();App.deleteRule('${r.id}')">删除</button>
+          </td>
+        </tr>
+        <tr id="rule-detail-${r.id}" class="rule-detail-row" style="display:${expanded ? 'table-row' : 'none'};">
+          <td colspan="8">
+            <div class="rule-detail-panel">
+              <div class="detail-row"><span class="detail-label">触发条件</span><span class="detail-value">${r.condition.pattern}</span></div>
+              <div class="detail-row"><span class="detail-label">详细参数</span><span class="detail-value">${JSON.stringify(r.condition.trigger, null, 2)}</span></div>
+              <div class="detail-row"><span class="detail-label">结论</span><span class="detail-value">${r.conclusion}</span></div>
+              <div class="detail-row"><span class="detail-label">来源</span><span class="detail-value">${r.source}</span></div>
+              <div class="detail-row"><span class="detail-label">关联规则</span><span class="detail-value">${r.relatedRules.length > 0 ? r.relatedRules.join(', ') : '无'}</span></div>
+              <div class="detail-row"><span class="detail-label">创建时间</span><span class="detail-value">${r.createdAt}</span></div>
+              <div class="detail-row"><span class="detail-label">更新时间</span><span class="detail-value">${r.updatedAt}</span></div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
   },
 
   toggleRuleDetail(id) {
     const detailRow = document.getElementById('rule-detail-' + id);
-    if (detailRow) {
-      const isVisible = detailRow.style.display !== 'none';
-      detailRow.style.display = isVisible ? 'none' : 'table-row';
-      if (!isVisible) {
-        detailRow.classList.add('highlight-row');
-        setTimeout(() => detailRow.classList.remove('highlight-row'), 2000);
-      }
+    if (!detailRow) return;
+    const isVisible = detailRow.style.display !== 'none';
+    detailRow.style.display = isVisible ? 'none' : 'table-row';
+
+    const arrow = document.getElementById('arrow-' + id);
+    if (isVisible) {
+      this.state.expandedRules.delete(id);
+      if (arrow) arrow.textContent = '▶';
+    } else {
+      this.state.expandedRules.add(id);
+      if (arrow) arrow.textContent = '▼';
+      detailRow.classList.add('highlight-row');
+      setTimeout(() => detailRow.classList.remove('highlight-row'), 2000);
     }
   },
 
@@ -281,6 +306,7 @@ const App = {
   closeRuleModal() {
     this.state.showModal = false;
     this.state.editingRule = null;
+    this.state.pendingDelete = null;
     document.getElementById('rule-modal').innerHTML = '';
   },
 
@@ -312,7 +338,7 @@ const App = {
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">规则标题</label>
+              <label class="form-label">规则标题 <span class="required-mark">*</span></label>
               <input class="form-input" id="form-title" value="${isEdit ? rule.title : ''}" placeholder="例如：临场升盘降水 — 利好上盘">
             </div>
             <div class="form-group">
@@ -325,7 +351,7 @@ const App = {
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label">结论</label>
+                <label class="form-label">结论 <span class="required-mark">*</span></label>
                 <input class="form-input" id="form-conclusion" value="${isEdit ? rule.conclusion : ''}" placeholder="规则结论">
               </div>
               <div class="form-group">
@@ -371,21 +397,51 @@ const App = {
   },
 
   saveRule(ruleId) {
+    const title = document.getElementById('form-title').value.trim();
+    const conclusion = document.getElementById('form-conclusion').value.trim();
+
+    if (!title) {
+      this.showToast('规则标题不能为空', 'error');
+      this._highlightField('form-title');
+      return;
+    }
+    if (!conclusion) {
+      this.showToast('结论不能为空', 'error');
+      this._highlightField('form-conclusion');
+      return;
+    }
+
+    let trigger;
+    try {
+      trigger = JSON.parse(document.getElementById('form-trigger').value);
+    } catch (e) {
+      this.showToast('触发条件 JSON 格式错误，请检查', 'error');
+      this._highlightField('form-trigger');
+      return;
+    }
+
+    const confidence = parseFloat(document.getElementById('form-confidence').value);
+    if (isNaN(confidence) || confidence < 0 || confidence > 1) {
+      this.showToast('置信度必须在 0-1 之间', 'error');
+      this._highlightField('form-confidence');
+      return;
+    }
+
     const data = {
       id: document.getElementById('form-rule-id').value || 'R' + String(this.state.rules.length + 1).padStart(3, '0'),
       category: document.getElementById('form-category').value,
       categoryName: { odds_change: '盘口变化', institution_diff: '机构差异', sensitivity: '数据敏感度', league_feature: '联赛特征' }[document.getElementById('form-category').value],
-      title: document.getElementById('form-title').value,
+      title,
       condition: {
-        pattern: document.getElementById('form-pattern').value,
-        trigger: JSON.parse(document.getElementById('form-trigger').value)
+        pattern: document.getElementById('form-pattern').value.trim(),
+        trigger
       },
-      conclusion: document.getElementById('form-conclusion').value,
+      conclusion,
       direction: document.getElementById('form-direction').value,
-      confidence: parseFloat(document.getElementById('form-confidence').value),
-      evidenceCount: parseInt(document.getElementById('form-evidence').value),
+      confidence,
+      evidenceCount: parseInt(document.getElementById('form-evidence').value) || 0,
       tags: document.getElementById('form-tags').value.split(',').map(t => t.trim()).filter(Boolean),
-      source: document.getElementById('form-source').value,
+      source: document.getElementById('form-source').value.trim(),
       relatedRules: [],
       createdAt: new Date().toISOString().slice(0, 10),
       updatedAt: new Date().toISOString().slice(0, 10),
@@ -414,17 +470,55 @@ const App = {
   },
 
   deleteRule(ruleId) {
-    if (!confirm('确定删除规则 ' + ruleId + '？此操作不可撤销。')) return;
-    const idx = this.state.rules.findIndex(r => r.id === ruleId);
-    if (idx >= 0) {
-      const cat = this.state.rules[idx].category;
-      this.state.rules.splice(idx, 1);
-      this.state.stats.totalRules = this.state.rules.length;
-      this.state.stats.rulesByCategory[cat] = Math.max(0, (this.state.stats.rulesByCategory[cat] || 1) - 1);
-      this.showToast('规则已删除', 'success');
-      this.renderRules();
-      this.renderDashboard();
-    }
+    this.showConfirm('删除规则', `确定删除规则 ${ruleId}？此操作不可撤销。`, () => {
+      const idx = this.state.rules.findIndex(r => r.id === ruleId);
+      if (idx >= 0) {
+        const cat = this.state.rules[idx].category;
+        this.state.rules.splice(idx, 1);
+        this.state.stats.totalRules = this.state.rules.length;
+        this.state.stats.rulesByCategory[cat] = Math.max(0, (this.state.stats.rulesByCategory[cat] || 1) - 1);
+        this.showToast('规则已删除', 'success');
+        this.renderRules();
+        this.renderDashboard();
+      }
+    });
+  },
+
+  // Custom confirm dialog (replaces native confirm)
+  showConfirm(title, message, onConfirm) {
+    this.state.pendingDelete = onConfirm;
+    document.getElementById('rule-modal').innerHTML = `
+      <div class="modal-overlay" onclick="App.closeRuleModal()">
+        <div class="modal modal-confirm" onclick="event.stopPropagation()">
+          <div class="modal-header">
+            <span class="modal-title">${title}</span>
+            <button class="modal-close" onclick="App.closeRuleModal()">x</button>
+          </div>
+          <div class="modal-body">
+            <div class="confirm-icon">⚠</div>
+            <p class="confirm-message">${message}</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn" onclick="App.closeRuleModal()">取消</button>
+            <button class="btn btn-danger" onclick="App.confirmAction()">确认删除</button>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  confirmAction() {
+    const fn = this.state.pendingDelete;
+    this.closeRuleModal();
+    if (fn) fn();
+  },
+
+  _highlightField(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('form-error');
+    el.focus();
+    setTimeout(() => el.classList.remove('form-error'), 2000);
   },
 
   // --- Matches ---
@@ -538,7 +632,13 @@ const App = {
   runMatchAnalysis() {
     this.showToast('正在重新分析比赛数据...', 'info');
     setTimeout(() => {
-      this.showToast('分析完成，规则匹配已更新', 'success');
+      // Simulate live odds movement: nudge one random match's current water levels
+      const m = this.state.matches[Math.floor(Math.random() * this.state.matches.length)];
+      Object.values(m.odds).forEach(o => {
+        o.current.upper = Math.round((o.current.upper + (Math.random() - 0.5) * 0.02) * 100) / 100;
+        o.current.lower = Math.round((o.current.lower + (Math.random() - 0.5) * 0.02) * 100) / 100;
+      });
+      this.showToast(`分析完成：${m.homeTeam} vs ${m.awayTeam} 水位已更新`, 'success');
       this.renderMatches();
     }, 800);
   },

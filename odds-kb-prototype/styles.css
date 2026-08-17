@@ -160,7 +160,11 @@ body {
   padding: 2px 6px;
   border-radius: 10px;
   font-weight: 600;
+  min-width: 20px;
+  text-align: center;
 }
+
+.nav-badge.yellow { background: var(--accent-yellow); }
 
 /* --- Main Content --- */
 .main-content {
@@ -197,7 +201,7 @@ body {
 .page-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 20px 20px 40px;
 }
 
 /* --- Cards --- */
@@ -308,13 +312,13 @@ body {
 }
 
 .btn-danger {
-  background: var(--accent-red);
+  background: transparent;
   border-color: var(--accent-red);
-  color: #fff;
+  color: var(--accent-red);
 }
 
 .btn-danger:hover {
-  background: #d93a3a;
+  background: rgba(248, 81, 73, 0.1);
 }
 
 .btn-sm {
@@ -369,6 +373,58 @@ td {
 
 tr:hover td {
   background: rgba(88, 166, 255, 0.04);
+}
+
+/* --- Table extensions --- */
+.empty-cell {
+  text-align: center;
+  padding: 40px 16px !important;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.rule-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.rule-title-cell {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.expand-arrow {
+  display: inline-block;
+  width: 16px;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-right: 4px;
+  transition: transform 0.15s;
+}
+
+.mono-cell {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.action-cell {
+  white-space: nowrap;
+}
+
+/* Rule detail row — highlight animation on expand */
+.rule-detail-row.highlight-row td {
+  animation: highlightPulse 2s ease;
+}
+
+.rule-detail-row td {
+  padding: 0 !important;
+  border-bottom: none;
+}
+
+.rule-detail-row:hover td {
+  background: transparent;
 }
 
 /* --- Tags / Badges --- */
@@ -477,11 +533,28 @@ tr:hover td {
   box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
 }
 
+.form-input[readonly] {
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  cursor: not-allowed;
+}
+
 .form-textarea {
   resize: vertical;
   min-height: 80px;
   font-family: var(--font-mono);
   font-size: 12px;
+}
+
+/* Form error highlight */
+.form-error {
+  border-color: var(--accent-red) !important;
+  box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.15) !important;
+}
+
+.required-mark {
+  color: var(--accent-red);
+  margin-left: 2px;
 }
 
 .form-select {
@@ -504,6 +577,7 @@ tr:hover td {
   justify-content: center;
   z-index: 1000;
   backdrop-filter: blur(2px);
+  animation: fadeIn 0.2s ease;
 }
 
 .modal {
@@ -515,6 +589,35 @@ tr:hover td {
   max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  animation: modalIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Confirm dialog */
+.modal-confirm {
+  max-width: 420px;
+}
+
+.confirm-icon {
+  font-size: 28px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.confirm-message {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .modal-header {
@@ -592,6 +695,11 @@ tr:hover td {
   padding-left: 36px;
 }
 
+.search-bar .form-select {
+  width: auto;
+  min-width: 140px;
+}
+
 /* --- Match Analysis --- */
 .match-card {
   background: var(--bg-card);
@@ -600,7 +708,6 @@ tr:hover td {
   padding: 16px 20px;
   margin-bottom: 12px;
   transition: var(--transition);
-  cursor: pointer;
 }
 
 .match-card:hover {
@@ -643,6 +750,11 @@ tr:hover td {
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
+  transition: var(--transition);
+}
+
+.odds-item:hover {
+  box-shadow: 0 0 0 1px var(--border-active);
 }
 
 .odds-item .inst-name {
@@ -728,12 +840,18 @@ tr:hover td {
   transition: var(--transition);
 }
 
+.sensitivity-card:hover {
+  border-color: var(--border-active);
+}
+
 .sensitivity-card.warning {
   border-color: var(--accent-yellow);
+  background: rgba(210, 153, 29, 0.05);
 }
 
 .sensitivity-card.danger {
   border-color: var(--accent-red);
+  background: rgba(248, 81, 73, 0.05);
 }
 
 .sensitivity-card .sens-header {
@@ -842,7 +960,7 @@ tr:hover td {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
-  margin-top: 12px;
+  margin: 12px;
 }
 
 .rule-detail-panel .detail-row {
@@ -861,6 +979,9 @@ tr:hover td {
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
 }
 
 /* --- Scrollbar --- */
@@ -920,11 +1041,22 @@ tr:hover td {
   .form-row {
     grid-template-columns: 1fr;
   }
+  .table-container table {
+    min-width: 720px;
+  }
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* --- Page visibility --- */
 .page { display: none; }
-.page.active { display: block; }
+.page.active { display: block; animation: pageIn 0.25s ease; }
+
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* --- Highlight animation --- */
 @keyframes highlightPulse {
