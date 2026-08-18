@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据模型定义 1.0.0 — G12</title>
+<style>
+:root {
+  --bg: #0b0e14; --bg2: #131820; --bg3: #1a2235;
+  --ink: #e2e8f0; --muted: #8899b0; --muted2: #5a6a80;
+  --rule: #1e2a3a; --accent: #60a5fa; --accent2: #34d399;
+  --accent3: #fbbf24; --danger: #f87171; --warn: #f59e0b;
+  --success: #34d399; --purple: #a78bfa; --pink: #f472b6; --orange: #fb923c;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7; font-size: 15px;
+}
+.page-wrapper { display: flex; min-height: 100vh; }
+.toc-sidebar {
+  width: 260px; flex-shrink: 0; background: var(--bg2);
+  border-right: 1px solid var(--rule); position: sticky; top: 0;
+  height: 100vh; overflow-y: auto; padding: 24px 16px;
+}
+.toc-sidebar h2 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted2); margin-bottom: 12px; padding: 0 8px;
+}
+.toc-sidebar nav ul { list-style: none; }
+.toc-sidebar nav li { margin-bottom: 2px; }
+.toc-sidebar nav a {
+  display: block; padding: 6px 12px; font-size: 13px;
+  color: var(--muted); text-decoration: none; border-radius: 4px;
+  border-left: 2px solid transparent; transition: all 0.15s;
+}
+.toc-sidebar nav a:hover { color: var(--ink); background: var(--bg3); }
+.toc-sidebar nav a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(96,165,250,0.08); }
+.content-area { flex: 1; max-width: 1000px; margin: 0 auto; padding: 48px 40px 80px; }
+
+h1 { font-size: 30px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+h1 + .subtitle { font-size: 15px; color: var(--muted); margin-bottom: 28px; }
+h2 {
+  font-size: 22px; font-weight: 700;
+  margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule); letter-spacing: -0.01em;
+}
+h3 { font-size: 17px; font-weight: 700; color: var(--accent); margin-top: 32px; margin-bottom: 12px; }
+h4 { font-size: 15px; font-weight: 700; margin-top: 20px; margin-bottom: 8px; }
+p { margin-bottom: 14px; }
+code {
+  font-family: 'JetBrainsMono', 'Consolas', monospace; font-size: 0.88em;
+  background: var(--bg3); padding: 2px 6px; border-radius: 3px; color: var(--accent2);
+}
+pre {
+  background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 16px 20px; overflow-x: auto; margin: 16px 0; font-size: 13px; line-height: 1.6;
+}
+pre code { background: none; padding: 0; color: var(--ink); font-size: 13px; }
+.t-keyword { color: var(--purple); } .t-type { color: var(--accent); } .t-string { color: var(--success); }
+.t-comment { color: var(--muted2); } .t-number { color: var(--orange); } .t-property { color: var(--accent2); }
+
+.table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--rule); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; padding: 10px 14px; background: var(--bg3);
+  color: var(--muted); font-weight: 600; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--rule); white-space: nowrap;
+}
+td { padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(96,165,250,0.03); }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-green { background: rgba(52,211,153,0.15); color: var(--accent2); }
+.badge-yellow { background: rgba(245,158,11,0.15); color: var(--warn); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--danger); }
+.badge-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--accent); }
+.badge-cyan { background: rgba(52,211,153,0.15); color: var(--accent2); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: rgba(96,165,250,0.06);
+  padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 14px;
+}
+.callout.warn { border-left-color: var(--warn); background: rgba(245,158,11,0.06); }
+.callout.danger { border-left-color: var(--danger); background: rgba(248,113,113,0.06); }
+.callout.success { border-left-color: var(--success); background: rgba(52,211,153,0.06); }
+.callout-title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
+
+.card { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 20px; margin: 16px 0; }
+.card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 16px 0; }
+.card-item { background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; }
+.card-item h4 { margin-top: 0; }
+
+.doc-header { margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
+.doc-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 12px; }
+.doc-meta span { display: flex; align-items: center; gap: 4px; }
+
+ul, ol { margin-bottom: 14px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+
+@media (max-width: 900px) {
+  .toc-sidebar { display: none; }
+  .content-area { padding: 32px 20px 60px; }
+  .card-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+<aside class="toc-sidebar">
+  <h2>目录</h2>
+  <nav>
+    <ul>
+      <li><a href="#sec-1">1. 设计原则与约束</a></li>
+      <li><a href="#sec-2">2. 实体关系总览</a></li>
+      <li><a href="#sec-3">3. 核心表定义</a></li>
+      <li><a href="#sec-4">4. 支撑表定义</a></li>
+      <li><a href="#sec-5">5. Append-only 约束实现</a></li>
+      <li><a href="#sec-6">6. 索引设计</a></li>
+      <li><a href="#sec-7">7. 字段注册表 JSON Schema</a></li>
+      <li><a href="#sec-8">8. DDL 脚本</a></li>
+      <li><a href="#sec-9">9. 与架构映射对照</a></li>
+    </ul>
+  </nav>
+</aside>
+
+<main class="content-area">
+
+<div class="doc-header">
+  <h1>数据模型定义 1.0.0</h1>
+  <div class="subtitle">G12 — 表结构 / DDL / 字段注册表 JSON Schema</div>
+  <div class="doc-meta">
+    <span>版本: 1.0.0</span>
+    <span>日期: 2026-08-17</span>
+    <span>状态: <span class="badge badge-blue">设计</span></span>
+    <span>前置: dsl-syntax-1.0.0 / architecture-1.0.0</span>
+    <span>覆盖缺口: G12</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 1 -->
+<!-- ============================================================ -->
+<h2 id="sec-1">1. 设计原则与约束</h2>
+
+<div class="card-grid">
+<div class="card-item">
+<h4><span class="badge badge-red">不可变性</span></h4>
+<p>规则版本（<code>qd_rule_versions</code>）与证据快照（<code>qd_evidence_snapshots</code>）写入后只读。DB 层通过触发器强制禁止 UPDATE / DELETE，所有"修改"为 INSERT 新记录。</p>
+</div>
+<div class="card-item">
+<h4><span class="badge badge-yellow">时间完整性</span></h4>
+<p>所有数据实体强制三时间戳：<code>observed_at</code>（观察时间）/ <code>received_at</code>（接收时间）/ <code>match_time</code>（开赛时间），缺一拒绝入库。</p>
+</div>
+<div class="card-item">
+<h4><span class="badge badge-green">信任分级</span></h4>
+<p>数据源、规则、证据均带 <code>trust_level</code>（trusted / provisional / untrusted）。仅 <code>statistics_eligible</code> 的证据纳入正式评估。</p>
+</div>
+<div class="card-item">
+<h4><span class="badge badge-purple">可追溯性</span></h4>
+<p>预测通过 <code>audit_trail_id</code> 关联审计日志，可回溯完整推理链（规则版本 → 证据 → 数据快照）。</p>
+</div>
+</div>
+
+<h3>命名规范</h3>
+<ul>
+<li>表前缀 <code>qd_</code>（knowledge base 领域）。</li>
+<li>主键统一 <code>xxx_id</code>，文本 UUID 或业务 ID。</li>
+<li>时间字段统一 <code>timestamptz</code>（带时区）。</li>
+<li>JSON 字段统一 <code>jsonb</code>（支持索引与查询）。</li>
+<li>状态字段统一 <code>text</code> + CHECK 约束（不建枚举，便于演进）。</li>
+</ul>
+
+<!-- ============================================================ -->
+<!-- Section 2 -->
+<!-- ============================================================ -->
+<h2 id="sec-2">2. 实体关系总览</h2>
+
+<pre><code>qd_data_sources (数据源注册表)
+    │ 1:N
+    ▼
+qd_matches (比赛) ──1:N── qd_odds_snapshots (盘口快照)
+    │ 1:N
+    ▼
+qd_match_features (特征)
+    │
+    ├── 1:N ── qd_evidence_snapshots (证据快照) ──N:1── qd_rule_versions (规则版本)
+    │
+    ├── 1:1 ── qd_predictions (预测) ──N:1── qd_analysis_commands (分析命令)
+    │
+    └── 1:N ── qd_backtest_jobs (回测作业)
+
+qd_rule_versions ──1:N── qd_evidence_snapshots
+qd_rule_versions ──1:N── qd_backtest_jobs
+qd_rule_versions ──1:N── qd_ai_candidates (AI 候选，转正后关联)
+qd_audit_log (审计日志，全局不可变)
+qd_field_registry (字段注册表，元数据)</code></pre>
+
+<div class="callout">
+  <div class="callout-title">关系说明</div>
+  <p>核心链路：<code>qd_matches</code> → <code>qd_match_features</code> → DSL 求值 → <code>qd_evidence_snapshots</code>（触发时锁定）→ <code>qd_predictions</code>（融合输出）→ <code>qd_audit_log</code>（追溯）。规则与证据为 append-only，比赛与特征为可更新（结果回填）。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 3 -->
+<!-- ============================================================ -->
+<h2 id="sec-3">3. 核心表定义</h2>
+
+<h3>3.1 qd_rule_versions — 规则版本表 <span class="badge badge-red">append-only</span></h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>version_id</code></td><td>text</td><td>PK</td><td>版本唯一 ID，如 "R001#1.0.0"</td></tr>
+<tr><td><code>rule_id</code></td><td>text</td><td>NOT NULL</td><td>规则唯一 ID，如 "R001"</td></tr>
+<tr><td><code>version</code></td><td>int</td><td>NOT NULL</td><td>版本号，从 1 递增</td></tr>
+<tr><td><code>category</code></td><td>text</td><td>NOT NULL</td><td>odds_change / institution_diff / sensitivity / league_feature</td></tr>
+<tr><td><code>league_scope</code></td><td>jsonb</td><td>NOT NULL</td><td>适用联赛数组，空数组 = 全部</td></tr>
+<tr><td><code>team_scope</code></td><td>jsonb</td><td>NOT NULL</td><td>适用球队数组，空数组 = 全部</td></tr>
+<tr><td><code>condition</code></td><td>jsonb</td><td>NOT NULL</td><td>ConditionDSL 表达式（见 dsl-syntax）</td></tr>
+<tr><td><code>conclusion</code></td><td>text</td><td>NOT NULL</td><td>规则结论描述</td></tr>
+<tr><td><code>direction</code></td><td>text</td><td>NOT NULL</td><td>favor_upper / favor_lower / reversal / warning / follow / favor_home</td></tr>
+<tr><td><code>base_confidence</code></td><td>numeric(4,3)</td><td>NOT NULL, CHECK 0-1</td><td>基础置信度</td></tr>
+<tr><td><code>priority</code></td><td>int</td><td>NOT NULL, CHECK 1-100</td><td>优先级，冲突仲裁用</td></tr>
+<tr><td><code>trust_level</code></td><td>text</td><td>NOT NULL</td><td>trusted / provisional / untrusted</td></tr>
+<tr><td><code>valid_from</code></td><td>timestamptz</td><td>NOT NULL</td><td>生效起始时间</td></tr>
+<tr><td><code>valid_to</code></td><td>timestamptz</td><td>NULL</td><td>失效时间，NULL = 长期有效</td></tr>
+<tr><td><code>evidence_refs</code></td><td>jsonb</td><td>NOT NULL</td><td>关联证据快照 ID 数组</td></tr>
+<tr><td><code>evidence_count</code></td><td>int</td><td>NOT NULL DEFAULT 0</td><td>证据总数（冗余，加速查询）</td></tr>
+<tr><td><code>status</code></td><td>text</td><td>NOT NULL</td><td>draft/proposed/experiment/validated/approved/active/superseded/deprecated</td></tr>
+<tr><td><code>previous_version_id</code></td><td>text</td><td>NULL</td><td>上一版本 ID</td></tr>
+<tr><td><code>created_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>创建时间</td></tr>
+<tr><td><code>created_by</code></td><td>text</td><td>NOT NULL</td><td>创建者</td></tr>
+<tr><td><code>approved_at</code></td><td>timestamptz</td><td>NULL</td><td>审批时间</td></tr>
+<tr><td><code>approved_by</code></td><td>text</td><td>NULL</td><td>审批人</td></tr>
+<tr><td><code>approval_note</code></td><td>text</td><td>NULL</td><td>审批备注</td></tr>
+<tr><td><code>superseded_at</code></td><td>timestamptz</td><td>NULL</td><td>被替代时间</td></tr>
+<tr><td><code>deprecated_at</code></td><td>timestamptz</td><td>NULL</td><td>停用时间</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.2 qd_evidence_snapshots — 证据快照表 <span class="badge badge-red">不可变</span></h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>evidence_id</code></td><td>text</td><td>PK</td><td>证据唯一 ID</td></tr>
+<tr><td><code>rule_version_id</code></td><td>text</td><td>NOT NULL, FK → qd_rule_versions</td><td>关联规则版本</td></tr>
+<tr><td><code>match_id</code></td><td>text</td><td>NOT NULL, FK → qd_matches</td><td>比赛 ID</td></tr>
+<tr><td><code>observed_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>数据观察时间</td></tr>
+<tr><td><code>received_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>数据接收时间</td></tr>
+<tr><td><code>match_time</code></td><td>timestamptz</td><td>NOT NULL</td><td>比赛开赛时间</td></tr>
+<tr><td><code>trigger_data</code></td><td>jsonb</td><td>NOT NULL</td><td>触发时完整赔率数据快照</td></tr>
+<tr><td><code>trigger_conditions</code></td><td>jsonb</td><td>NOT NULL</td><td>实际匹配的条件值</td></tr>
+<tr><td><code>actual_result</code></td><td>text</td><td>NULL</td><td>实际比赛结果</td></tr>
+<tr><td><code>prediction_correct</code></td><td>boolean</td><td>NULL</td><td>预测是否正确</td></tr>
+<tr><td><code>trust_level</code></td><td>text</td><td>NOT NULL</td><td>trusted / provisional / untrusted</td></tr>
+<tr><td><code>statistics_eligible</code></td><td>boolean</td><td>NOT NULL</td><td>是否通过 5 项准入校验（statistics_eligible）</td></tr>
+<tr><td><code>eligible_checks</code></td><td>jsonb</td><td>NOT NULL</td><td>5 项校验明细（temporal_integrity 等）</td></tr>
+<tr><td><code>immutable</code></td><td>boolean</td><td>NOT NULL DEFAULT true</td><td>锁定标记</td></tr>
+<tr><td><code>locked_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>锁定时间</td></tr>
+<tr><td><code>created_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>创建时间</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.3 qd_matches — 比赛表</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>match_id</code></td><td>text</td><td>PK</td><td>比赛 ID，如 "M20260815_001"</td></tr>
+<tr><td><code>league</code></td><td>text</td><td>NOT NULL</td><td>联赛</td></tr>
+<tr><td><code>home_team</code></td><td>text</td><td>NOT NULL</td><td>主队</td></tr>
+<tr><td><code>away_team</code></td><td>text</td><td>NOT NULL</td><td>客队</td></tr>
+<tr><td><code>match_time</code></td><td>timestamptz</td><td>NOT NULL</td><td>开赛时间</td></tr>
+<tr><td><code>status</code></td><td>text</td><td>NOT NULL</td><td>scheduled / live / finished / cancelled</td></tr>
+<tr><td><code>actual_result</code></td><td>text</td><td>NULL</td><td>home_win / draw / away_win</td></tr>
+<tr><td><code>home_score</code></td><td>int</td><td>NULL</td><td>主队比分</td></tr>
+<tr><td><code>away_score</code></td><td>int</td><td>NULL</td><td>客队比分</td></tr>
+<tr><td><code>created_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>创建时间</td></tr>
+<tr><td><code>updated_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>更新时间（结果回填）</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.4 qd_odds_snapshots — 盘口赔率快照表</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>snapshot_id</code></td><td>text</td><td>PK</td><td>快照 ID</td></tr>
+<tr><td><code>match_id</code></td><td>text</td><td>NOT NULL, FK → qd_matches</td><td>比赛 ID</td></tr>
+<tr><td><code>institution</code></td><td>text</td><td>NOT NULL</td><td>机构名（归一化后）</td></tr>
+<tr><td><code>market</code></td><td>text</td><td>NOT NULL</td><td>handicap / european / over_under / bf</td></tr>
+<tr><td><code>observed_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>观察时间</td></tr>
+<tr><td><code>received_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>接收时间</td></tr>
+<tr><td><code>data</code></td><td>jsonb</td><td>NOT NULL</td><td>盘口/水位/赔率数据（结构见 dsl-syntax 字段）</td></tr>
+<tr><td><code>trust_level</code></td><td>text</td><td>NOT NULL</td><td>trusted / provisional / untrusted</td></tr>
+<tr><td><code>source_id</code></td><td>text</td><td>NOT NULL, FK → qd_data_sources</td><td>数据源</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.5 qd_match_features — 特征表</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>feature_id</code></td><td>text</td><td>PK</td><td>特征记录 ID</td></tr>
+<tr><td><code>match_id</code></td><td>text</td><td>NOT NULL, FK → qd_matches</td><td>比赛 ID</td></tr>
+<tr><td><code>computed_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>特征计算时点（point-in-time 关键）</td></tr>
+<tr><td><code>features</code></td><td>jsonb</td><td>NOT NULL</td><td>20 字段特征值（键 = 字段注册表 field_id）</td></tr>
+<tr><td><code>feature_version</code></td><td>text</td><td>NOT NULL</td><td>特征计算版本</td></tr>
+<tr><td><code>created_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>创建时间</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.6 qd_predictions — 预测表</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>prediction_id</code></td><td>text</td><td>PK</td><td>预测 ID</td></tr>
+<tr><td><code>match_id</code></td><td>text</td><td>NOT NULL, FK → qd_matches</td><td>比赛 ID</td></tr>
+<tr><td><code>command_id</code></td><td>text</td><td>NULL, FK → qd_analysis_commands</td><td>分析命令 ID</td></tr>
+<tr><td><code>final_direction</code></td><td>text</td><td>NOT NULL</td><td>最终方向</td></tr>
+<tr><td><code>final_confidence</code></td><td>numeric(4,3)</td><td>NOT NULL</td><td>最终置信度</td></tr>
+<tr><td><code>weights</code></td><td>jsonb</td><td>NOT NULL</td><td>融合权重 {rule, model, anomaly}</td></tr>
+<tr><td><code>reasoning_chain</code></td><td>jsonb</td><td>NOT NULL</td><td>完整推理链（ReasoningNode[]）</td></tr>
+<tr><td><code>audit_trail_id</code></td><td>text</td><td>NOT NULL, FK → qd_audit_log</td><td>审计追踪 ID</td></tr>
+<tr><td><code>created_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>创建时间</td></tr>
+<tr><td><code>created_by</code></td><td>text</td><td>NOT NULL</td><td>创建者</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.7 qd_analysis_commands — 分析命令表</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>command_id</code></td><td>text</td><td>PK</td><td>命令 ID</td></tr>
+<tr><td><code>match_id</code></td><td>text</td><td>NOT NULL, FK → qd_matches</td><td>比赛 ID</td></tr>
+<tr><td><code>status</code></td><td>text</td><td>NOT NULL</td><td>pending / processing / completed / failed</td></tr>
+<tr><td><code>idempotency_key</code></td><td>text</td><td>UNIQUE NOT NULL</td><td>幂等键（防重复提交）</td></tr>
+<tr><td><code>requested_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>请求时间</td></tr>
+<tr><td><code>requested_by</code></td><td>text</td><td>NOT NULL</td><td>请求者</td></tr>
+<tr><td><code>completed_at</code></td><td>timestamptz</td><td>NULL</td><td>完成时间</td></tr>
+<tr><td><code>result_ref</code></td><td>text</td><td>NULL, FK → qd_predictions</td><td>结果关联</td></tr>
+<tr><td><code>error</code></td><td>jsonb</td><td>NULL</td><td>失败详情</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.8 qd_audit_log — 审计日志表 <span class="badge badge-red">不可变</span></h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>event_id</code></td><td>text</td><td>PK</td><td>事件 ID</td></tr>
+<tr><td><code>event_type</code></td><td>text</td><td>NOT NULL</td><td>rule_created / rule_transitioned / evidence_locked / prediction_generated / credential_accessed / ...</td></tr>
+<tr><td><code>timestamp</code></td><td>timestamptz</td><td>NOT NULL</td><td>事件时间</td></tr>
+<tr><td><code>actor</code></td><td>text</td><td>NOT NULL</td><td>操作者（用户 ID 或系统 ID）</td></tr>
+<tr><td><code>target_id</code></td><td>text</td><td>NOT NULL</td><td>操作对象 ID</td></tr>
+<tr><td><code>details</code></td><td>jsonb</td><td>NOT NULL</td><td>操作详情</td></tr>
+<tr><td><code>prev_state</code></td><td>jsonb</td><td>NULL</td><td>变更前快照</td></tr>
+<tr><td><code>new_state</code></td><td>jsonb</td><td>NULL</td><td>变更后快照</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 4 -->
+<!-- ============================================================ -->
+<h2 id="sec-4">4. 支撑表定义</h2>
+
+<h3>4.1 qd_data_sources — 数据源注册表（G2 数据治理）</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>source_id</code></td><td>text</td><td>PK</td><td>数据源 ID</td></tr>
+<tr><td><code>source_name</code></td><td>text</td><td>NOT NULL</td><td>数据源名称</td></tr>
+<tr><td><code>source_type</code></td><td>text</td><td>NOT NULL</td><td>odds / result / basic / mock</td></tr>
+<tr><td><code>trust_level</code></td><td>text</td><td>NOT NULL</td><td>trusted / provisional / untrusted</td></tr>
+<tr><td><code>status</code></td><td>text</td><td>NOT NULL</td><td>active / inactive / degraded</td></tr>
+<tr><td><code>config_ref</code></td><td>text</td><td>NULL</td><td>配置引用（凭证走 vault，不存明文）</td></tr>
+<tr><td><code>quality_metrics</code></td><td>jsonb</td><td>NOT NULL</td><td>数据质量指标（缺失率 / 异常值 / 延迟）</td></tr>
+<tr><td><code>created_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>创建时间</td></tr>
+<tr><td><code>updated_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>更新时间</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.2 qd_backtest_jobs — 回测作业表</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>job_id</code></td><td>text</td><td>PK</td><td>作业 ID</td></tr>
+<tr><td><code>rule_version_id</code></td><td>text</td><td>NOT NULL, FK → qd_rule_versions</td><td>规则版本</td></tr>
+<tr><td><code>date_range</code></td><td>jsonb</td><td>NOT NULL</td><td>{from, to} 回测时间范围</td></tr>
+<tr><td><code>status</code></td><td>text</td><td>NOT NULL</td><td>pending / running / completed / failed</td></tr>
+<tr><td><code>metrics</code></td><td>jsonb</td><td>NULL</td><td>6 项指标（命中率/ROI/回撤/样本/稳定性/覆盖度）</td></tr>
+<tr><td><code>report_ref</code></td><td>text</td><td>NULL</td><td>回测报告引用</td></tr>
+<tr><td><code>created_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>创建时间</td></tr>
+<tr><td><code>created_by</code></td><td>text</td><td>NOT NULL</td><td>创建者</td></tr>
+<tr><td><code>completed_at</code></td><td>timestamptz</td><td>NULL</td><td>完成时间</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.3 qd_ai_candidates — AI 候选规则表（AI 引擎）</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>candidate_id</code></td><td>text</td><td>PK</td><td>候选 ID</td></tr>
+<tr><td><code>source</code></td><td>text</td><td>NOT NULL</td><td>ai_mining / ai_interpretation / manual</td></tr>
+<tr><td><code>provider</code></td><td>text</td><td>NULL</td><td>deepseek / openai / ...</td></tr>
+<tr><td><code>content</code></td><td>jsonb</td><td>NOT NULL</td><td>候选规则结构（条件/方向/权重/证据）</td></tr>
+<tr><td><code>trust_level</code></td><td>text</td><td>NOT NULL DEFAULT 'untrusted'</td><td>固定 untrusted</td></tr>
+<tr><td><code>status</code></td><td>text</td><td>NOT NULL</td><td>pending_review / approved / rejected</td></tr>
+<tr><td><code>review_note</code></td><td>text</td><td>NULL</td><td>审核备注</td></tr>
+<tr><td><code>converted_rule_version_id</code></td><td>text</td><td>NULL, FK → qd_rule_versions</td><td>转正后的规则版本（proposed 状态）</td></tr>
+<tr><td><code>created_at</code></td><td>timestamptz</td><td>NOT NULL</td><td>创建时间</td></tr>
+<tr><td><code>reviewed_at</code></td><td>timestamptz</td><td>NULL</td><td>审核时间</td></tr>
+<tr><td><code>reviewed_by</code></td><td>text</td><td>NULL</td><td>审核人</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.4 qd_field_registry — 字段注册表（元数据）</h3>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>字段</th><th>类型</th><th>约束</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>field_id</code></td><td>text</td><td>PK</td><td>字段 ID，如 "handicap.change"</td></tr>
+<tr><td><code>field_name</code></td><td>text</td><td>NOT NULL</td><td>字段名称</td></tr>
+<tr><td><code>data_type</code></td><td>text</td><td>NOT NULL</td><td>number / string / boolean / duration</td></tr>
+<tr><td><code>unit</code></td><td>text</td><td>NULL</td><td>单位（球 / 分钟 / 百分比）</td></tr>
+<tr><td><code>family</code></td><td>text</td><td>NOT NULL</td><td>cross_section / temporal / resonance / anomaly</td></tr>
+<tr><td><code>description</code></td><td>text</td><td>NOT NULL</td><td>字段说明</td></tr>
+<tr><td><code>source_expression</code></td><td>text</td><td>NULL</td><td>计算表达式 / 数据来源</td></tr>
+<tr><td><code>version</code></td><td>text</td><td>NOT NULL</td><td>注册版本</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 5 -->
+<!-- ============================================================ -->
+<h2 id="sec-5">5. Append-only 约束实现</h2>
+
+<p>规则版本、证据快照、审计日志三张表在 DB 层强制 append-only。通过触发器禁止 UPDATE 与 DELETE，这是工程治理底线——存储层强制不可变，而非依赖应用层逻辑。</p>
+
+<pre><code><span class="t-comment">-- 通用禁止 UPDATE 触发器函数</span>
+<span class="t-keyword">CREATE OR REPLACE FUNCTION</span> <span class="t-property">prevent_update</span>() <span class="t-keyword">RETURNS</span> trigger <span class="t-keyword">AS</span> $$
+<span class="t-keyword">BEGIN</span>
+  <span class="t-keyword">RAISE EXCEPTION</span> <span class="t-string">'append-only: UPDATE is not allowed on %'</span>, TG_TABLE_NAME;
+<span class="t-keyword">END</span>;
+$$ LANGUAGE plpgsql;
+
+<span class="t-comment">-- 通用禁止 DELETE 触发器函数</span>
+<span class="t-keyword">CREATE OR REPLACE FUNCTION</span> <span class="t-property">prevent_delete</span>() <span class="t-keyword">RETURNS</span> trigger <span class="t-keyword">AS</span> $$
+<span class="t-keyword">BEGIN</span>
+  <span class="t-keyword">RAISE EXCEPTION</span> <span class="t-string">'append-only: DELETE is not allowed on %'</span>, TG_TABLE_NAME;
+<span class="t-keyword">END</span>;
+$$ LANGUAGE plpgsql;
+
+<span class="t-comment">-- 应用到规则版本表</span>
+<span class="t-keyword">CREATE TRIGGER</span> <span class="t-property">trg_rule_versions_no_update</span>
+  <span class="t-keyword">BEFORE UPDATE ON</span> qd_rule_versions
+  <span class="t-keyword">FOR EACH ROW EXECUTE FUNCTION</span> <span class="t-property">prevent_update</span>();
+
+<span class="t-keyword">CREATE TRIGGER</span> <span class="t-property">trg_rule_versions_no_delete</span>
+  <span class="t-keyword">BEFORE DELETE ON</span> qd_rule_versions
+  <span class="t-keyword">FOR EACH ROW EXECUTE FUNCTION</span> <span class="t-property">prevent_delete</span>();
+
+<span class="t-comment">-- 同样应用到 qd_evidence_snapshots 与 qd_audit_log</span></code></pre>
+
+<div class="callout danger">
+  <div class="callout-title">状态转换的正确实现</div>
+  <p>规则状态转换（如 draft → proposed）不是 UPDATE 原记录，而是 <strong>INSERT 新版本记录</strong>（version+1），旧版本标记 superseded。状态机在应用层通过 <code>transitionStatus</code> 接口 + 并发锁实现，DB 层只保证不可变。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 6 -->
+<!-- ============================================================ -->
+<h2 id="sec-6">6. 索引设计</h2>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>表</th><th>索引</th><th>类型</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td>qd_rule_versions</td><td>idx_rule_status_valid</td><td>B-tree (status, valid_from, valid_to)</td><td>按时点查询 active 规则</td></tr>
+<tr><td>qd_rule_versions</td><td>idx_rule_rule_id</td><td>B-tree (rule_id, version)</td><td>版本历史查询</td></tr>
+<tr><td>qd_evidence_snapshots</td><td>idx_evidence_rule</td><td>B-tree (rule_version_id, observed_at)</td><td>按规则查证据 + 时间衰减</td></tr>
+<tr><td>qd_evidence_snapshots</td><td>idx_evidence_match</td><td>B-tree (match_id)</td><td>按比赛查证据</td></tr>
+<tr><td>qd_odds_snapshots</td><td>idx_odds_match_inst</td><td>B-tree (match_id, institution, observed_at)</td><td>按比赛+机构查盘口时序</td></tr>
+<tr><td>qd_match_features</td><td>idx_features_match</td><td>B-tree (match_id, computed_at)</td><td>point-in-time 特征查询</td></tr>
+<tr><td>qd_analysis_commands</td><td>idx_cmd_idem</td><td>UNIQUE (idempotency_key)</td><td>幂等去重</td></tr>
+<tr><td>qd_analysis_commands</td><td>idx_cmd_status</td><td>B-tree (status, requested_at)</td><td>队列领取</td></tr>
+<tr><td>qd_audit_log</td><td>idx_audit_target</td><td>B-tree (target_id, timestamp)</td><td>按对象追溯</td></tr>
+<tr><td>qd_audit_log</td><td>idx_audit_type</td><td>B-tree (event_type, timestamp)</td><td>按事件类型查询</td></tr>
+<tr><td>qd_ai_candidates</td><td>idx_ai_status</td><td>B-tree (status, created_at)</td><td>候选审核队列</td></tr>
+<tr><td>qd_backtest_jobs</td><td>idx_bt_rule</td><td>B-tree (rule_version_id, status)</td><td>按规则查回测历史</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 7 -->
+<!-- ============================================================ -->
+<h2 id="sec-7">7. 字段注册表 JSON Schema</h2>
+
+<p>字段注册表是 DSL 引擎与特征工程之间的契约。以下为 JSON Schema 定义，字段全集见 dsl-syntax-1.0.0 第 4 节（10 核心 + 10 扩展）。</p>
+
+<pre><code>{
+  <span class="t-string">"$schema"</span>: <span class="t-string">"https://json-schema.org/draft/2020-12/schema"</span>,
+  <span class="t-string">"title"</span>: <span class="t-string">"Field Registry"</span>,
+  <span class="t-string">"type"</span>: <span class="t-string">"object"</span>,
+  <span class="t-string">"properties"</span>: {
+    <span class="t-string">"handicap.change"</span>:        { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"unit"</span>: <span class="t-string">"ball"</span>, <span class="t-string">"family"</span>: <span class="t-string">"temporal"</span> },
+    <span class="t-string">"handicap.current"</span>:       { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"unit"</span>: <span class="t-string">"ball"</span>, <span class="t-string">"family"</span>: <span class="t-string">"cross_section"</span> },
+    <span class="t-string">"water.upper.change"</span>:     { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"unit"</span>: <span class="t-string">"water"</span>, <span class="t-string">"family"</span>: <span class="t-string">"temporal"</span> },
+    <span class="t-string">"water.lower.change"</span>:     { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"unit"</span>: <span class="t-string">"water"</span>, <span class="t-string">"family"</span>: <span class="t-string">"temporal"</span> },
+    <span class="t-string">"odds.volatility"</span>:        { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"unit"</span>: <span class="t-string">"ratio"</span>, <span class="t-string">"family"</span>: <span class="t-string">"temporal"</span> },
+    <span class="t-string">"institution.sync_count"</span>: { <span class="t-string">"type"</span>: <span class="t-string">"integer"</span>, <span class="t-string">"family"</span>: <span class="t-string">"resonance"</span> },
+    <span class="t-string">"institution.diff_max"</span>:   { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"unit"</span>: <span class="t-string">"ball"</span>, <span class="t-string">"family"</span>: <span class="t-string">"cross_section"</span> },
+    <span class="t-string">"kelly_index.max"</span>:        { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"family"</span>: <span class="t-string">"cross_section"</span> },
+    <span class="t-string">"volume.ratio"</span>:           { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"unit"</span>: <span class="t-string">"ratio"</span>, <span class="t-string">"family"</span>: <span class="t-string">"anomaly"</span> },
+    <span class="t-string">"time_to_match"</span>:          { <span class="t-string">"type"</span>: <span class="t-string">"number"</span>, <span class="t-string">"unit"</span>: <span class="t-string">"minutes"</span>, <span class="t-string">"family"</span>: <span class="t-string">"temporal"</span> }
+  },
+  <span class="t-string">"required"</span>: [<span class="t-string">"handicap.change"</span>, <span class="t-string">"handicap.current"</span>, <span class="t-string">"water.upper.change"</span>, <span class="t-string">"water.lower.change"</span>, <span class="t-string">"odds.volatility"</span>, <span class="t-string">"institution.sync_count"</span>, <span class="t-string">"institution.diff_max"</span>, <span class="t-string">"kelly_index.max"</span>, <span class="t-string">"volume.ratio"</span>, <span class="t-string">"time_to_match"</span>]
+}</code></pre>
+
+<div class="callout warn">
+  <div class="callout-title">扩展字段</div>
+  <p>dsl-syntax-1.0.0 定义的 10 个扩展字段（如 <code>handicap.initial</code>、<code>water.upper.initial</code>、<code>european.home</code>、<code>over_under.line</code>、<code>bf.volume</code> 等）按相同结构追加到注册表。完整字段全集以 dsl-syntax-1.0.0 第 4 节为准，本 Schema 为机器可读版本。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 8 -->
+<!-- ============================================================ -->
+<h2 id="sec-8">8. DDL 脚本</h2>
+
+<p>完整 DDL 脚本存放于 <code>server/migrations/</code>，按版本号递增。核心表建表脚本示例如下（完整脚本含全部 12 张表 + 触发器 + 索引）。</p>
+
+<pre><code><span class="t-comment">-- 001_init.sql（节选）</span>
+<span class="t-keyword">CREATE TABLE</span> <span class="t-property">qd_rule_versions</span> (
+  version_id          text PRIMARY KEY,
+  rule_id             text NOT NULL,
+  version             int  NOT NULL,
+  category            text NOT NULL CHECK (category IN (<span class="t-string">'odds_change'</span>, <span class="t-string">'institution_diff'</span>, <span class="t-string">'sensitivity'</span>, <span class="t-string">'league_feature'</span>)),
+  league_scope        jsonb NOT NULL DEFAULT <span class="t-string">'[]'</span>,
+  team_scope          jsonb NOT NULL DEFAULT <span class="t-string">'[]'</span>,
+  condition           jsonb NOT NULL,
+  conclusion          text NOT NULL,
+  direction           text NOT NULL,
+  base_confidence     numeric(4,3) NOT NULL CHECK (base_confidence BETWEEN 0 AND 1),
+  priority            int  NOT NULL CHECK (priority BETWEEN 1 AND 100),
+  trust_level         text NOT NULL CHECK (trust_level IN (<span class="t-string">'trusted'</span>, <span class="t-string">'provisional'</span>, <span class="t-string">'untrusted'</span>)),
+  valid_from          timestamptz NOT NULL,
+  valid_to            timestamptz,
+  evidence_refs       jsonb NOT NULL DEFAULT <span class="t-string">'[]'</span>,
+  evidence_count      int  NOT NULL DEFAULT 0,
+  status              text NOT NULL CHECK (status IN (<span class="t-string">'draft'</span>, <span class="t-string">'proposed'</span>, <span class="t-string">'experiment'</span>, <span class="t-string">'validated'</span>, <span class="t-string">'approved'</span>, <span class="t-string">'active'</span>, <span class="t-string">'superseded'</span>, <span class="t-string">'deprecated'</span>)),
+  previous_version_id text,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  created_by          text NOT NULL,
+  approved_at         timestamptz,
+  approved_by         text,
+  approval_note       text,
+  superseded_at       timestamptz,
+  deprecated_at       timestamptz,
+  UNIQUE (rule_id, version)
+);
+
+<span class="t-keyword">CREATE TABLE</span> <span class="t-property">qd_evidence_snapshots</span> (
+  evidence_id          text PRIMARY KEY,
+  rule_version_id      text NOT NULL REFERENCES qd_rule_versions(version_id),
+  match_id             text NOT NULL REFERENCES qd_matches(match_id),
+  observed_at          timestamptz NOT NULL,
+  received_at          timestamptz NOT NULL,
+  match_time           timestamptz NOT NULL,
+  trigger_data         jsonb NOT NULL,
+  trigger_conditions   jsonb NOT NULL,
+  actual_result        text,
+  prediction_correct   boolean,
+  trust_level          text NOT NULL,
+  statistics_eligible  boolean NOT NULL DEFAULT false,
+  eligible_checks      jsonb NOT NULL,
+  immutable            boolean NOT NULL DEFAULT true,
+  locked_at            timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  CHECK (received_at &gt;= observed_at)
+);</code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 9 -->
+<!-- ============================================================ -->
+<h2 id="sec-9">9. 与架构映射对照</h2>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>架构实体 / 接口</th><th>数据表</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td>RuleVersion</td><td>qd_rule_versions</td><td>字段一一对应，含生命周期与审计字段</td></tr>
+<tr><td>EvidenceSnapshot</td><td>qd_evidence_snapshots</td><td>含 statistics_eligible 与 5 项校验明细</td></tr>
+<tr><td>ConditionDSL</td><td>qd_rule_versions.condition (jsonb)</td><td>DSL 表达式存储</td></tr>
+<tr><td>RuleStore / EvidenceStore</td><td>qd_rule_versions / qd_evidence_snapshots</td><td>append-only 触发器实现契约</td></tr>
+<tr><td>AuditTrail</td><td>qd_audit_log</td><td>record / tracePrediction / traceRule</td></tr>
+<tr><td>CredentialVault</td><td>（凭证不落库）</td><td>凭证存 vault / 环境变量，qd_data_sources.config_ref 仅存引用</td></tr>
+<tr><td>分析命令（retrieval-engine）</td><td>qd_analysis_commands</td><td>幂等键 + 状态 + 结果关联</td></tr>
+<tr><td>FusionDecision</td><td>qd_predictions</td><td>weights + reasoning_chain + audit_trail_id</td></tr>
+<tr><td>数据信任分级（G2）</td><td>qd_data_sources</td><td>trust_level + quality_metrics</td></tr>
+<tr><td>回测作业</td><td>qd_backtest_jobs</td><td>metrics 存 6 项指标</td></tr>
+<tr><td>AI 候选（AI 引擎）</td><td>qd_ai_candidates</td><td>untrusted + 审核转正关联</td></tr>
+<tr><td>字段注册表（dsl-syntax）</td><td>qd_field_registry</td><td>元数据表 + JSON Schema</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout success">
+  <div class="callout-title">验收对照</div>
+  <ul>
+    <li>✅ 表结构覆盖架构全部实体（12 张表）</li>
+    <li>✅ append-only 约束在 DB 层强制（触发器）</li>
+    <li>✅ 三时间戳字段非空约束（observed_at / received_at / match_time）</li>
+    <li>✅ 主键 / 外键 / 索引设计完整（12 个索引）</li>
+    <li>✅ 字段注册表 JSON Schema 与 dsl-syntax 一致</li>
+  </ul>
+</div>
+
+</main>
+</div>
+</body>
+</html>

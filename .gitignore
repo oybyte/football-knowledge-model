@@ -11,3 +11,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Tool cache
+.trae-html-share-packages/

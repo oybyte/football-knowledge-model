@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>性能模型 1.0.0 — G6</title>
+<style>
+:root {
+  --bg: #0b0e14; --bg2: #131820; --bg3: #1a2235;
+  --ink: #e2e8f0; --muted: #8899b0; --muted2: #5a6a80;
+  --rule: #1e2a3a; --accent: #60a5fa; --accent2: #34d399;
+  --accent3: #fbbf24; --danger: #f87171; --warn: #f59e0b;
+  --success: #34d399; --purple: #a78bfa; --pink: #f472b6; --orange: #fb923c;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7; font-size: 15px;
+}
+.page-wrapper { display: flex; min-height: 100vh; }
+.toc-sidebar {
+  width: 260px; flex-shrink: 0; background: var(--bg2);
+  border-right: 1px solid var(--rule); position: sticky; top: 0;
+  height: 100vh; overflow-y: auto; padding: 24px 16px;
+}
+.toc-sidebar h2 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted2); margin-bottom: 12px; padding: 0 8px;
+}
+.toc-sidebar nav ul { list-style: none; }
+.toc-sidebar nav li { margin-bottom: 2px; }
+.toc-sidebar nav a {
+  display: block; padding: 6px 12px; font-size: 13px;
+  color: var(--muted); text-decoration: none; border-radius: 4px;
+  border-left: 2px solid transparent; transition: all 0.15s;
+}
+.toc-sidebar nav a:hover { color: var(--ink); background: var(--bg3); }
+.toc-sidebar nav a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(96,165,250,0.08); }
+.content-area { flex: 1; max-width: 1000px; margin: 0 auto; padding: 48px 40px 80px; }
+
+h1 { font-size: 30px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+h1 + .subtitle { font-size: 15px; color: var(--muted); margin-bottom: 28px; }
+h2 {
+  font-size: 22px; font-weight: 700;
+  margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule); letter-spacing: -0.01em;
+}
+h3 { font-size: 17px; font-weight: 700; color: var(--accent); margin-top: 32px; margin-bottom: 12px; }
+h4 { font-size: 15px; font-weight: 700; margin-top: 20px; margin-bottom: 8px; }
+p { margin-bottom: 14px; }
+code {
+  font-family: 'JetBrainsMono', 'Consolas', monospace; font-size: 0.88em;
+  background: var(--bg3); padding: 2px 6px; border-radius: 3px; color: var(--accent2);
+}
+pre {
+  background: var(--bg2); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 16px 20px; overflow-x: auto; margin: 16px 0; font-size: 13px; line-height: 1.6;
+}
+pre code { background: none; padding: 0; color: var(--ink); font-size: 13px; }
+.t-kw { color: var(--purple); } .t-ty { color: var(--accent); } .t-st { color: var(--success); }
+.t-co { color: var(--muted2); } .t-nu { color: var(--orange); } .t-pr { color: var(--accent2); }
+
+.table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--rule); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; padding: 10px 14px; background: var(--bg3);
+  color: var(--muted); font-weight: 600; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--rule); white-space: nowrap;
+}
+td { padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(96,165,250,0.03); }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-green { background: rgba(52,211,153,0.15); color: var(--accent2); }
+.badge-yellow { background: rgba(245,158,11,0.15); color: var(--warn); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--danger); }
+.badge-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--accent); }
+.badge-cyan { background: rgba(52,211,153,0.15); color: var(--accent2); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: rgba(96,165,250,0.06);
+  padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 14px;
+}
+.callout.warn { border-left-color: var(--warn); background: rgba(245,158,11,0.06); }
+.callout.danger { border-left-color: var(--danger); background: rgba(248,113,113,0.06); }
+.callout.success { border-left-color: var(--success); background: rgba(52,211,153,0.06); }
+.callout-title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
+
+.doc-header { margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
+.doc-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 12px; }
+.doc-meta span { display: flex; align-items: center; gap: 4px; }
+
+ul, ol { margin-bottom: 14px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+
+@media (max-width: 900px) {
+  .toc-sidebar { display: none; }
+  .content-area { padding: 32px 20px 60px; }
+}
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+<aside class="toc-sidebar">
+  <h2>目录</h2>
+  <nav>
+    <ul>
+      <li><a href="#sec-1">1. 设计目标与指标</a></li>
+      <li><a href="#sec-2">2. 负载模型</a></li>
+      <li><a href="#sec-3">3. 吞吐量估算</a></li>
+      <li><a href="#sec-4">4. 延迟目标分解</a></li>
+      <li><a href="#sec-5">5. 瓶颈分析</a></li>
+      <li><a href="#sec-6">6. 容量估算</a></li>
+      <li><a href="#sec-7">7. 缓存策略</a></li>
+      <li><a href="#sec-8">8. 队列模型</a></li>
+      <li><a href="#sec-9">9. 扩容策略</a></li>
+      <li><a href="#sec-10">10. 基准测试计划</a></li>
+      <li><a href="#sec-11">11. 性能指标定义</a></li>
+      <li><a href="#sec-12">12. 与架构映射对照</a></li>
+    </ul>
+  </nav>
+</aside>
+
+<main class="content-area">
+
+<div class="doc-header">
+  <h1>性能模型 1.0.0</h1>
+  <div class="subtitle">G6 — 容量估算 / 延迟目标 / 缓存策略 / 基准测试计划</div>
+  <div class="doc-meta">
+    <span>版本: 1.0.0</span>
+    <span>日期: 2026-08-18</span>
+    <span>状态: <span class="badge badge-blue">设计</span></span>
+    <span>前置: data-model-1.0.0 / api-contract-1.0.0 / retrieval-engine-1.0.0</span>
+    <span>覆盖缺口: G6</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 1 -->
+<!-- ============================================================ -->
+<h2 id="sec-1">1. 设计目标与指标</h2>
+
+<h3>1.1 设计目标</h3>
+<p>本系统为<strong>个人研究项目</strong>（1-10 用户），负载远低于生产级系统。性能模型的目标不是支撑大规模并发，而是：</p>
+<ol>
+  <li>明确量化指标，指导部署决策（Worker 数、内存、DB 连接）</li>
+  <li>识别瓶颈，避免过度设计（不需要为百万 QPS 设计）</li>
+  <li>建立基准测试基线，验证后续优化效果</li>
+  <li>预留合理的扩展空间（规则数增长、数据积累）</li>
+</ol>
+
+<h3>1.2 核心指标目标</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>指标</th><th>目标</th><th>告警阈值</th><th>来源</th></tr></thead>
+<tbody>
+<tr><td>分析提交延迟（API 202 响应）</td><td>P95 &lt; 100ms</td><td>&gt; 300ms</td><td>本设计</td></tr>
+<tr><td>分析完成延迟（提交→完成）</td><td>P95 &lt; 3000ms</td><td>&gt; 3000ms（P2）</td><td>retrieval-engine</td></tr>
+<tr><td>规则查询延迟</td><td>P95 &lt; 50ms</td><td>&gt; 150ms</td><td>本设计</td></tr>
+<tr><td>缓存命中率</td><td>≥ 0.5</td><td>&lt; 0.5（P3）</td><td>retrieval-engine</td></tr>
+<tr><td>单场分析吞吐</td><td>≥ 5 场/秒/Worker</td><td>&lt; 2 场/秒</td><td>本设计</td></tr>
+<tr><td>回测作业（1000 场）</td><td>≤ 5 分钟</td><td>&gt; 10 分钟</td><td>本设计</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 2 -->
+<!-- ============================================================ -->
+<h2 id="sec-2">2. 负载模型</h2>
+
+<h3>2.1 用户与请求规模</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>维度</th><th>规模</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>用户数</td><td>1-10</td><td>个人研究 + 少量协作者</td></tr>
+<tr><td>比赛规模</td><td>300-400 场/周</td><td>主流联赛（日职/英超/德甲/西甲/意甲/法甲等）</td></tr>
+<tr><td>分析请求</td><td>高峰 300 场/小时</td><td>开赛前 1 小时集中提交</td></tr>
+<tr><td>规则规模</td><td>16 → 100 条</td><td>当前 16 条，扩展至 100 条预留</td></tr>
+<tr><td>历史数据</td><td>1-3 年</td><td>约 1.5-5 万场</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>2.2 请求模式</h3>
+<pre><code><span class="t-co">// 高峰时段（开赛前 1 小时）</span>
+峰值请求率 = 300 场 / 3600 秒 ≈ <span class="t-nu">0.08 场/秒</span>
+
+<span class="t-co">// 对比系统容量（见第 3 节）</span>
+系统容量 = 2 Worker × 5 场/秒 = <span class="t-nu">10 场/秒</span>
+
+<span class="t-co">// 容量余量</span>
+余量 = 10 / 0.08 ≈ <span class="t-nu">125 倍</span></code></pre>
+
+<div class="callout success">
+  <div class="callout-title">结论</div>
+  <p>负载远低于容量，系统设计以<strong>正确性、可追溯性、可维护性</strong>为优先，性能不是瓶颈。但仍需建立基准测试基线，防止规则数增长或数据积累后出现性能退化。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 3 -->
+<!-- ============================================================ -->
+<h2 id="sec-3">3. 吞吐量估算</h2>
+
+<h3>3.1 单场分析耗时分解</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>阶段</th><th>耗时</th><th>类型</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>特征读取</td><td>10-30ms</td><td>IO（Redis 缓存命中）</td><td>20 字段从缓存读取，未命中则计算（+50ms）</td></tr>
+<tr><td>规则加载</td><td>0ms</td><td>内存</td><td>active 规则启动时全量加载常驻内存</td></tr>
+<tr><td>DSL 求值</td><td>50-150ms</td><td>CPU</td><td>100 条规则 × 平均 5 个原子条件 = 500 次求值</td></tr>
+<tr><td>冲突仲裁</td><td>5-10ms</td><td>CPU</td><td>匹配规则方向聚合 + 置信度加权</td></tr>
+<tr><td>证据写入</td><td>10-20ms</td><td>IO（PG）</td><td>证据快照 INSERT（append-only）</td></tr>
+<tr><td><strong>合计</strong></td><td><strong>75-210ms</strong></td><td></td><td>P95 目标 &lt; 3000ms，余量充足</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.2 每秒处理量</h3>
+<pre><code><span class="t-co">// 单 Worker 吞吐（Node.js 单线程 + 异步 IO）</span>
+单场耗时 = 150ms（均值）
+单 Worker 吞吐 ≈ 1000 / 150 ≈ <span class="t-nu">6.7 场/秒</span>
+
+<span class="t-co">// 2 Worker 总吞吐</span>
+总吞吐 ≈ <span class="t-nu">13 场/秒</span>
+
+<span class="t-co">// 高峰需求</span>
+峰值需求 = 0.08 场/秒
+利用率 = 0.08 / 13 ≈ <span class="t-nu">0.6%</span></code></pre>
+
+<h3>3.3 回测吞吐</h3>
+<pre><code><span class="t-co">// 回测 1000 场（单规则）</span>
+单场求值 = 150ms（含证据写入）
+1000 场 × 150ms = 150 秒 ≈ <span class="t-nu">2.5 分钟</span>
+
+<span class="t-co">// 目标 ≤ 5 分钟，余量 2 倍</span>
+<span class="t-co">// 回测为低优先级队列（4 并发），不阻塞实时分析</span></code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 4 -->
+<!-- ============================================================ -->
+<h2 id="sec-4">4. 延迟目标分解</h2>
+
+<h3>4.1 分析链路延迟预算</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>环节</th><th>P95 预算</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>API 接收请求</td><td>50ms</td><td>认证 + 幂等键检查 + 队列入队</td></tr>
+<tr><td>队列等待</td><td>100ms</td><td>高峰时排队（正常 &lt; 10ms）</td></tr>
+<tr><td>Worker 处理</td><td>2500ms</td><td>特征读取 + DSL 求值 + 仲裁 + 证据写入</td></tr>
+<tr><td>结果返回</td><td>350ms</td><td>轮询返回 + 序列化</td></tr>
+<tr><td><strong>合计</strong></td><td><strong>&lt; 3000ms</strong></td><td>对齐架构 P95 告警阈值</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.2 各接口延迟目标</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>接口</th><th>P95 目标</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>POST /analyze</td><td>&lt; 100ms</td><td>异步提交，202 立即返回</td></tr>
+<tr><td>GET /analyze/{id}</td><td>&lt; 50ms</td><td>轮询状态</td></tr>
+<tr><td>GET /analyze/{id}/result</td><td>&lt; 100ms</td><td>结果查询（缓存命中）</td></tr>
+<tr><td>GET /rules</td><td>&lt; 50ms</td><td>规则列表（缓存）</td></tr>
+<tr><td>POST /rules</td><td>&lt; 200ms</td><td>含 DSL 编译校验</td></tr>
+<tr><td>POST /rules/{id}/transition</td><td>&lt; 200ms</td><td>含并发锁获取</td></tr>
+<tr><td>POST /backtest</td><td>&lt; 100ms</td><td>异步提交</td></tr>
+<tr><td>GET /ai/candidates</td><td>&lt; 100ms</td><td>候选列表</td></tr>
+<tr><td>POST /ai/candidates/{id}/review</td><td>&lt; 500ms</td><td>含规则创建（proposed）</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 5 -->
+<!-- ============================================================ -->
+<h2 id="sec-5">5. 瓶颈分析</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>环节</th><th>类型</th><th>是否瓶颈</th><th>分析</th></tr></thead>
+<tbody>
+<tr><td>DSL 求值</td><td>CPU 密集</td><td><span class="badge badge-green">否（当前）</span></td><td>500 次原子求值 ≈ 150ms。规则数 ×10（1000 条）后约 1.5s，接近预算上限，需关注</td></tr>
+<tr><td>规则加载</td><td>内存</td><td><span class="badge badge-green">否</span></td><td>启动时全量加载，运行时零 DB 访问</td></tr>
+<tr><td>特征计算</td><td>IO 密集</td><td><span class="badge badge-green">否</span></td><td>缓存命中 10-30ms；未命中需从盘口快照计算（+50ms）</td></tr>
+<tr><td>证据写入</td><td>IO（PG）</td><td><span class="badge badge-green">否</span></td><td>append-only INSERT，单条 10-20ms</td></tr>
+<tr><td>模糊匹配</td><td>CPU</td><td><span class="badge badge-green">否</span></td><td>加权 Jaccard，仅触发规则使用，量小</td></tr>
+<tr><td>回测全量扫描</td><td>CPU + IO</td><td><span class="badge badge-yellow">潜在</span></td><td>5 万场 × 单场求值，需控制并发与队列优先级</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <div class="callout-title">规则数增长预警</div>
+  <p>DSL 求值是主要 CPU 消耗。当 active 规则数达到 <strong>1000 条</strong>时，单场求值约 1.5s，接近 3000ms 预算的 50%。届时可引入：条件索引（按字段预筛）、规则分组并行求值、或求值结果缓存。当前 100 条规模无需优化。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 6 -->
+<!-- ============================================================ -->
+<h2 id="sec-6">6. 容量估算</h2>
+
+<h3>6.1 Worker 与进程</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>进程</th><th>数量</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>API 进程</td><td>2</td><td>冗余部署，单实例可承载全部负载</td></tr>
+<tr><td>检索 Worker</td><td>2</td><td>实时分析，冗余部署</td></tr>
+<tr><td>调度 Worker</td><td>1</td><td>回测 + 数据同步调度</td></tr>
+<tr><td><strong>合计</strong></td><td><strong>5</strong></td><td>远低于架构参考的 14 Worker</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>6.2 内存预算</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>缓存项</th><th>规模估算</th><th>内存</th></tr></thead>
+<tbody>
+<tr><td>规则缓存（active）</td><td>100 条 × 2KB</td><td>200KB</td></tr>
+<tr><td>特征缓存</td><td>1000 场 × 20 字段 × 100B</td><td>2MB</td></tr>
+<tr><td>比赛数据缓存</td><td>1000 场 × 500B</td><td>500KB</td></tr>
+<tr><td>分析结果缓存</td><td>500 场 × 2KB</td><td>1MB</td></tr>
+<tr><td>幂等键 / 限流计数</td><td>—</td><td>&lt; 1MB</td></tr>
+<tr><td><strong>Redis 总内存</strong></td><td></td><td><strong>&lt; 10MB</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>参考：retrieval-engine 健康检查示例中 Redis 内存 120MB，本系统预算 &lt; 10MB，余量充足。</p>
+
+<h3>6.3 数据库连接估算</h3>
+<pre><code><span class="t-co">// 连接池配置（对齐 retrieval-engine DB_POOL_CONFIG）</span>
+API 进程        × 2  × max 20 = 40
+检索 Worker     × 2  × max 5  = 10
+调度 Worker     × 1  × max 10 = 10
+<span class="t-co">------------------------------------------</span>
+总连接数 ≈ <span class="t-nu">60</span>
+
+<span class="t-co">// PostgreSQL max_connections 建议值: 200</span>
+<span class="t-co">// 预留 140 连接给运维操作（备份、维护、监控）</span></code></pre>
+
+<h3>6.4 磁盘与数据量</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>数据</th><th>年增量</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>盘口快照</td><td>~2GB/年</td><td>5 万场 × 40 快照 × 1KB</td></tr>
+<tr><td>特征</td><td>~100MB/年</td><td>5 万场 × 2KB</td></tr>
+<tr><td>证据快照</td><td>~500MB/年</td><td>触发率约 20%</td></tr>
+<tr><td>审计日志</td><td>~200MB/年</td><td>append-only</td></tr>
+<tr><td><strong>合计</strong></td><td><strong>~3GB/年</strong></td><td>5 年约 15GB，普通磁盘足够</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 7 -->
+<!-- ============================================================ -->
+<h2 id="sec-7">7. 缓存策略</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>缓存项</th><th>存储</th><th>TTL</th><th>失效策略</th><th>命中率目标</th></tr></thead>
+<tbody>
+<tr><td>规则缓存（active）</td><td>进程内存</td><td>常驻</td><td>规则状态变更时重建（事件驱动）</td><td>100%</td></tr>
+<tr><td>特征缓存</td><td>Redis</td><td>30 分钟</td><td>开赛前特征变化频繁，短 TTL</td><td>≥ 0.7</td></tr>
+<tr><td>比赛数据缓存</td><td>Redis</td><td>1 小时</td><td>盘口快照更新时失效</td><td>≥ 0.8</td></tr>
+<tr><td>分析结果缓存</td><td>Redis</td><td>24 小时</td><td>同场重复分析直接返回</td><td>≥ 0.5</td></tr>
+<tr><td>字段注册表</td><td>进程内存</td><td>常驻</td><td>注册表变更时重建</td><td>100%</td></tr>
+</tbody>
+</table>
+</div>
+
+<pre><code><span class="t-co">// 缓存键设计</span>
+<span class="t-pr">rule:active</span>            <span class="t-co">// 全量 active 规则（Hash）</span>
+<span class="t-pr">feature:{match_id}</span>     <span class="t-co">// 单场特征</span>
+<span class="t-pr">match:{match_id}</span>       <span class="t-co">// 比赛 + 盘口快照</span>
+<span class="t-pr">analysis:{command_id}</span> <span class="t-co">// 分析结果</span>
+<span class="t-pr">idem:{key}</span>            <span class="t-co">// 幂等键（24h）</span>
+<span class="t-pr">rl:{scope}:{user_id}</span> <span class="t-co">// 限流计数</span>
+<span class="t-pr">jwt:{jti}</span>            <span class="t-co">// JWT 黑名单</span></code></pre>
+
+<div class="callout">
+  <div class="callout-title">缓存一致性</div>
+  <p>规则缓存采用<strong>事件驱动失效</strong>：规则状态转换（INSERT 新版本）后发布事件，Worker 监听并重建缓存。特征缓存采用 TTL + 主动失效双机制，保证 point-in-time 语义不被缓存破坏。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 8 -->
+<!-- ============================================================ -->
+<h2 id="sec-8">8. 队列模型</h2>
+
+<h3>8.1 队列优先级</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>队列</th><th>优先级</th><th>并发</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>实时分析</td><td>高</td><td>8</td><td>用户等待结果，优先处理</td></tr>
+<tr><td>回测作业</td><td>低</td><td>4</td><td>后台任务，不阻塞实时分析</td></tr>
+<tr><td>数据同步</td><td>低</td><td>2</td><td>数据源拉取</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>8.2 队列深度估算</h3>
+<pre><code><span class="t-co">// 高峰场景：开赛前 1 小时集中提交 300 场</span>
+入队速率 = 300 / 3600 ≈ 0.08 场/秒
+处理速率 = 2 Worker × 6.7 场/秒 ≈ 13 场/秒
+
+<span class="t-co">// 稳态队列深度 ≈ 0（处理速率 >> 入队速率）</span>
+<span class="t-co">// 最坏情况：300 场瞬间入队</span>
+最大队列深度 = 300
+清空时间 = 300 / 13 ≈ <span class="t-nu">23 秒</span>  <span class="t-co">// 远低于延迟预算</span></code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 9 -->
+<!-- ============================================================ -->
+<h2 id="sec-9">9. 扩容策略</h2>
+
+<h3>9.1 扩容触发条件</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>指标</th><th>扩容条件</th><th>操作</th></tr></thead>
+<tbody>
+<tr><td>队列深度</td><td>&gt; 100 持续 5 分钟</td><td>增加 1 个检索 Worker</td></tr>
+<tr><td>分析延迟 P95</td><td>&gt; 3000ms 持续 5 分钟</td><td>增加 1 个检索 Worker</td></tr>
+<tr><td>CPU 使用率</td><td>&gt; 70% 持续 10 分钟</td><td>增加 1 个 Worker</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>9.2 缩容触发条件</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>指标</th><th>缩容条件</th><th>操作</th></tr></thead>
+<tbody>
+<tr><td>队列深度</td><td>&lt; 10 持续 30 分钟</td><td>减少 1 个 Worker（最小 1）</td></tr>
+<tr><td>CPU 使用率</td><td>&lt; 20% 持续 1 小时</td><td>减少 1 个 Worker（最小 1）</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <div class="callout-title">当前规模说明</div>
+  <p>当前负载（0.6% 利用率）下无需自动扩缩容，固定 2 个检索 Worker 即可。扩容策略为数据量 / 规则数增长后预留，通过 Prometheus 指标驱动。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 10 -->
+<!-- ============================================================ -->
+<h2 id="sec-10">10. 基准测试计划</h2>
+
+<h3>10.1 测试场景</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>场景</th><th>目标</th><th>方法</th><th>通过标准</th></tr></thead>
+<tbody>
+<tr><td>S1 单场分析延迟</td><td>验证单场耗时预算</td><td>100 条 active 规则，单场分析 × 100 次</td><td>P95 &lt; 3000ms</td></tr>
+<tr><td>S2 并发分析吞吐</td><td>验证 Worker 吞吐</td><td>10 并发 × 100 场</td><td>≥ 5 场/秒/Worker</td></tr>
+<tr><td>S3 规则加载时间</td><td>验证规则数扩展性</td><td>100 / 500 / 1000 条规则加载</td><td>1000 条 &lt; 2s</td></tr>
+<tr><td>S4 回测吞吐</td><td>验证回测性能</td><td>1000 场单规则回测</td><td>≤ 5 分钟</td></tr>
+<tr><td>S5 缓存命中率</td><td>验证缓存策略</td><td>同场重复分析 × 10</td><td>命中率 ≥ 0.5</td></tr>
+<tr><td>S6 DSL 求值基准</td><td>建立求值基线</td><td>500 次原子求值计时</td><td>记录基线值</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>10.2 基准测试工具与流程</h3>
+<pre><code><span class="t-co">// 工具：k6（负载测试）+ 自定义脚本</span>
+<span class="t-co">// 流程：</span>
+<span class="t-nu">1.</span> 准备测试数据（mock 数据源，标注"模拟"）
+<span class="t-nu">2.</span> 运行场景 S1-S6，记录指标
+<span class="t-nu">3.</span> 对比目标值，生成基准报告
+<span class="t-nu">4.</span> 存入 docs/design/performance-model-1.0.0/benchmarks/
+<span class="t-nu">5.</span> 每次重大变更后重跑，防止性能退化</code></pre>
+
+<h3>10.3 基准报告模板</h3>
+<pre><code>{
+  <span class="t-st">"benchmark_id"</span>: <span class="t-st">"bm-2026-08-18"</span>,
+  <span class="t-st">"environment"</span>: { <span class="t-st">"cpu"</span>: <span class="t-st">"4 vCPU"</span>, <span class="t-st">"memory"</span>: <span class="t-st">"8GB"</span>, <span class="t-st">"node"</span>: <span class="t-st">"20.x"</span> },
+  <span class="t-st">"scenarios"</span>: {
+    <span class="t-st">"S1_single_analysis"</span>: { <span class="t-st">"p95_ms"</span>: 0, <span class="t-st">"passed"</span>: false },
+    <span class="t-st">"S2_concurrent_throughput"</span>: { <span class="t-st">"matches_per_sec"</span>: 0, <span class="t-st">"passed"</span>: false },
+    <span class="t-st">"S3_rule_load"</span>: { <span class="t-st">"rules_1000_load_ms"</span>: 0, <span class="t-st">"passed"</span>: false },
+    <span class="t-st">"S4_backtest"</span>: { <span class="t-st">"duration_ms"</span>: 0, <span class="t-st">"passed"</span>: false },
+    <span class="t-st">"S5_cache_hit"</span>: { <span class="t-st">"hit_ratio"</span>: 0, <span class="t-st">"passed"</span>: false },
+    <span class="t-st">"S6_dsl_eval"</span>: { <span class="t-st">"avg_atomic_us"</span>: 0 }
+  }
+}</code></pre>
+
+<!-- ============================================================ -->
+<!-- Section 11 -->
+<!-- ============================================================ -->
+<h2 id="sec-11">11. 性能指标定义</h2>
+
+<p>对齐 retrieval-engine-1.0.0 指标规范（Prometheus 格式），新增本系统特有指标：</p>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>指标</th><th>类型</th><th>标签</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>kb_api_latency_ms</code></td><td>Histogram</td><td>endpoint, method</td><td>API 延迟分布</td></tr>
+<tr><td><code>kb_analysis_latency_ms</code></td><td>Histogram</td><td>analyze_type</td><td>分析完成延迟（P95 &gt; 3000ms 告警）</td></tr>
+<tr><td><code>kb_rule_eval_duration_ms</code></td><td>Histogram</td><td>rule_id</td><td>单规则求值耗时</td></tr>
+<tr><td><code>kb_rule_eval_count</code></td><td>Counter</td><td>rule_id, result</td><td>规则求值次数（按结果）</td></tr>
+<tr><td><code>kb_cache_hit_ratio</code></td><td>Gauge</td><td>cache_name</td><td>缓存命中率（&lt; 0.5 告警）</td></tr>
+<tr><td><code>kb_queue_depth</code></td><td>Gauge</td><td>queue</td><td>队列深度（扩容触发）</td></tr>
+<tr><td><code>kb_worker_cpu_usage</code></td><td>Gauge</td><td>worker_id</td><td>Worker CPU 使用率</td></tr>
+<tr><td><code>kb_db_pool_usage</code></td><td>Gauge</td><td>process</td><td>DB 连接池使用率</td></tr>
+<tr><td><code>kb_backtest_duration_ms</code></td><td>Histogram</td><td>rule_version_id</td><td>回测作业耗时</td></tr>
+<tr><td><code>kb_ai_candidate_latency_ms</code></td><td>Histogram</td><td>provider</td><td>AI 挖掘/解读延迟</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- Section 12 -->
+<!-- ============================================================ -->
+<h2 id="sec-12">12. 与架构映射对照</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>架构参考</th><th>本设计</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>分析延迟 P95 &gt; 3000ms 告警（P2）</td><td>延迟预算分解 &lt; 3000ms</td><td>各环节预算明确</td></tr>
+<tr><td>缓存命中率 &lt; 0.5 告警（P3）</td><td>各缓存项命中率目标</td><td>规则 100% / 特征 0.7 / 比赛 0.8 / 分析 0.5</td></tr>
+<tr><td>DB 连接估算（12×5 + 2×20 + 2×10 = 120）</td><td>2×20 + 2×5 + 1×10 = 60</td><td>按实际规模缩减，PG max_connections 200 建议不变</td></tr>
+<tr><td>Worker 并发（实时 8 / 回测 4 / 同步 2）</td><td>沿用</td><td>队列优先级模型一致</td></tr>
+<tr><td>Redis 内存参考 120MB</td><td>预算 &lt; 10MB</td><td>规模缩小，余量充足</td></tr>
+<tr><td>指标规范（Prometheus）</td><td>新增 10 个指标</td><td>含规则求值、AI 延迟等特有指标</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout success">
+  <div class="callout-title">验收对照</div>
+  <ul>
+    <li>✅ 明确 P95 延迟目标（分析 &lt; 3000ms，API &lt; 100ms，规则查询 &lt; 50ms）</li>
+    <li>✅ 缓存命中率目标（规则 100% / 特征 0.7 / 比赛 0.8 / 分析 0.5）</li>
+    <li>✅ 容量估算（5 进程 / 60 DB 连接 / &lt; 10MB Redis / ~3GB 年数据）</li>
+    <li>✅ 瓶颈分析（DSL 求值为主要 CPU 消耗，1000 规则预警）</li>
+    <li>✅ 扩容策略（队列深度 / 延迟 / CPU 三指标驱动）</li>
+    <li>✅ 基准测试计划（6 场景 + 报告模板）</li>
+  </ul>
+</div>
+
+</main>
+</div>
+</body>
+</html>
