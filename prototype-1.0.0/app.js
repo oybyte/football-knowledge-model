@@ -47,7 +47,7 @@ const PAGE_TITLES = {
   dsl:["DSL 引擎", "条件求值 · 算子 · 推理链"],
   history: ["历史记录", "已分析比赛复盘"],
   rules:   ["规则库", "规则引擎与特征目录"],
-  ai:      ["AI 引擎", "规则挖掘沙箱"],
+  ai:      ["AI 引擎", "挖掘 · 信任边界 Containment · G19"],
   settings:["设置",   "数据源与引擎参数"]
 };
 function topbarTitleHtml() {
@@ -136,7 +136,7 @@ function render() {
   else if (state.page === "dsl") main.innerHTML = (window.renderDsl ? window.renderDsl() : `<div class="page">DSL 引擎模块未加载。</div>`);
   else if (state.page === "history") main.innerHTML = `<div class="page">${renderHistory()}</div>`;
   else if (state.page === "rules") { main.innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
-  else if (state.page === "ai") main.innerHTML = `<div class="page">${renderAI()}</div>`;
+  else if (state.page === "ai") main.innerHTML = (window.renderAIView ? window.renderAIView() : `<div class="page">AI 引擎模块未加载。</div>`);
   else if (state.page === "settings") main.innerHTML = `<div class="page">${renderSettings()}</div>`;
 }
 function setPage(p) { state.page = p; render(); }
@@ -619,66 +619,6 @@ function renderFeatureCatalog() {
   return `<div class="page-head"><div><div class="ph-title">特征目录</div><div class="ph-sub">${FEATURE_CATALOG.length} 个特征定义 · 四族分类 · point-in-time 纯函数 · 版本化不可变</div></div>
     <div class="ph-actions"><button class="btn sm" onclick="downloadFeatures()">${ICON.download}导出契约</button><button class="btn sm primary" onclick="newFeature()">${ICON.plus}新建特征</button></div></div>
     <div class="grid-2">${cards}</div>`;
-}
-
-// ============================ AI 引擎 · 规则挖掘沙箱 ============================
-const AI_CANDIDATES = [
-  { id: "C001", desc: "主胜凯利连续 3 家下调且盘口冻结 → 上盘", samples: 142, acc: 0.61, edge: 0.084, status: "pending" },
-  { id: "C002", desc: "必发主胜资金占比 >50% 且冷热为正 → 风险", samples: 88, acc: 0.55, edge: -0.021, status: "pending" },
-  { id: "C003", desc: "澳门初盘较其余均值深 0.5 且临场不降水 → 下盘", samples: 203, acc: 0.63, edge: 0.110, status: "adopted" },
-  { id: "C004", desc: "欧指主胜离散 >0.4 且主水分歧 → 风险", samples: 167, acc: 0.58, edge: 0.031, status: "pending" },
-  { id: "C005", desc: "升盘降水 + 同步调盘≥4 → 上盘(强信号)", samples: 120, acc: 0.67, edge: 0.150, status: "adopted" },
-  { id: "C006", desc: "降盘升水 + 成交量异常放量 → 下盘", samples: 95, acc: 0.60, edge: 0.070, status: "rejected" }
-];
-function renderAI() {
-  const pending = AI_CANDIDATES.filter(c => c.status === "pending").length;
-  const adopted = AI_CANDIDATES.filter(c => c.status === "adopted").length;
-  const kpis = [["待审候选", pending, "risk"], ["已转正", adopted, "up"], ["模型 AUC", "0.72", "brand"], ["最近挖掘", "2h前", "info"]];
-  const kpiHtml = `<div class="kpi-row">${kpis.map(([t, v, c]) => `<div class="kpi ${c}"><div class="kpi-v">${v}</div><div class="kpi-t">${t}</div></div>`).join("")}</div>`;
-  const steps = ["数据接入", "特征工程", "候选生成", "专家审核", "转正入库"];
-  const stepper = `<div class="ai-stepper">${steps.map((s, i) => `<div class="ai-step ${i < 3 ? "done" : ""} ${i === 3 ? "current" : ""}"><div class="ai-step-dot">${i < 3 ? "✓" : (i + 1)}</div><div class="ai-step-label">${s}</div></div>${i < steps.length - 1 ? '<div class="ai-step-line"></div>' : ""}`).join("")}</div>`;
-  const rows = AI_CANDIDATES.map(c => {
-    const st = c.status === "adopted" ? '<span class="badge up">已采纳</span>' : (c.status === "rejected" ? '<span class="badge down">已驳回</span>' : '<span class="badge risk">待审</span>');
-    const edgeCls = c.edge >= 0 ? "up" : "down";
-    const actions = c.status === "pending" ? `<button class="btn sm primary" onclick="adoptCandidate('${c.id}')">${ICON.check}采纳</button><button class="btn sm" onclick="rejectCandidate('${c.id}')">${ICON.x}驳回</button>` : '<span class="muted">—</span>';
-    return `<tr>
-      <td class="l"><span class="rule-id">${c.id}</span></td>
-      <td class="l">${c.desc}</td>
-      <td class="num">${c.samples}</td>
-      <td class="num">${(c.acc * 100).toFixed(0)}%</td>
-      <td class="num ${edgeCls}">${c.edge >= 0 ? "+" : ""}${c.edge.toFixed(3)}</td>
-      <td>${st}</td>
-      <td>${actions}</td></tr>`;
-  }).join("");
-  return `<div class="page-head"><div><div class="ph-title">AI 引擎</div><div class="ph-sub">规则自动挖掘 · 沙箱审核 · 模型表现监控</div></div>
-    <div class="ph-actions"><button class="btn sm primary" onclick="newMiningTask()">${ICON.spark}新建挖掘任务</button></div></div>
-    ${kpiHtml}
-    <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">${ICON.cpu}挖掘流水线</div><div class="extra">实时</div></div><div class="card-bd">${stepper}</div></div>
-    <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">候选规则 (${AI_CANDIDATES.length})</div><div class="extra">采纳后转正入规则库</div></div>
-      <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">ID</th><th class="l">规则描述</th><th>样本</th><th>命中率</th><th>edge</th><th>状态</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
-}
-function adoptCandidate(id) {
-  const c = AI_CANDIDATES.find(x => x.id === id); if (!c) return;
-  c.status = "adopted";
-  if (!RULES.find(r => r.id === id)) {
-    const dir = c.desc.includes("上盘") ? 1 : (c.desc.includes("下盘") ? -1 : 0);
-    RULES.push({ id, name: c.desc, family: "unknown", direction: dir, weight: 1, hasThreshold: false, placeholder: false, desc: c.desc, test: () => null, evidence: () => "" });
-    state.enabled[id] = true;
-  }
-  toast(`已采纳并转正入库：${id}`);
-  render();
-}
-function rejectCandidate(id) { const c = AI_CANDIDATES.find(x => x.id === id); if (c) c.status = "rejected"; render(); toast(`已驳回 ${id}`); }
-
-function newMiningTask() {
-  const id = "C" + (AI_CANDIDATES.length + 1).toString().padStart(3, "0");
-  const samples = Math.floor(60 + Math.random() * 120);
-  const acc = Math.round((0.50 + Math.random() * 0.16) * 100) / 100;
-  const edge = Math.round((Math.random() * 0.2 - 0.04) * 1000) / 1000;
-  const descs = ["主水集体下调后临场升盘", "必发客胜资金骤增", "欧指平赔异常走低", "多机构同步降盘"];
-  AI_CANDIDATES.push({ id, desc: `自定义挖掘产出（示例）：${descs[AI_CANDIDATES.length % descs.length]} → 待审核`, samples, acc, edge, status: "pending" });
-  toast(`挖掘任务已提交，沙箱产出候选 ${id}`);
-  render();
 }
 
 // ============================ 规则库 / 特征目录 · 壳层 CRUD ============================
