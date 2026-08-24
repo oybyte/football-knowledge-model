@@ -18,7 +18,7 @@ const {
   validateRuleVersion,
 } = require('./schema');
 
-// 单例（阶段 1 内存实例）
+// 单例（阶段 1 内存实例；持久化场景可用 createRuleService 注入 SqliteRuleStore）
 const store = new RuleStore();
 const lockManager = new LockManager();
 const stateMachine = new StateMachine({ store, lockManager });
@@ -54,11 +54,35 @@ function getRuleVersions(ruleId) {
   return store.getByRuleId(ruleId);
 }
 
+/**
+ * 装配规则服务（store 可注入，持久化场景传 SqliteRuleStore）。
+ * @param {Object} [opts]
+ * @param {Object} [opts.store] 实现 RuleStore 接口的存储
+ * @param {Object} [opts.lockManager]
+ * @returns {{ store, lockManager, stateMachine, seed, getActiveRules, getRuleVersions }}
+ */
+function createRuleService({ store: injectedStore, lockManager: injectedLock } = {}) {
+  const s = injectedStore || new RuleStore();
+  const lm = injectedLock || new LockManager();
+  const sm = new StateMachine({ store: s, lockManager: lm });
+  let seeded = false;
+  function seedService() {
+    if (seeded) return;
+    seeded = true;
+    for (const v of loadPrototypeRules()) s.insert(v);
+  }
+  function active() { if (!seeded) seedService(); return s.getActive(); }
+  function versions(ruleId) { if (!seeded) seedService(); return s.getByRuleId(ruleId); }
+  return { store: s, lockManager: lm, stateMachine: sm, seed: seedService, getActiveRules: active, getRuleVersions: versions };
+}
+
 module.exports = {
   // 单例
   store,
   lockManager,
   stateMachine,
+  // 工厂（持久化注入）
+  createRuleService,
   // 类
   RuleStore,
   StateMachine,

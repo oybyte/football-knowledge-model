@@ -19,16 +19,21 @@
 - 2.4 AI 引擎：多模型 provider 适配 + 规则挖掘 + 单场解读 + 审核转正 + 信任边界。
 - 2.5 原型-后端集成：API 客户端层（mock / http 双适配 + localStorage 切换）+ 后端接入视图。
 
+### 阶段 4 · 持久化存储层
+- server/src/db/：SQLite 落库（node:sqlite 内置，无外部依赖），规则 / 预测 / 回填结果 / 证据 / 审计跨重启持久化。
+- 不可变性在 DB 层强制（触发器拒绝 UPDATE/DELETE）+ 应用层护栏双保险；幂等（INSERT OR IGNORE）、回填 once-only、事务回滚。
+- rules/index.js 新增 createRuleService({store}) 工厂，可注入 SqliteRuleStore 驱动状态机全生命周期。
+
 ### 阶段 2 · 前端原型（prototype-1.0.0）
 - 预测链流水线、规则治理、回测结果、数据接入监控、特征引擎、DSL 引擎、AI 引擎、规则库（增强 DSL 索引 + 检索命中预览）。
 
 ## 验证
-- 后端全量回归 193 用例绿（`node --test`），覆盖数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链。
+- 后端全量回归 211 用例绿（`node --test`），覆盖数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储。
 - `node --check` 已通过的 JS 变更文件语法检查通过。
 
 ## 未实现 / 待后续
 - 真实竞彩数据接口与数据归一化（当前为 mock 数据）。
-- 持久化存储（DB）、服务部署与 API 网关（当前为内存存储 + 原型 mock/后端接入适配）。
+- 服务部署与 API 网关（当前为 SQLite 落库 + 原型 mock/后端接入适配，尚无 HTTP 服务与部署）。
 - 线上长期运行观测与规则持续优化流水线。
 
 ## 事实状态
