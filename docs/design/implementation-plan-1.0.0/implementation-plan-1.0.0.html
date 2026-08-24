@@ -531,7 +531,8 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
 <!-- ============================================================ -->
 <h2 id="sec-p2">阶段 2 · 规则先行</h2>
 
-<h3>2.1 文字规则 → DSL 转换</h3>
+<h3>2.1 文字规则 → DSL 转换 <span class="badge badge-green">实施完成</span></h3>
+  <p style="margin-left:2px;margin-top:4px">实现：<code>server/src/convert/</code>（catalog 规则清单 15 条 + DSL 映射 + text2dsl 转换/编译校验/入库脚本，全部 draft + untrusted）。验证：<code>server/test/text2dsl.test.js</code> 6 用例通过，全量 176 用例绿。</p>
 
 <div class="step">
   <div class="step-title">目标</div>
