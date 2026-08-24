@@ -328,6 +328,12 @@ external_ref     := "$" identifier ("." identifier)*</code></pre>
       <tr><td><code>kelly_index.home_max</code></td><td>number</td><td>ratio</td><td>欧指主胜凯利最大值</td><td>R016 <code>kelly_home_max</code></td></tr>
       <tr><td><code>betfair.dominant_ratio</code></td><td>number</td><td>ratio</td><td>必发资金集中度</td><td>R015 <code>dominant_ratio</code></td></tr>
       <tr><td><code>betfair.heat</code></td><td>number</td><td>percent</td><td>资金热度</td><td>R015 <code>heat</code></td></tr>
+      <tr><td><code>betfair.turnover</code></td><td>number</td><td>count</td><td>必发总成交额</td><td>betfair <code>turnover</code></td></tr>
+      <tr><td><code>water.lower.dispersion</code></td><td>number</td><td>points</td><td>客水离散度</td><td>R008 <code>away_water_dispersion</code></td></tr>
+      <tr><td><code>move_pattern</code></td><td>string</td><td>-</td><td>盘口走势模式（升盘降水等）</td><td>temp <code>move_pattern</code></td></tr>
+      <tr><td><code>stability_flag</code></td><td>boolean</td><td>-</td><td>盘口冻结标记</td><td>temp <code>stability_flag</code></td></tr>
+      <tr><td><code>consensus_direction</code></td><td>string</td><td>-</td><td>共振方向（升盘/降盘/无）</td><td>reso <code>consensus_direction</code></td></tr>
+      <tr><td><code>kelly_index.divergence</code></td><td>number</td><td>ratio</td><td>凯利背离（最大−最小）</td><td>anom <code>kelly_divergence</code></td></tr>
       <tr><td><code>match.league</code></td><td>string</td><td>-</td><td>联赛名称</td><td>data.js <code>league</code></td></tr>
       <tr><td><code>match.home_team</code></td><td>string</td><td>-</td><td>主队名称</td><td>data.js <code>home</code></td></tr>
       <tr><td><code>result.outcome</code></td><td>string</td><td>-</td><td>实际结果方向（仅回测）</td><td>回测框架</td></tr>
