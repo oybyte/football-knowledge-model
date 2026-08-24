@@ -666,7 +666,8 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
   </div>
 </div>
 
-<h3>2.5 原型-后端集成</h3>
+<h3>2.5 原型-后端集成 <span class="badge badge-green">实施完成</span></h3>
+  <p style="margin-left:2px;margin-top:4px">实现：<code>prototype-1.0.0/src/api-client/api-client.js</code>（六类能力契约客户端 + mock/http 双适配器 + localStorage 模式开关）+ <code>prototype-1.0.0/api.js</code>「后端接入」视图（规则库版本/状态、分析推理链、AI 候选审核）+ 侧栏模式徽章。mock 与真实模式经同一契约切换，不改视图代码。验证：<code>prototype-1.0.0/test/api-client.smoke.js</code> VM 冒烟通过（mock/http 形状一致、模式持久化）。</p>
 
 <div class="step">
   <div class="step-title">目标</div>

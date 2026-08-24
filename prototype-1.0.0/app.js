@@ -32,6 +32,7 @@ const NAV = [
   { id: "ingest",   label: "数据接入", icon: "layers" },
   { id: "feature",  label: "特征引擎", icon: "chart" },
   { id: "dsl",      label: "DSL 引擎", icon: "filter" },
+  { id: "api",      label: "后端接入", icon: "plus" },
   { id: "history",  label: "历史记录", icon: "replay" },
   { id: "rules",    label: "规则库",   icon: "book" },
   { id: "ai",       label: "AI引擎",   icon: "cpu" },
@@ -45,6 +46,7 @@ const PAGE_TITLES = {
   ingest:["数据接入", "数据源 · 信任分级 · 三时间戳"],
   feature:["特征引擎", "四族 + 欧指 + 必发 · point-in-time"],
   dsl:["DSL 引擎", "条件求值 · 算子 · 推理链"],
+  api:["后端接入", "原型 ↔ 后端契约 · mock/真实切换"],
   history: ["历史记录", "已分析比赛复盘"],
   rules:   ["规则库", "规则引擎与特征目录"],
   ai:      ["AI 引擎", "挖掘 · 信任边界 Containment · G19"],
@@ -161,6 +163,7 @@ function render() {
   else if (state.page === "ingest") main.innerHTML = (window.renderIngest ? window.renderIngest() : `<div class="page">数据接入模块未加载。</div>`);
   else if (state.page === "feature") main.innerHTML = (window.renderFeature ? window.renderFeature() : `<div class="page">特征引擎模块未加载。</div>`);
   else if (state.page === "dsl") main.innerHTML = (window.renderDsl ? window.renderDsl() : `<div class="page">DSL 引擎模块未加载。</div>`);
+  else if (state.page === "api") { main.innerHTML = (window.renderApiView ? window.renderApiView() : `<div class="page">后端接入模块未加载。</div>`); window.__apiBoot ? window.__apiBoot() : 0; window.__ApiClient ? window.__ApiClient.init() : 0; }
   else if (state.page === "history") main.innerHTML = `<div class="page">${renderHistory()}</div>`;
   else if (state.page === "rules") { main.innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
   else if (state.page === "ai") main.innerHTML = (window.renderAIView ? window.renderAIView() : `<div class="page">AI 引擎模块未加载。</div>`);
@@ -860,3 +863,4 @@ function goSearchFeature(name) {
 // ============================ 启动 ============================
 bindGlobalSearch();
 render();
+if (window.__ApiClient) window.__ApiClient.init();
