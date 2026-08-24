@@ -848,3 +848,16 @@ body {
 @media (max-width: 900px) {
   .v-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* =============================================================
+   特征引擎 · 计算监督视图专属
+   ============================================================= */
+.feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; margin-top: 14px; }
+.feat-grid .bt-metrics-grid { grid-template-columns: 1fr 1fr; }
+.feat-grid .bt-metric { min-height: 74px; }
+.feat-grid .bmt-v { font-size: 17px; }
+
+@media (max-width: 900px) {
+  .feat-grid { grid-template-columns: 1fr; }
+  .feat-grid .bt-metrics-grid { grid-template-columns: 1fr 1fr; }
+}
