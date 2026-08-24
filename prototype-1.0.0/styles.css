@@ -810,3 +810,41 @@ body {
   .split-2 { grid-template-columns: 1fr; }
   .bt-metrics-grid { grid-template-columns: 1fr; }
 }
+
+/* =============================================================
+   数据接入监控 · 视图专属
+   ============================================================= */
+.ing-sum { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+.ing-table-wrap { overflow-x: auto; }
+.ing-table { width: 100%; border-collapse: collapse; min-width: 860px; }
+.ing-table th { text-align: left; font-size: 11px; color: var(--t-3); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--bd-1); white-space: nowrap; }
+.ing-table td { padding: 10px; border-bottom: 1px solid var(--bd-1); font-size: 12px; color: var(--t-2); vertical-align: middle; }
+.ing-table tbody tr:hover td { background: var(--bg-1); }
+.ing-src { display: flex; flex-direction: column; gap: 2px; }
+.ing-src .mono { color: var(--t-1); }
+.ing-name { font-size: 13px; font-weight: 600; color: var(--t-1); }
+.ing-feed { display: flex; gap: 4px; flex-wrap: wrap; }
+.ing-ts { display: flex; flex-direction: column; gap: 2px; font-family: var(--mono); }
+.ing-hlth { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.lamp { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.lamp.ok { background: var(--up); box-shadow: 0 0 0 3px var(--up-soft); }
+.lamp.risk { background: var(--risk); box-shadow: 0 0 0 3px var(--risk-soft); }
+
+.v-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.v-co { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; background: var(--bg-1); border: 1px solid var(--bd-1); border-radius: var(--r-sm); }
+.vc-n { font-size: 13px; font-weight: 600; color: var(--t-1); }
+.vc-tok { font-size: 12px; color: var(--t-3); letter-spacing: .5px; }
+
+.ing-alerts .tl-row { align-items: center; gap: 10px; }
+.al-lvl { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 6px; flex: none; }
+.al-lvl.ok { color: var(--up); background: var(--up-soft); }
+.al-lvl.warn { color: #d97706; background: rgba(245,158,11,.14); }
+.al-lvl.info { color: var(--info); background: rgba(56,189,248,.14); }
+.al-src { font-size: 11px; color: var(--t-3); flex: none; }
+.al-ev { font-size: 12px; color: var(--t-2); }
+.callout.info { border-color: rgba(56,189,248,.4); background: rgba(56,189,248,.08); }
+
+@media (max-width: 900px) {
+  .v-grid { grid-template-columns: repeat(2, 1fr); }
+}
