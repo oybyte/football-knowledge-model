@@ -54,34 +54,43 @@ if (typeof window !== "undefined" && !window.__governanceLoaded) {
   function stateOf(id) { return Demo.override[id] || BASE_STATE[id] || "draft"; }
   function nowHMS() { const d = new Date(); const p = n => String(n).padStart(2, "0"); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
 
-  // ---- 回测指标（Mock，确定性伪随机，同一规则每次渲染一致） ----
-  const BT = { sample: 80, hitRate: 0.55, roi: 0.03, maxDD: 0.12, timeStab: 0.6, league: 0.3 };
+  // ---- 回测指标：单一事实源取自 backtest.js（window.__BACKTEST，对齐设计文档阈值） ----
+  // 独立加载/单测时为兜底，阈值与 backtest.js 保持一致（样本≥30/命中≥0.55/ROI≥0.03/回撤≤0.15/稳定≤0.05/联赛≥2）
+  const _bt = () => (typeof window !== "undefined" && window.__BACKTEST) ? window.__BACKTEST : null;
   function seeded(n) { let x = 2000 + n * 7919; return () => { x = (x * 9301 + 49297) % 233280; return x / 233280; }; }
-  function metrics(id) {
+  function btFallbackMetrics(id) {
     const r = seeded((parseInt(id.replace("R", ""), 10) || 1));
     return {
-      sample: 40 + Math.floor(r() * 180),
-      hitRate: +(0.42 + r() * 0.22).toFixed(3),
-      roi: +(r() * 0.16 - 0.03).toFixed(4),
-      maxDD: +(r() * 0.18).toFixed(3),
-      timeStab: +(0.3 + r() * 0.6).toFixed(2),
-      league: +(0.2 + r() * 0.6).toFixed(2)
+      sample: 24 + Math.floor(r() * 200),
+      hitRate: +(0.45 + r() * 0.21).toFixed(3),
+      roi: +(r() * 0.16 - 0.04).toFixed(4),
+      maxDD: +(r() * 0.2 + 0.03).toFixed(3),
+      timeStab: +(r() * 0.09).toFixed(4),
+      league: 1 + Math.floor(r() * 5)
     };
   }
+  function metrics(id) { return _bt() ? _bt().makeMetrics(id) : btFallbackMetrics(id); }
   function evalBt(m) {
+    if (_bt()) {
+      const r = _bt().evalBt(m);
+      return {
+        checks: r.items.map(i => [i.k, i.pass, i.txt]),
+        pass: r.pass,
+        verdict: r.pass ? "建议转正" : "观察",
+        tone: r.tone
+      };
+    }
+    const T = { sample: 30, hitRate: 0.55, roi: 0.03, maxDD: 0.15, timeStab: 0.05, league: 2 };
     const checks = [
-      ["样本量", m.sample >= BT.sample, `${m.sample} ≥ ${BT.sample}`],
-      ["命中率", m.hitRate >= BT.hitRate, `${m.hitRate.toFixed(2)} ≥ ${BT.hitRate.toFixed(2)}`],
-      ["edge/ROI", m.roi >= BT.roi, `${m.roi.toFixed(3)} ≥ ${BT.roi.toFixed(2)}`],
-      ["最大回撤", m.maxDD <= BT.maxDD, `${m.maxDD.toFixed(2)} ≤ ${BT.maxDD.toFixed(2)}`],
-      ["时间稳定", m.timeStab >= BT.timeStab, `${m.timeStab.toFixed(2)} ≥ ${BT.timeStab.toFixed(2)}`],
-      ["联赛覆盖", m.league >= BT.league, `${m.league.toFixed(2)} ≥ ${BT.league.toFixed(2)}`]
+      ["样本量", m.sample >= T.sample, `${m.sample} ≥ ${T.sample}`],
+      ["命中率", m.hitRate >= T.hitRate, `${m.hitRate.toFixed(2)} ≥ ${T.hitRate.toFixed(2)}`],
+      ["ROI", m.roi >= T.roi, `${m.roi.toFixed(3)} ≥ ${T.roi.toFixed(2)}`],
+      ["最大回撤", m.maxDD <= T.maxDD, `${m.maxDD.toFixed(2)} ≤ ${T.maxDD.toFixed(2)}`],
+      ["时间稳定性", m.timeStab <= T.timeStab, `${m.timeStab.toFixed(3)} ≤ ${T.timeStab.toFixed(2)}`],
+      ["联赛覆盖度", m.league >= T.league, `${m.league} ≥ ${T.league}`]
     ];
     const pass = checks.every(c => c[1]);
-    const hitHard = m.hitRate >= 0.55 && m.roi >= 0 && m.sample >= BT.sample;
-    const verdict = pass ? "建议转正" : (hitHard ? "观察" : "待修正");
-    const tone = pass ? "up" : (hitHard ? "info" : "risk");
-    return { checks, pass, verdict, tone };
+    return { checks, pass, verdict: pass ? "建议转正" : "观察", tone: pass ? "up" : "risk" };
   }
 
   // ---- 交互：演示状态推进 + append-only 审计 ----
@@ -205,6 +214,6 @@ if (typeof window !== "undefined" && !window.__governanceLoaded) {
   window.__govResetAll = resetAll;
 
   if (typeof module !== "undefined") {
-    module.exports = { advance, resetRule, resetAll, metrics, evalBt, stateOf, renderGovernance, BASE_STATE, NEXT, LIFE, BT };
+    module.exports = { advance, resetRule, resetAll, metrics, evalBt, stateOf, renderGovernance, BASE_STATE, NEXT, LIFE };
   }
 }
