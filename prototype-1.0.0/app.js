@@ -102,6 +102,33 @@ RULES.forEach(r => {
 
 const BM_COLORS = { "澳*": "#f59e0b", "澳门": "#f59e0b", "36*": "#38bdf8", "威*": "#8b5cf6", "立*": "#10b981", "皇冠": "#f43f5e", "Bet365": "#22c55e", "Betfai*": "#ec4899", "Interwet*": "#64748b" };
 const THR_CFG = { dropN: { min: 1, max: 5, step: 1 }, riseN: { min: 1, max: 5, step: 1 }, ratio: { min: 0.30, max: 0.70, step: 0.05 }, kelly: { min: 0.90, max: 1.10, step: 0.01 } };
+
+// 规则库兜底：检索命中预览（对接 DSL 引擎）+ DSL 条件摘要
+let RULE_HITS = {}; let HIT_MATCH_ID = "";
+function buildRuleHits() {
+  RULE_HITS = {};
+  if (!window.__DSL) return;
+  const m = MATCHES[0]; HIT_MATCH_ID = m.id;
+  const A = window.__DSL.analyze(m);
+  A.list.forEach(x => { RULE_HITS[x.id] = { hit: x.hit, dir: x.dir }; });
+}
+function dslOpsHint(id) {
+  if (!window.__DSL) return "";
+  const e = window.__DSL.DSL.find(x => x.id === id);
+  if (!e) return "—";
+  if (e.placeholder) return "占位·未入检索";
+  const hasExt = e.steps.some(s => s.ref.startsWith("$raw."));
+  const ops = e.steps.map(s => s.op).join("+");
+  return `${hasExt ? "外部引用·" : ""}${ops}${e.guard && e.guard.length ? "·前置guard" : ""}`;
+}
+function hitChip(id) {
+  const h = RULE_HITS[id];
+  if (!h) return '<span class="badge muted">未命中</span>';
+  if (!h.hit) return '<span class="badge muted">未命中</span>';
+  if (h.dir > 0) return '<span class="badge up">命中·上盘</span>';
+  if (h.dir < 0) return '<span class="badge down">命中·下盘</span>';
+  return '<span class="badge risk">命中·风险</span>';
+}
 const FAM_COLOR = { cross: "#8b5cf6", temporal: "#38bdf8", resonance: "#10b981", anomaly: "#f59e0b", betfair: "#ec4899", onex: "#22c55e", unknown: "#64748b" };
 
 function fmt(v, n) { if (v == null || (typeof v === "number" && isNaN(v))) return "—"; return (typeof v === "number") ? v.toFixed(n == null ? 2 : n) : v; }
@@ -542,6 +569,7 @@ function renderRulesPage() {
 function setRuleTab(t) { state.ruleTab = t; document.getElementById("main").innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
 
 function renderRulesLibrary() {
+  buildRuleHits();
   const chips = [["all", "全部"], ["temporal", "时序"], ["cross", "横截面"], ["resonance", "共振"], ["anomaly", "异常"], ["onex", "欧指"], ["betfair", "必发"], ["unknown", "占位"]];
   return `<div class="page-head"><div><div class="ph-title">规则库</div><div class="ph-sub">${RULES.length} 条规则 · 覆盖让球盘 / 欧指 / 必发三数据源</div></div>
     <div class="ph-actions"><button class="btn sm" onclick="downloadRules()">${ICON.download}导出</button><button class="btn sm primary" onclick="newRule()">${ICON.plus}新建规则</button></div></div>
@@ -549,7 +577,7 @@ function renderRulesLibrary() {
       <div class="filter-chips">${chips.map(([k, l]) => `<span class="chip ${state.ruleFamFilter === k ? "active" : ""}" onclick="setRuleFam('${k}')">${l}</span>`).join("")}</div>
       <input class="inp" id="rule-search-input" style="width:200px" placeholder="搜索规则名称 / ID…" value="${state.ruleSearch}" autocomplete="off">
     </div>
-    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">ID</th><th class="l">名称</th><th>家族</th><th>方向</th><th>阈值</th><th>状态</th><th>版本</th><th></th></tr></thead><tbody id="rules-tbody">${buildRuleRows()}</tbody></table></div></div>`;
+    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">ID</th><th class="l">名称</th><th>家族</th><th>方向</th><th>阈值</th><th>状态</th><th>版本</th><th>检索命中 <span class="muted mono" style="font-size:10px">${HIT_MATCH_ID}</span></th><th>DSL条件</th><th></th></tr></thead><tbody id="rules-tbody">${buildRuleRows()}</tbody></table></div></div>`;
 }
 
 function buildRuleRows() {
@@ -571,6 +599,8 @@ function buildRuleRows() {
       <td>${r.hasThreshold ? `<span class="num mono">${state.thresholds[r.id]}</span>` : '<span class="muted">—</span>'}</td>
       <td>${status}</td>
       <td class="num muted mono">v1</td>
+      <td>${hitChip(r.id)}</td>
+      <td><span class="mono" style="font-size:11px;color:var(--t-2)">${dslOpsHint(r.id)}</span></td>
       <td><button class="btn sm" onclick="editRule('${r.id}')">编辑</button></td></tr>`;
   }).join("");
 }
