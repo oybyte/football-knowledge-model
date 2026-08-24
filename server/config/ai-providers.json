@@ -1,0 +1,36 @@
+{
+  "default": "stub",
+  "comment": "AI 多模型适配层配置（阶段 2.4）。切换模型/凭证均在此配置，不改业务代码。api_key 一律经环境变量注入（api_key_env 指向环境变量名），本文件不含任何真实密钥。stub 为离线确定性 provider（离线/测试兜底），degraded=true 表示回退此 provider。",
+  "providers": [
+    {
+      "id": "stub",
+      "name": "Stub (离线确定性)",
+      "category": "offline",
+      "base_url": null,
+      "model": "stub-1",
+      "api_key_env": null,
+      "enabled": true,
+      "degraded": true
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek Chat",
+      "category": "llm",
+      "base_url": "https://api.deepseek.com/v1/chat/completions",
+      "model": "deepseek-chat",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "enabled": false,
+      "degraded": false
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI GPT",
+      "category": "llm",
+      "base_url": "https://api.openai.com/v1/chat/completions",
+      "model": "gpt-4o-mini",
+      "api_key_env": "OPENAI_API_KEY",
+      "enabled": false,
+      "degraded": false
+    }
+  ]
+}

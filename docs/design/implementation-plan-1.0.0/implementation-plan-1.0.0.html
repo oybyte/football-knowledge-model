@@ -629,7 +629,8 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
   </div>
 </div>
 
-<h3>2.4 AI 引擎模块</h3>
+<h3>2.4 AI 引擎模块 <span class="badge badge-green">实施完成</span></h3>
+  <p style="margin-left:2px;margin-top:4px">实现：<code>server/src/ai/</code>（providers 多模型适配 + mining 规则挖掘 + interpretation 单场解读 + review 审核转正 + containment 信任边界）+ <code>server/config/ai-providers.json</code>。多模型配置驱动（deepseek/openai + 离线 stub 兜底，凭证走环境变量）；全部输出 untrusted；候选指标由真实样本重算；审核经状态机转 proposed。验证：<code>server/test/ai-engine.test.js</code> 11 用例通过（含凭证隔离断言），全量 187 用例绿。</p>
 
 <div class="step">
   <div class="step-title">目标</div>
