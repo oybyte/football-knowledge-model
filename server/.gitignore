@@ -1,2 +1,5 @@
 # Dependencies
 node_modules/
+
+# Local SQLite database files
+data/

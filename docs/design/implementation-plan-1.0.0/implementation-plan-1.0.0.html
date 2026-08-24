@@ -809,7 +809,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
 <!-- Phase 4 · Persistence -->
 <!-- ============================================================ -->
 <h2 id="sec-p4">阶段 4 · 持久化存储层 <span class="badge badge-green">实施完成</span></h2>
-  <p style="margin-left:2px;margin-top:4px">实现：<code>server/src/db/</code>（connection.js SQLite 连接 + schema.js DDL/不可变触发器 + ruleStore.js + predictionStore.js + auditStore.js + index.js createDb 工厂）。基于 Node 内置 <code>node:sqlite</code>（无外部依赖）。规则 / 预测 / 回填结果 / 证据 / 审计全部落库，跨重启持久化；不可变性在 DB 层强制（触发器拒绝 UPDATE/DELETE），应用层 update/delete/patch 抛错双保险；幂等（INSERT OR IGNORE + 唯一约束）、回填 once-only（UNIQUE 冲突抛 AlreadyBackfilledError）、事务（BEGIN/COMMIT/ROLLBACK）。<code>rules/index.js</code> 新增 <code>createRuleService({store})</code> 工厂，可注入 SqliteRuleStore 驱动完整状态机生命周期。验证：<code>server/test/db-persistence.test.js</code> 18 用例通过（含跨连接持久化 / DB 层不可变 / 事务回滚），全量 211 用例绿。</p>
+  <p style="margin-left:2px;margin-top:4px">实现：<code>server/src/db/</code>（connection.js SQLite 连接 + schema.js DDL/不可变触发器 + ruleStore.js + predictionStore.js + auditStore.js + index.js createDb 工厂）。基于 Node 内置 <code>node:sqlite</code>（无外部依赖）。规则 / 预测 / 回填结果 / 证据 / 审计全部落库，跨重启持久化；不可变性在 DB 层强制（触发器拒绝 UPDATE/DELETE），应用层 update/delete/patch 抛错双保险；幂等（INSERT OR IGNORE + 唯一约束）、回填 once-only（UNIQUE 冲突抛 AlreadyBackfilledError）、事务（BEGIN/COMMIT/ROLLBACK）。<code>rules/index.js</code> 新增 <code>createRuleService({store})</code> 工厂，可注入 SqliteRuleStore 驱动完整状态机生命周期。<code>server/src/index.js</code> 服务启动入口：<code>createService</code> 工厂（SQLite 落库 + createRuleService 注入 + seed 幂等 + 优雅关闭），<code>bin/start.js</code> CLI（<code>npm start</code>，<code>OE_DB_PATH</code> 指定路径）。验证：<code>server/test/db-persistence.test.js</code> 18 用例 + <code>server/test/service-bootstrap.test.js</code> 7 用例通过（含跨连接持久化 / DB 层不可变 / 事务回滚 / 启动装配 / 重启幂等），全量 218 用例绿。</p>
 
 <div class="step">
   <div class="step-title">目标</div>
@@ -822,10 +822,11 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
         <li>不可变触发器：业务表禁止 UPDATE/DELETE（对齐 §1.3 验收「DB 层 UPDATE/DELETE 被阻止」）</li>
         <li>SqliteRuleStore / SqlitePredictionStore / SqliteAuditStore（接口对齐内存 store）</li>
         <li>createRuleService 工厂注入，状态机全生命周期可落库</li>
+        <li>服务启动入口：createService 装配 + bin/start.js CLI（npm start）</li>
       </ol>
     </div>
     <div class="item"><div class="label">交付物</div>
-      <p><code>server/src/db/*</code> + <code>createRuleService</code></p>
+      <p><code>server/src/db/*</code> + <code>createRuleService</code> + <code>server/src/index.js</code> + <code>bin/start.js</code></p>
     </div>
   </div>
   <div class="step-grid">

@@ -5,7 +5,8 @@
   "type": "commonjs",
   "private": true,
   "scripts": {
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "start": "node bin/start.js"
   },
   "engines": {
     "node": ">=22"
