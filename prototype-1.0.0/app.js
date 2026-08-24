@@ -26,6 +26,7 @@ const ICON = {
 
 const NAV = [
   { id: "home",     label: "首页",     icon: "home" },
+  { id: "pipeline", label: "预测链",   icon: "spark" },
   { id: "history",  label: "历史记录", icon: "replay" },
   { id: "rules",    label: "规则库",   icon: "book" },
   { id: "ai",       label: "AI引擎",   icon: "cpu" },
@@ -33,6 +34,7 @@ const NAV = [
 ];
 const PAGE_TITLES = {
   home:    ["首页",   "中国体育彩票 · 竞彩足球"],
+  pipeline:["预测链", "完整预测流程可视化"],
   history: ["历史记录", "已分析比赛复盘"],
   rules:   ["规则库", "规则引擎与特征目录"],
   ai:      ["AI 引擎", "规则挖掘沙箱"],
@@ -116,6 +118,7 @@ function render() {
   if (tt) tt.innerHTML = topbarTitleHtml();
   const main = document.getElementById("main");
   if (state.page === "home") main.innerHTML = state.analyzeId ? renderAnalysisShell() : renderLotteryList();
+  else if (state.page === "pipeline") main.innerHTML = (window.renderPipelinePage ? window.renderPipelinePage() : `<div class="page">预测链模块未加载。</div>`);
   else if (state.page === "history") main.innerHTML = `<div class="page">${renderHistory()}</div>`;
   else if (state.page === "rules") { main.innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
   else if (state.page === "ai") main.innerHTML = `<div class="page">${renderAI()}</div>`;
