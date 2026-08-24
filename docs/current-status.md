@@ -25,16 +25,22 @@
 - rules/index.js 新增 createRuleService({store}) 工厂，可注入 SqliteRuleStore 驱动状态机全生命周期。
 - server/src/index.js 服务启动入口：createService 工厂（SQLite 落库 + createRuleService 注入 + seed 幂等 + 优雅关闭），bin/start.js CLI（npm start，OE_DB_PATH 指定路径）。
 
+### 阶段 4 · HTTP 层
+- server/src/http/：samples（mock 合成样本/证据）+ handlers（7 个 REST 端点）+ index（createHttpServer：CORS + 路由 + 统一响应壳）。
+- 7 端点全部由真实后端模块驱动：/api/matches、/api/analysis/:id、/api/rules、/api/rules/:id/versions、/api/backtest/:id、/api/ai/candidates、/api/ai/candidates/:id/review。
+- createService 支持 http 选项（true / 端口号 / {port}），bin/start.js 默认启动 HTTP（OE_PORT，默认 3000），close() 一并关闭服务器。
+- 前端可经 api-client 的 http 适配切到真实后端（CORS 已放开）。
+
 ### 阶段 2 · 前端原型（prototype-1.0.0）
 - 预测链流水线、规则治理、回测结果、数据接入监控、特征引擎、DSL 引擎、AI 引擎、规则库（增强 DSL 索引 + 检索命中预览）。
 
 ## 验证
-- 后端全量回归 218 用例绿（`node --test`），覆盖数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配。
+- 后端全量回归 234 用例绿（`node --test`），覆盖数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配 / HTTP 层（7 端点 + 404 + CORS + 异步 review + 启动集成）。
 - `node --check` 已通过的 JS 变更文件语法检查通过。
 
 ## 未实现 / 待后续
 - 真实竞彩数据接口与数据归一化（当前为 mock 数据）。
-- 服务部署与 API 网关（当前为 SQLite 落库 + 原型 mock/后端接入适配，尚无 HTTP 服务与部署）。
+- 服务部署与 API 网关（当前为 SQLite 落库 + 本地 HTTP 服务，尚无网关 / 鉴权 / 部署）。
 - 线上长期运行观测与规则持续优化流水线。
 
 ## 事实状态
