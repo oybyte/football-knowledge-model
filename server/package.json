@@ -1,0 +1,13 @@
+{
+  "name": "odds-edge-server",
+  "version": "0.1.0",
+  "description": "Odds Edge 足球竞猜知识库系统 · 后端服务（阶段 1 起）",
+  "type": "commonjs",
+  "private": true,
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
