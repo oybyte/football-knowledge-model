@@ -73,6 +73,11 @@ const SOURCES = Object.freeze({
     trust_level: 'trusted', status: 'active', config_ref: 'env:ODDS_SPORTTERY_SCHEDULE_BASE',
     quality_metrics: { missing_rate: 0, anomaly_rate: 0, latency_ms: 200 },
   },
+  src_odds_sporttery: {
+    source_id: 'src_odds_sporttery', source_name: '竞彩官方赔率', source_type: 'odds',
+    trust_level: 'trusted', status: 'active', config_ref: null,
+    quality_metrics: { missing_rate: 0, anomaly_rate: 0, latency_ms: 500 },
+  },
   src_manual_odds: {
     source_id: 'src_manual_odds', source_name: '本地人工盘赔', source_type: 'odds',
     trust_level: 'provisional', status: 'active', config_ref: 'env:OE_MANUAL_ODDS_ROOT',

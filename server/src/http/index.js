@@ -9,11 +9,12 @@ const http = require('node:http');
 const { URL } = require('node:url');
 const { defaultLogger } = require('../lib/logger');
 const handlers = require('./handlers');
+const { createGateway } = require('../gateway');
 
 const CORS_HEADERS = Object.freeze({
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key',
   'Access-Control-Max-Age': '86400',
 });
 
@@ -58,7 +59,15 @@ function matchRoute(method, parts) {
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'backtest') return { handler: 'getBacktest', id: parts[2] };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'ai' && parts[2] === 'candidates') return { handler: 'listAiCandidates' };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'manual-odds') return { handler: 'getManualOddsStatus' };
+    if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'schedule') return { handler: 'getScheduleStatus' };
+    if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'sporttery-odds') return { handler: 'getSportteryOddsStatus' };
+    if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'merged') return { handler: 'getMergedPool' };
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'merged' && parts[2] === 'analysis') return { handler: 'getMergedAnalysis', id: parts[3] };
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'manual-odds' && parts[2] === 'analysis') return { handler: 'getManualAnalysis', id: parts[3] };
+  }
+  if (method === 'GET') {
+    if (parts.length === 2 && parts[0] === 'api' && parts[1] === 'health') return { handler: 'health' };
+    if (parts.length === 2 && parts[0] === 'api' && parts[1] === 'metrics') return { handler: 'metrics' };
   }
   if (method === 'POST') {
     if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'ai' && parts[2] === 'candidates' && parts[4] === 'review') return { handler: 'reviewAiCandidate', id: parts[3] };
@@ -75,6 +84,7 @@ function matchRoute(method, parts) {
  */
 function createHttpServer(service, opts = {}) {
   const logger = opts.logger || defaultLogger;
+  const gateway = createGateway(service, { logger, apiKey: opts.apiKey });
 
   return http.createServer(async (req, res) => {
     try {
@@ -92,9 +102,19 @@ function createHttpServer(service, opts = {}) {
         return sendJson(res, 404, { status: 'error', error: 'not_found' });
       }
 
+      // 鉴权（health/metrics 除外）
+      if (route.handler !== 'health' && route.handler !== 'metrics') {
+        if (!gateway.auth(req, res)) return;
+      }
+
+      // 特殊路由：health / metrics
+      if (route.handler === 'health') return gateway.health(req, res);
+      if (route.handler === 'metrics') return gateway.metrics(req, res);
+
       const fn = handlers[route.handler];
       const body = req.method === 'POST' ? await readBody(req) : {};
-      const result = await fn(service, { id: route.id }, body);
+      const query = Object.fromEntries(url.searchParams.entries());
+      const result = await fn(service, { id: route.id, query }, body);
 
       const payload = result.status >= 400
         ? { status: 'error', error: result.error }

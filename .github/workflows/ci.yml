@@ -1,0 +1,46 @@
+# ============================================================================
+# odds-edge CI 工作流
+# 每次 push / PR 到 main 分支时运行全量测试 + 静态检查
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [22]
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 使用 Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: 安装依赖
+        run: npm install
+        working-directory: server
+
+      - name: 运行全量测试
+        run: npm test
+        working-directory: server
+
+      - name: 检查 Node.js 语法
+        run: node --check server/bin/start.js && node --check server/src/index.js && node --check server/src/http/index.js && node --check server/src/http/handlers.js
+
+      - name: 验证前端 HTML 资源
+        run: |
+          for f in prototype-1.0.0/index.html prototype-1.0.0/ingest.html; do
+            if [ -f "$f" ]; then echo "found: $f"; else echo "missing: $f"; fi
+          done

@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { createService } = require('../src');
+const { createService, resolveHttpPort } = require('../src');
 const { createHttpServer } = require('../src/http');
 
 /** 最小 盘口数据.md 样例（结构对齐真实文件，用于端点接入测试）。 */
@@ -363,16 +363,120 @@ test('createService({http}) 启动服务器并优雅关闭', async () => {
   svc.close();
 });
 
-test('createService({http:true}) 无 OE_PORT 时默认 3000', async () => {
+// 默认端口解析为纯函数（不绑定真实 3000，避免与常驻后端冲突）。
+test('createService({http:true}) 无 OE_PORT 时默认解析为 3000', () => {
   const saved = process.env.OE_PORT;
   delete process.env.OE_PORT;
   try {
-    const svc = createService({ dbPath: ':memory:', http: true });
-    await new Promise((resolve) => svc.server.once('listening', resolve));
-    assert.equal(svc.server.address().port, 3000);
-    await new Promise((resolve) => svc.server.close(resolve));
-    svc.close();
+    assert.equal(resolveHttpPort(true, {}), 3000);
+    assert.equal(resolveHttpPort(true, { OE_PORT: '' }), 3000);
+    assert.equal(resolveHttpPort(true, { OE_PORT: '0' }), 3000); // OE_PORT='0' 视同未设置，走默认
   } finally {
     if (saved !== undefined) process.env.OE_PORT = saved;
+  }
+});
+
+// 显式端口（含 0 = 随机）优先；OE_PORT 生效；均不触碰真实绑定。
+test('resolveHttpPort 优先级：显式 > OE_PORT > 默认 3000', () => {
+  assert.equal(resolveHttpPort(0, {}), 0);
+  assert.equal(resolveHttpPort({ port: 0 }, {}), 0);
+  assert.equal(resolveHttpPort({ port: 4567 }, {}), 4567);
+  assert.equal(resolveHttpPort(true, { OE_PORT: '7890' }), 7890);
+  assert.equal(resolveHttpPort(false, {}), 3000); // false → 视同默认
+});
+
+// ───────────────────────── 双源合并端点（GET /api/sources/merged）─────────────────────────
+test('GET /api/sources/merged 未配置真实源时诚实降级', async () => {
+  const savedRoot = process.env.OE_MANUAL_ODDS_ROOT;
+  const savedSched = process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  delete process.env.OE_MANUAL_ODDS_ROOT;
+  delete process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  try {
+    await withServer(async (port) => {
+      const r = await request(port, 'GET', '/api/sources/merged');
+      assert.equal(r.status, 200);
+      assert.equal(r.body.status, 'ok');
+      assert.equal(r.body.data.status, 'degraded'); // 无真实源 → 诚实降级
+      assert.equal(r.body.data.meta.schedule_total, 0);
+      assert.equal(r.body.data.meta.manual_total, 0);
+      assert.deepEqual(r.body.data.pool, []);
+    });
+  } finally {
+    if (savedRoot !== undefined) process.env.OE_MANUAL_ODDS_ROOT = savedRoot;
+    if (savedSched !== undefined) process.env.ODDS_SPORTTERY_SCHEDULE_BASE = savedSched;
+  }
+});
+
+test('GET /api/sources/merged 配置本地盘赔后返回 manual_only 场次', async () => {
+  const savedRoot = process.env.OE_MANUAL_ODDS_ROOT;
+  const savedSched = process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oe-http-mrg-'));
+  const sub = path.join(root, 'match-m');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, '盘口数据.md'), SAMPLE_MD, 'utf8');
+  process.env.OE_MANUAL_ODDS_ROOT = root;
+  delete process.env.ODDS_SPORTTERY_SCHEDULE_BASE; // 无赛程端点 → 仅盘赔
+  try {
+    await withServer(async (port) => {
+      const r = await request(port, 'GET', '/api/sources/merged');
+      assert.equal(r.status, 200);
+      assert.equal(r.body.data.status, 'ok');
+      assert.equal(r.body.data.meta.manual_total, 1);
+      assert.equal(r.body.data.meta.manual_only, 1);
+      assert.equal(r.body.data.pool.length, 1);
+      assert.equal(r.body.data.pool[0].merged, false);
+      assert.ok(r.body.data.pool[0].snapshots > 0);
+    });
+  } finally {
+    if (savedRoot !== undefined) process.env.OE_MANUAL_ODDS_ROOT = savedRoot;
+    else delete process.env.OE_MANUAL_ODDS_ROOT;
+    if (savedSched !== undefined) process.env.ODDS_SPORTTERY_SCHEDULE_BASE = savedSched;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/merged/analysis/:id 在合并池上打通推理链', async () => {
+  const savedRoot = process.env.OE_MANUAL_ODDS_ROOT;
+  const savedSched = process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oe-http-mga-'));
+  const sub = path.join(root, 'match-a');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, '盘口数据.md'), SAMPLE_MD, 'utf8');
+  process.env.OE_MANUAL_ODDS_ROOT = root;
+  delete process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  try {
+    await withServer(async (port) => {
+      const id = encodeURIComponent('日职联_东京绿茵_vs_柏太阳神');
+      const r = await request(port, 'GET', `/api/merged/analysis/${id}`);
+      assert.equal(r.status, 200);
+      assert.equal(r.body.data.source, 'src_merged_pool');
+      assert.equal(r.body.data.merged, false); // 无赛程 → manual_only
+      assert.ok(r.body.data.snapshots > 0);
+      assert.ok(Array.isArray(r.body.data.hits));
+      assert.ok(r.body.data.arbitration);
+      assert.ok('direction' in r.body.data.arbitration);
+    });
+  } finally {
+    if (savedRoot !== undefined) process.env.OE_MANUAL_ODDS_ROOT = savedRoot;
+    else delete process.env.OE_MANUAL_ODDS_ROOT;
+    if (savedSched !== undefined) process.env.ODDS_SPORTTERY_SCHEDULE_BASE = savedSched;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/merged/analysis 未配置真实源时返回 404（场次不在池中）', async () => {
+  const savedRoot = process.env.OE_MANUAL_ODDS_ROOT;
+  const savedSched = process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  delete process.env.OE_MANUAL_ODDS_ROOT;
+  delete process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  try {
+    await withServer(async (port) => {
+      const r = await request(port, 'GET', '/api/merged/analysis/M000');
+      assert.equal(r.status, 404);
+      assert.equal(r.body.error, 'match_not_found_in_merged_pool');
+    });
+  } finally {
+    if (savedRoot !== undefined) process.env.OE_MANUAL_ODDS_ROOT = savedRoot;
+    if (savedSched !== undefined) process.env.ODDS_SPORTTERY_SCHEDULE_BASE = savedSched;
   }
 });

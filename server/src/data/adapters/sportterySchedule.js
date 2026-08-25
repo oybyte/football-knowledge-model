@@ -28,8 +28,25 @@ const STATUS = Object.freeze({
 });
 
 /**
+ * 竞彩官方 matchStatus 枚举 → 内部 status 枚举。
+ * 真实端点枚举如 Selling/PreSale/Playing/Immediate；未知值返回 null → 拒绝。
+ * @param {?string} s
+ * @returns {?(string)} 'scheduled' | 'live' | 'finished' | 'cancelled'
+ */
+function mapStatus(s) {
+  const raw = String(s == null ? '' : s).toLowerCase().trim();
+  if (['scheduled', 'selling', 'presale', 'pre', '预售', '即将发售'].some((k) => raw.indexOf(k) >= 0)) return 'scheduled';
+  if (['live', 'playing', 'immediate', '即时', '进行'].some((k) => raw.indexOf(k) >= 0)) return 'live';
+  if (['finished', 'played', 'ended', 'complete', '完场', '结束'].some((k) => raw.indexOf(k) >= 0)) return 'finished';
+  if (['cancel', 'abolish', 'abandoned', '取消', '中断'].some((k) => raw.indexOf(k) >= 0)) return 'cancelled';
+  return raw === '' ? 'scheduled' : null;
+}
+
+/**
  * 竞彩官方赛程报文 → 内部 MatchSchema 的赛事元信息（顶层字段，无盘口快照）。
- * @param {Object} raw 竞彩赛程报文（占位契约）
+ * 兼容真实端点字段（matchId/matchDate+matchTime/homeTeamAllName/leagueAllName 等）
+ * 及占位契约（matchId+matchTime/homeTeamName/competitionName 等）。
+ * @param {Object} raw 竞彩赛程报文（真实或占位契约）
  * @param {string} nowIso 本次采集时间（作为 observed_at / received_at 基准）
  * @returns {{ ok: boolean, fixture?: Object, errors?: string[] }}
  */
@@ -38,22 +55,26 @@ function mapFixture(raw, nowIso) {
 
   // 主客倒置：竞彩部分赛季以 default_home=1 表示客场在前（"主队"列实为客队）
   const reversed = String(raw.default_home ?? raw.is_reversed ?? '0') === '1';
-  const homeRaw = reversed ? raw.awayTeamName || raw.away_team_name : raw.homeTeamName || raw.home_team_name;
-  const awayRaw = reversed ? raw.homeTeamName || raw.home_team_name : raw.awayTeamName || raw.away_team_name;
+  const homeRaw = reversed
+    ? (raw.awayTeamAllName ?? raw.awayTeamName ?? raw.away_team_name)
+    : (raw.homeTeamAllName ?? raw.homeTeamName ?? raw.home_team_name);
+  const awayRaw = reversed
+    ? (raw.homeTeamAllName ?? raw.homeTeamName ?? raw.home_team_name)
+    : (raw.awayTeamAllName ?? raw.awayTeamName ?? raw.away_team_name);
 
-  const league = normalizeTeamName(raw.competitionName || raw.comp_name);
+  const league = normalizeTeamName(raw.leagueAllName ?? raw.competitionName ?? raw.comp_name);
   const home_team = normalizeTeamName(homeRaw);
   const away_team = normalizeTeamName(awayRaw);
-  const match_time = parseMatchTime(raw.matchDate, raw.matchTime);
+  // matchDate "2026-08-14"，matchTime "18:30:00" → 取 HH:mm 供 parseMatchTime
+  const match_time = parseMatchTime(raw.matchDate, String(raw.matchTime == null ? '' : raw.matchTime).slice(0, 5));
 
+  const status = mapStatus(raw.matchStatus);
+  if (status == null) return { ok: false, errors: ['fixture_invalid_status'] };
   if (!league || !home_team || !away_team || !match_time) {
     return { ok: false, errors: ['fixture_meta_incomplete'] };
   }
   const match_id = String(raw.matchId ?? raw.match_num ?? '').trim();
   if (!match_id) return { ok: false, errors: ['fixture_missing_id'] };
-  if (!/^(scheduled|live|finished|cancelled)$/.test(raw.matchStatus || 'scheduled')) {
-    return { ok: false, errors: ['fixture_invalid_status'] };
-  }
 
   return {
     ok: true,
@@ -64,7 +85,7 @@ function mapFixture(raw, nowIso) {
       away_team,
       neutral: !!(raw.isNeutral ?? raw.neutral_flag ?? false),
       match_time,
-      status: raw.matchStatus || 'scheduled',
+      status,
       observed_at: nowIso,
       received_at: nowIso,
       snapshots: [], // basic 赛程源：盘口快照待赔率源补充
@@ -129,8 +150,21 @@ function create({
     if (!res || !res.ok) throw new Error('schedule_http_' + (res && res.status || 'unknown'));
     const j = await res.json();
     if (j == null) return [];
-    // 统一响应壳 { status, data } 或裸数组都接受
-    return Array.isArray(j) ? j : (Array.isArray(j.data) ? j.data : (j.list || []));
+    if (Array.isArray(j)) return j;
+    // 真实竞彩：{..., value:{ matchInfoList:[{ subMatchList:[...] }] }}
+    const v = j.value;
+    if (v && Array.isArray(v.matchInfoList)) {
+      const out = [];
+      for (const g of v.matchInfoList) {
+        if (!g) continue;
+        if (Array.isArray(g.subMatchList)) out.push(...g.subMatchList);
+        else out.push(g);
+      }
+      return out;
+    }
+    if (Array.isArray(j.data)) return j.data;
+    if (Array.isArray(j.list)) return j.list;
+    return [];
   }
 
   /**
@@ -210,4 +244,4 @@ function create({
   return { source_id: SOURCE_ID, mapFixture, resolveEndpoint, sync, configRef, source };
 }
 
-module.exports = { create, mapFixture, SOURCE_ID, STATUS };
+module.exports = { create, mapFixture, mapStatus, SOURCE_ID, STATUS };

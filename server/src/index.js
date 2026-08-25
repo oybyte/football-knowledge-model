@@ -37,7 +37,7 @@ const DEFAULT_HTTP_PORT = 3000;
  *   close: () => void,
  * }}
  */
-function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PATH, seed: doSeed = true, http = false, logger = defaultLogger } = {}) {
+function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PATH, seed: doSeed = true, http = false, logger = defaultLogger, cache = false, queue = false } = {}) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const persistence = createDb({ path: dbPath, logger });
   const rules = createRuleService({ store: persistence.ruleStore });
@@ -61,11 +61,9 @@ function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PATH, see
 
   if (http) {
     // 显式 port（含 0 = 随机端口）优先；否则 OE_PORT / 默认 3000
-    let requested;
-    if (typeof http === 'number') requested = http;
-    else if (http && http.port != null) requested = http.port;
-    else requested = Number(process.env.OE_PORT) || DEFAULT_HTTP_PORT;
-    const server = createHttpServer(svc, { logger });
+    const requested = resolveHttpPort(http, process.env);
+    const apiKey = (typeof http === 'object' && http.apiKey) || process.env.OE_API_KEY;
+    const server = createHttpServer(svc, { logger, apiKey });
     server.listen(requested, () => {
       svc.port = server.address().port; // port 0 → 实际分配端口
     });
@@ -81,4 +79,11 @@ function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PATH, see
   return svc;
 }
 
-module.exports = { createService, DEFAULT_DB_PATH, DEFAULT_HTTP_PORT };
+/** 解析 HTTP 监听端口（纯函数，便于测试，不触碰真实绑定）。 */
+function resolveHttpPort(http, env) {
+  if (typeof http === 'number') return http;
+  if (http && http.port != null) return http.port;
+  return Number((env && env.OE_PORT) || '') || DEFAULT_HTTP_PORT;
+}
+
+module.exports = { createService, resolveHttpPort, DEFAULT_DB_PATH, DEFAULT_HTTP_PORT };

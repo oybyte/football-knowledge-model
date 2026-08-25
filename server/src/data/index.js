@@ -95,6 +95,17 @@ function syncSportterySchedule(opts) {
 }
 
 /**
+ * 执行竞彩官方赔率同步（直连 webapi.sporttery.cn，无需配置端点）。
+ * 返回所有在售场次的 MatchSchema（含官方赔率快照），trusted 级别。
+ * @param {Object} [opts] fetchImpl / now
+ * @returns {Promise<Object>} sync 结果（status: ok | degraded）
+ */
+function syncSportteryOdds(opts) {
+  const { create } = require('./adapters/sportteryOdds');
+  return create(opts || {}).sync();
+}
+
+/**
  * 接入本地人工盘赔源（盘口数据.md）。根目录经 env:OE_MANUAL_ODDS_ROOT 动态配置。
  * @param {Object} [opts] env / actor / year
  * @returns {Object} scan 结果（status: not_configured | degraded | ok）
@@ -104,6 +115,17 @@ function loadManualOdds(opts) {
   return scanManualOddsRoot(opts || {});
 }
 
+/**
+ * 合并竞彩赛程（trusted 元信息）与本地人工盘赔（provisional 盘口快照）为统一「真实比赛池」。
+ * 语义键（联赛+主队+客队归一化）对齐；官方 match_time 早于盘口快照接收的场次被时间防线剔除。
+ * @param {Object} [opts] schedule / manual（两源已同步结果）
+ * @returns {Object} 合并结果（pool / dismissed / meta）
+ */
+function mergeMatchSources(opts) {
+  const { mergeMatchSources: fn } = require('./merge');
+  return fn(opts || {});
+}
+
 module.exports = {
   ingestMatch,
   ingestMockAll,
@@ -111,6 +133,8 @@ module.exports = {
   querySources,
   createRemoteAdapter,
   syncSportterySchedule,
+  syncSportteryOdds,
   loadManualOdds,
+  mergeMatchSources,
   loadMockMatches,
 };

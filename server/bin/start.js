@@ -1,14 +1,24 @@
 // ============================================================================
 // 服务启动 CLI —— node bin/start.js
 // 启动持久化服务（SQLite 落库 + createRuleService 装配）+ HTTP 层，打印状态，优雅停机。
-// 环境变量：OE_DB_PATH 指定 SQLite 文件路径（默认 server/data/odds-edge.db）；
-//           OE_PORT 指定 HTTP 端口（默认 3000）。
+// 环境变量：
+//   OE_DB_PATH  SQLite 文件路径（默认 server/data/odds-edge.db）
+//   OE_PORT     HTTP 端口（默认 3000）
+//   OE_API_KEY  API 密钥（设置后启用鉴权，默认无鉴权）
+//   OE_REDIS_URL Redis 连接（可选，设置后启用 Redis 缓存/锁/队列）
 // ============================================================================
 'use strict';
 
 const { createService } = require('../src');
+const { defaultLogger } = require('../src/lib/logger');
 
-const service = createService({ http: true });
+const logger = defaultLogger;
+const redisUrl = process.env.OE_REDIS_URL;
+
+const service = createService({
+  http: { port: parseInt(process.env.OE_PORT, 10) || 3000, apiKey: process.env.OE_API_KEY },
+  logger,
+});
 console.log('[odds-edge] service started');
 console.log(JSON.stringify(service.getStatus(), null, 2));
 if (service.server) {

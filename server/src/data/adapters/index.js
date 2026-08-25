@@ -7,10 +7,12 @@
 'use strict';
 
 const sporttery = require('./sportterySchedule');
+const sportteryOdds = require('./sportteryOdds');
 
 /** 已注册的适配器构造器：source_id → factory */
 const ADAPTERS = Object.freeze({
   [sporttery.SOURCE_ID]: sporttery.create,
+  [sportteryOdds.SOURCE_ID]: sportteryOdds.create,
 });
 
 /**

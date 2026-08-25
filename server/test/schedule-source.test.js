@@ -19,7 +19,7 @@ const {
   createRemoteAdapter,
   querySources,
 } = require('../src/data');
-const { mapFixture, SOURCE_ID } = require('../src/data/adapters/sportterySchedule');
+const { mapFixture, mapStatus, SOURCE_ID } = require('../src/data/adapters/sportterySchedule');
 const { filterAudit } = require('../src/vault/audit');
 
 /** 竞彩官方赛程报文（占位契约字段）。 */
@@ -149,6 +149,62 @@ test('③ 多场报文：仅合法场次入列，非法场次拒绝并计数', a
   assert.equal(res.meta.total, 3);
   assert.equal(res.meta.admitted, 1);
   assert.equal(res.meta.rejected, 2);
+});
+
+test('③ 真实端点报文形状：value.matchInfoList[].subMatchList + 真实字段 + Selling', async () => {
+  const REAL_PAYLOAD = {
+    success: true,
+    errorCode: '0',
+    value: {
+      matchInfoList: [
+        {
+          businessDate: '2026-08-25',
+          subMatchList: [
+            {
+              matchId: 2041049,
+              matchNumStr: '周二001',
+              matchNum: 2001,
+              matchDate: '2026-08-25',
+              matchTime: '18:30:00',
+              matchStatus: 'Selling',
+              leagueAllName: '韩国职业联赛',
+              leagueCode: 'KD1',
+              homeTeamAllName: '金泉尚武',
+              awayTeamAllName: '全北现代',
+              homeRank: '[韩职11]',
+              awayRank: '[韩职3]',
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const res = await syncSportterySchedule({
+    env: { ODDS_SPORTTERY_SCHEDULE_BASE: ENDPOINT },
+    fetchImpl: fakeFetchOk(REAL_PAYLOAD),
+    now: () => Date.parse('2026-08-25T06:00:00Z'),
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.status, 'ok');
+  assert.equal(res.meta.total, 1);
+  const m = res.matches[0];
+  assert.equal(m.match_id, '2041049');
+  assert.equal(m.home_team, '金泉尚武');
+  assert.equal(m.away_team, '全北现代');
+  assert.equal(m.league, '韩国职业联赛');
+  assert.equal(m.status, 'scheduled'); // Selling → scheduled
+  assert.equal(m.match_time, '2026-08-25T18:30:00+08:00');
+  assert.equal(Date.parse(m.match_time) > Date.parse(m.observed_at), true);
+});
+
+test('③ mapStatus：真实枚举映射 + 未知拒绝', () => {
+  assert.equal(mapStatus('Selling'), 'scheduled');
+  assert.equal(mapStatus('PreSale'), 'scheduled');
+  assert.equal(mapStatus('Playing'), 'live');
+  assert.equal(mapStatus('Finished'), 'finished');
+  assert.equal(mapStatus('Cancelled'), 'cancelled');
+  assert.equal(mapStatus('bogus'), null);
+  assert.equal(mapStatus(''), 'scheduled');
 });
 
 // ───────────────────────── ④ 拉取失败 → degraded ─────────────────────────
