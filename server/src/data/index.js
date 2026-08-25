@@ -71,4 +71,46 @@ function querySources(sourceId) {
   return listSources().map((s) => ({ ...s }));
 }
 
-module.exports = { ingestMatch, ingestMockAll, ingestMockMatch, querySources, loadMockMatches };
+// ───────────────────────── 真实源适配器（赛程）─────────────────────────
+
+/**
+ * 创建指定远程数据源适配器（当前支持竞彩官方赛程 src_schedule_sporttery）。
+ * @param {string} sourceId
+ * @param {Object} [opts] env / fetchImpl / now / actor
+ * @returns {Object}
+ */
+function createRemoteAdapter(sourceId, opts) {
+  const { createAdapter } = require('./adapters');
+  return createAdapter(sourceId, opts);
+}
+
+/**
+ * 执行竞彩官方赛程同步（真实端点未配置时诚实返回 not_configured，绝无假数据）。
+ * @param {Object} [opts] env / fetchImpl / now / actor
+ * @returns {Promise<Object>} sync 结果（status: not_configured | degraded | ok）
+ */
+function syncSportterySchedule(opts) {
+  const { create } = require('./adapters/sportterySchedule');
+  return create(opts || {}).sync();
+}
+
+/**
+ * 接入本地人工盘赔源（盘口数据.md）。根目录经 env:OE_MANUAL_ODDS_ROOT 动态配置。
+ * @param {Object} [opts] env / actor / year
+ * @returns {Object} scan 结果（status: not_configured | degraded | ok）
+ */
+function loadManualOdds(opts) {
+  const { scanManualOddsRoot } = require('./manual');
+  return scanManualOddsRoot(opts || {});
+}
+
+module.exports = {
+  ingestMatch,
+  ingestMockAll,
+  ingestMockMatch,
+  querySources,
+  createRemoteAdapter,
+  syncSportterySchedule,
+  loadManualOdds,
+  loadMockMatches,
+};

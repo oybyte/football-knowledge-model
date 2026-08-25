@@ -11,7 +11,7 @@
   'use strict';
 
   var MODE_KEY = 'oe_api_mode';
-  var DEFAULT_BASE = 'http://localhost:8787'; // 后端服务地址（阶段 2.5 契约）
+  var DEFAULT_BASE = 'http://localhost:3000'; // 后端服务地址（对齐 server OE_PORT 默认 3000）
   var DEFAULT_MODE = 'mock';
 
   // ───────────────────────── 工具 ─────────────────────────
@@ -124,10 +124,35 @@
       if (verdict === 'reject' && typeof w.__aiReject === 'function') return okBody(w.__aiReject(candidateId) || { id: candidateId, verdict: 'reject' });
       return errBody('handler_missing');
     },
+
+    getManualOddsStatus: function () {
+      // Mock 占位：真实本地人工盘赔源仅在 http 适配（后端扫描）下可观测。
+      return okBody({
+        source_id: 'src_manual_odds',
+        name: '本地人工盘赔',
+        trust_level: 'provisional',
+        status: 'mock_placeholder',
+        reason: 'mock 模式不扫描本地目录，切到后端 API 可实时观测',
+        meta: { total: 0, admitted: 0, rejected: 0 },
+        matches: [],
+      });
+    },
+
+    getManualAnalysis: function (matchId) {
+      // Mock 占位：真实盘口数据→特征→推理链仅在 http 适配（后端扫描 md）下可用。
+      return okBody({
+        source: 'mock_placeholder',
+        match_id: matchId,
+        reasoning: [],
+        arbitration: { direction: 'undecidable', manual_review_required: true },
+        feat_errors: [],
+      });
+    },
   };
 
   // ───────────────────────── HTTP 适配器 ─────────────────────────
   // fetch 后端 REST；所有请求统一 { baseUrl + path }，响应壳 { ok, data?, error? }。
+  // 契约归一化：把后端字段映射为视图消费的 mock 契约形状（mock 与真实模式不改视图代码）。
   function http(baseUrl) {
     function req(method, path, body) {
       if (typeof global.fetch !== 'function') {
@@ -144,15 +169,87 @@
         });
       });
     }
+
+    // 后端规则 → 视图契约 { id, conclusion, category, status, version, trust_level }
+    function ruleView(r) {
+      return {
+        id: r.rule_id,
+        conclusion: r.conclusion,
+        category: r.category,
+        status: r.status,
+        version: r.version,
+        trust_level: r.trust_level,
+      };
+    }
+    // 后端 AI 候选 → 视图契约 { id, pattern, source, status, trust }
+    function candidateView(c) {
+      return {
+        id: c.id,
+        pattern: c.rationale || c.field || '',
+        source: c.candidate_source || 'ai',
+        status: c.candidate_status || 'candidate',
+        trust: c.trust || 'untrusted',
+      };
+    }
+    // 后端推理链 → 视图契约 { rule_id, hit, dir, note }
+    function reasoningView(h) {
+      return { rule_id: h.rule_id, hit: !!h.hit, dir: h.dir, note: h.note || '' };
+    }
+
     return {
       name: 'http',
       listMatches: function () { return req('GET', '/api/matches'); },
-      getAnalysis: function (id) { return req('GET', '/api/analysis/' + encodeURIComponent(id)); },
-      listRules: function () { return req('GET', '/api/rules'); },
+      getAnalysis: function (id) {
+        return req('GET', '/api/analysis/' + encodeURIComponent(id)).then(function (r) {
+          if (!r.ok) return r;
+          r.data.reasoning = (r.data.reasoning || []).map(reasoningView);
+          return r;
+        });
+      },
+      listRules: function () {
+        return req('GET', '/api/rules').then(function (r) {
+          if (!r.ok) return r;
+          r.data = (r.data || []).map(ruleView);
+          return r;
+        });
+      },
       getRuleVersions: function (id) { return req('GET', '/api/rules/' + encodeURIComponent(id) + '/versions'); },
-      getBacktest: function (id) { return req('GET', '/api/backtest/' + encodeURIComponent(id)); },
-      listAiCandidates: function () { return req('GET', '/api/ai/candidates'); },
+      getBacktest: function (id) {
+        return req('GET', '/api/backtest/' + encodeURIComponent(id)).then(function (r) {
+          if (!r.ok) return r;
+          r.data = {
+            rule_id: r.data.rule_id,
+            admitted: r.data.sample_size,
+            metrics: r.data.metrics,
+            thresholds: r.data.thresholds,
+            admission: { adjudication: r.data.adjudication, job_id: r.data.job_id },
+          };
+          return r;
+        });
+      },
+      listAiCandidates: function () {
+        return req('GET', '/api/ai/candidates').then(function (r) {
+          if (!r.ok) return r;
+          r.data = (r.data && r.data.candidates || []).map(candidateView);
+          return r;
+        });
+      },
       reviewAiCandidate: function (id, verdict) { return req('POST', '/api/ai/candidates/' + encodeURIComponent(id) + '/review', { verdict: verdict }); },
+      getManualOddsStatus: function () {
+        return req('GET', '/api/sources/manual-odds').then(function (r) {
+          if (!r.ok) return r;
+          r.data.mode = 'http';
+          return r;
+        });
+      },
+
+      getManualAnalysis: function (matchId) {
+        return req('GET', '/api/manual-odds/analysis/' + encodeURIComponent(matchId)).then(function (r) {
+          if (!r.ok) return r;
+          r.data.mode = 'http';
+          return r;
+        });
+      },
     };
   }
 

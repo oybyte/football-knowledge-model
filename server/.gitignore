@@ -1,5 +1,5 @@
 # Dependencies
 node_modules/
 
-# Local SQLite database files
-data/
+# Local SQLite database files (anchored: only server/data, not server/src/data)
+/data/

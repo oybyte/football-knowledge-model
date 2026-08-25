@@ -8,9 +8,58 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const { createService } = require('../src');
 const { createHttpServer } = require('../src/http');
+
+/** 最小 盘口数据.md 样例（结构对齐真实文件，用于端点接入测试）。 */
+const SAMPLE_MD = `# 盘口截图数据
+
+## 比赛基础信息
+
+- 赛事：日职联
+- 比赛：东京绿茵（中） vs 柏太阳神（用户修正）
+- 开赛时间：08-14 18:00
+- 数据来源：用户提供截图
+
+## 比赛结果
+
+- 半场比分：1 - 1
+- 全场比分：1 - 3
+- 总进球：4
+
+## 让球盘数据
+
+（主水 / 盘口 / 客水）
+| 机构 | 初盘 | 即盘 |
+|---|---|---|
+| 澳* | 1.00 / -0.5 / 0.84 | 1.02 / -0.5 / 0.82 |
+| 36* | 0.98 / -0.5 / 0.83 | 1.00 / -0.5 / 0.80 |
+
+## 胜平负数据
+
+（主胜 / 平局 / 客胜）
+| 机构 | 初盘 | 即盘 |
+|---|---|---|
+| 澳* | 3.90 / 3.22 / 1.84 | 4.00 / 3.20 / 1.82 |
+| 威* | 4.40 / 3.25 / 1.80 | 4.20 / 3.20 / 1.85 |
+
+## 澳门让球详细变化
+
+（主水 / 盘口 / 客水）
+| 显示时间 | 状态 | 数据 |
+|---|---|---|
+| 08-14 17:37 | 即 | 1.02 / -0.5 / 0.82 |
+| 08-14 14:43 | 即 | 0.96 / -0.5 / 0.88 |
+
+## 必发交易盈亏
+
+| 结果 | 欧指 | 交易量 | 盈亏 | 冷热指数 |
+|---|---|---|---:|---:|---:|
+| 胜 | 4.5 | 1,456 | 13,284 | -66 |`;
 
 /** 发起一次 HTTP 请求。 */
 function request(port, method, path, body) {
@@ -188,7 +237,91 @@ test('POST review 未知候选返回 404', async () => {
   });
 });
 
-// ───────────────────────── 404 / CORS ─────────────────────────
+// ───────────────────────── GET /api/sources/manual-odds ─────────────────────────
+test('GET /api/sources/manual-odds 在根目录缺失时返回 not_configured', async () => {
+  const saved = process.env.OE_MANUAL_ODDS_ROOT;
+  delete process.env.OE_MANUAL_ODDS_ROOT;
+  try {
+    await withServer(async (port) => {
+      const r = await request(port, 'GET', '/api/sources/manual-odds');
+      assert.equal(r.status, 200);
+      assert.equal(r.body.status, 'ok');
+      assert.equal(r.body.data.source_id, 'src_manual_odds');
+      assert.equal(r.body.data.status, 'not_configured');
+      assert.equal(r.body.data.trust_level, 'provisional');
+      assert.deepEqual(r.body.data.matches, []);
+    });
+  } finally {
+    if (saved !== undefined) process.env.OE_MANUAL_ODDS_ROOT = saved;
+  }
+});
+
+test('GET /api/sources/manual-odds 在配置根目录后返回已接入场次', async () => {
+  const saved = process.env.OE_MANUAL_ODDS_ROOT;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oe-http-md-'));
+  const sub = path.join(root, 'match-x');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, '盘口数据.md'), SAMPLE_MD, 'utf8');
+  process.env.OE_MANUAL_ODDS_ROOT = root;
+  try {
+    await withServer(async (port) => {
+      const r = await request(port, 'GET', '/api/sources/manual-odds');
+      assert.equal(r.status, 200);
+      assert.equal(r.body.data.status, 'ok');
+      assert.equal(r.body.data.meta.total, 1);
+      assert.equal(r.body.data.meta.admitted, 1);
+      assert.equal(r.body.data.matches[0].home_team, '东京绿茵');
+      assert.ok(r.body.data.matches[0].snapshots > 0);
+    });
+  } finally {
+    if (saved !== undefined) process.env.OE_MANUAL_ODDS_ROOT = saved;
+    else delete process.env.OE_MANUAL_ODDS_ROOT;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/manual-odds/analysis/:id 打通 盘口→特征→推理链', async () => {
+  const saved = process.env.OE_MANUAL_ODDS_ROOT;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oe-http-ana-'));
+  const sub = path.join(root, 'match-a');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, '盘口数据.md'), SAMPLE_MD, 'utf8');
+  process.env.OE_MANUAL_ODDS_ROOT = root;
+  try {
+    await withServer(async (port) => {
+      const id = encodeURIComponent('日职联_东京绿茵_vs_柏太阳神');
+      const r = await request(port, 'GET', `/api/manual-odds/analysis/${id}`);
+      assert.equal(r.status, 200);
+      assert.equal(r.body.data.source, 'src_manual_odds');
+      assert.equal(r.body.data.trust_level, 'provisional');
+      assert.ok(r.body.data.snapshots > 0);
+      assert.ok(Array.isArray(r.body.data.hits));
+      assert.ok(Array.isArray(r.body.data.reasoning));
+      assert.ok(r.body.data.arbitration);
+      assert.ok('direction' in r.body.data.arbitration);
+    });
+  } finally {
+    if (saved !== undefined) process.env.OE_MANUAL_ODDS_ROOT = saved;
+    else delete process.env.OE_MANUAL_ODDS_ROOT;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/manual-odds/analysis 未配置时返回 503', async () => {
+  const saved = process.env.OE_MANUAL_ODDS_ROOT;
+  delete process.env.OE_MANUAL_ODDS_ROOT;
+  try {
+    await withServer(async (port) => {
+      const r = await request(port, 'GET', '/api/manual-odds/analysis/M000');
+      assert.equal(r.status, 503);
+      assert.equal(r.body.error, 'manual_odds_not_configured');
+    });
+  } finally {
+    if (saved !== undefined) process.env.OE_MANUAL_ODDS_ROOT = saved;
+  }
+});
+
+// ───────────────────────── 其他 / 服务装配 ─────────────────────────
 test('未知路径返回 404 not_found', async () => {
   await withServer(async (port) => {
     const r = await request(port, 'GET', '/api/unknown');
@@ -221,10 +354,25 @@ test('createService({http}) 启动服务器并优雅关闭', async () => {
   assert.ok(svc.server, '应创建 server');
   await new Promise((resolve) => svc.server.once('listening', resolve));
   const port = svc.server.address().port;
+  assert.notEqual(port, 3000, 'port 0 应绑定随机端口而非默认 3000');
   assert.equal(svc.getStatus().httpPort, port);
   // 实际可访问
   const r = await request(port, 'GET', '/api/matches');
   assert.equal(r.status, 200);
   await new Promise((resolve) => svc.server.close(resolve));
   svc.close();
+});
+
+test('createService({http:true}) 无 OE_PORT 时默认 3000', async () => {
+  const saved = process.env.OE_PORT;
+  delete process.env.OE_PORT;
+  try {
+    const svc = createService({ dbPath: ':memory:', http: true });
+    await new Promise((resolve) => svc.server.once('listening', resolve));
+    assert.equal(svc.server.address().port, 3000);
+    await new Promise((resolve) => svc.server.close(resolve));
+    svc.close();
+  } finally {
+    if (saved !== undefined) process.env.OE_PORT = saved;
+  }
 });

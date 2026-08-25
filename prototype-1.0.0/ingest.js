@@ -84,6 +84,135 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
   const mockTag = () => `<span class="badge mock">Mock 数据接入示意</span>`;
   const nowTxt = () => { const d = new Date(); const p = n => String(n).padStart(2, "0"); return `${p(d.getHours())}:${p(d.getMinutes())}`; };
 
+  // ── 真实数据源可观测：本地人工盘赔源（经 api-client → 后端 HTTP） ──
+  // root 由 env:OE_MANUAL_ODDS_ROOT 动态配置；每次点击「实时刷新」向后端扫描。
+  let manualState = null; // null=加载中
+  let manualAnalysis = null; // 当前选中场次的推理链
+  async function refreshManual() {
+    manualState = null; if (window.render) window.render();
+    try {
+      const Api = window.__ApiClient;
+      if (!Api || typeof Api.getApi !== 'function') { manualState = { error: 'api_client_unavailable' }; if (window.render) window.render(); return; }
+      const r = await Api.getApi().getManualOddsStatus();
+      manualState = (r && r.ok) ? r.data : { error: (r && r.error) || 'http_error' };
+    } catch (e) {
+      manualState = { error: String((e && e.message) || e) };
+    }
+    manualAnalysis = null;
+    if (window.render) window.render();
+  }
+  async function analyzeManualMatch(i) {
+    if (!manualState || !manualState.matches) return;
+    const m = manualState.matches[i]; if (!m) return;
+    manualAnalysis = null; if (window.render) window.render();
+    try {
+      const Api = window.__ApiClient;
+      if (!Api || typeof Api.getApi !== 'function') { manualAnalysis = { error: 'api_client_unavailable' }; if (window.render) window.render(); return; }
+      const r = await Api.getApi().getManualAnalysis(m.match_id);
+      manualAnalysis = (r && r.ok) ? r.data : { error: (r && r.error) || 'http_error' };
+    } catch (e) {
+      manualAnalysis = { error: String((e && e.message) || e) };
+    }
+    if (window.render) window.render();
+  }
+  function dirBadge(dir, conf) {
+    const map = { upper: ["看好上盘", "up"], lower: ["看好下盘", "down"], draw: ["平手盘", "warn"], undecidable: ["不可判定", "info"] };
+    const v = map[dir] || [dir || "未知", "info"];
+    return `<span class="badge ${v[1]}">${v[0]}${conf != null ? " · " + Math.round(conf * 100) + "%" : ""}</span>`;
+  }
+  function renderManualAnalysis() {
+    if (manualAnalysis === null) return "";
+    if (manualAnalysis.error) {
+      return `<div class="ing-manual-a"><div class="callout risk"><strong>推理链读取失败。</strong>${manualAnalysis.error}</div><span class="muted">请确认后端已配置 OE_MANUAL_ODDS_ROOT，且该场次源于本地人工盘赔源。</span></div>`;
+    }
+    const a = manualAnalysis;
+    const dir = (a.arbitration || {}).direction;
+    const conf = (a.arbitration || {}).confidence;
+    const hits = (a.hits || []).map(h => `<tr>
+      <td class="mono">${h.rule_id}</td>
+      <td class="mono">${h.version_id || "-"}</td>
+      <td>${dirBadge(h.direction, h.confidence)}</td>
+      <td class="mono">${(h.exact ? "精确" : "近似")}</td>
+    </tr>`).join("") || '<tr><td colspan="4" class="empty">无命中的规则</td></tr>';
+
+    return `<div class="ing-manual-a">
+      <div class="a-head">
+        <span class="mono">推理链</span>
+        <span class="ing-name">${(a.match_id || "")}</span>
+        ${dirBadge(dir, conf)}
+        <span class="badge muted">${a.source || "mock"} · ${a.trust_level || "provisional"}</span>
+        ${a.mode === "http" ? '<span class="badge up">后端API</span>' : ""}
+      </div>
+      <div class="ing-sum mt">
+        ${(a.snapshots != null) ? `<div class="bt-chip"><b>盘口快照</b><span class="brand">${a.snapshots}</span></div>` : ""}
+        ${(a.neutral != null) ? `<div class="bt-chip"><b>中立场地</b><span>${a.neutral ? "是" : "否"}</span></div>` : ""}
+        <div class="bt-chip"><b>仲裁</b><span class="mono">${(a.arbitration || {}).dominant_rule_version_id || "-"}</span></div>
+        <div class="bt-chip"><b>需人工复核</b><span>${(a.arbitration || {}).manual_review_required ? "是" : "否"}</span></div>
+      </div>
+      ${(a.prediction && a.prediction.final_direction) ? `<div class="callout up" style="margin:10px 0"><strong>预测：</strong>${dirBadge(a.prediction.final_direction, a.prediction.final_confidence)}</div>` : ""}
+      <div class="ing-table-wrap manual-table-wrap"><table class="ing-table">
+        <thead><tr><th>规则</th><th>版本</th><th>方向</th><th>命中</th></tr></thead>
+        <tbody>${hits}</tbody>
+      </table></div>
+      <div class="muted tts" style="font-size:12px">分析锚点 at=${(a.at || "").replace("T", " ")} · 全部盘赔快照均早于开赛（防泄漏）</div>
+    </div>`;
+  }
+  function manualStatusBadge(status) {
+    const map = {
+      ok:            { label: "接入中", tone: "up" },
+      degraded:      { label: "降级",   tone: "warn" },
+      not_configured:{ label: "未配置", tone: "info" },
+      mock_placeholder: { label: "Mock 占位", tone: "muted" },
+    };
+    const m = map[status] || { label: status || "未知", tone: "info" };
+    return `<span class="badge ${m.tone}">${m.label}</span>`;
+  }
+  function renderManualSource() {
+    if (manualState === null) {
+      return `<div class="card-mb"><div class="empty">正在实时加载本地人工盘赔源状态…</div></div>`;
+    }
+    if (manualState.error) {
+      return `<div class="card-mb"><div class="callout risk"><strong>源状态读取失败。</strong>${manualState.error}</div><span class="muted">请确认已启动本地后端（localhost:3000）并切换为「后端API」。</span></div>`;
+    }
+    const s = manualState;
+    const meta = s.meta || { total: 0, admitted: 0, rejected: 0 };
+    const matches = (s.matches || []).map((m, i) => {
+      const trust = s.trust_level === 'provisional' ? '<span class="badge warn">provisional</span>' : `<span class="badge info">${s.trust_level || '-'}</span>`;
+      return `<tr>
+        <td class="mono">${m.match_id}</td>
+        <td><span class="ing-lg">${m.league}</span></td>
+        <td><span class="mono">${m.home_team}</span><span class="ing-name">vs ${m.away_team}</span></td>
+        <td class="tts mono">${(m.match_time || '').replace('T', ' ').replace('+08:00', '')}</td>
+        <td class="mono">${m.snapshots}</td>
+        <td>${m.actual_result || '<span class="muted">待赛果</span>'}</td>
+        ${trust}
+        <td><button class="btn sm" onclick="window.__ingAnalyzeManual(${i})">推理链</button></td>
+      </tr>`;
+    }).join("") || '<tr><td colspan="8" class="empty">当前无已接入场次</td></tr>';
+
+    return `<div class="card-mb">
+      <div class="manual-src-head">
+        <span class="mono">${s.source_id}</span>
+        <span class="ing-name">${s.name}</span>
+        ${manualStatusBadge(s.status)}
+        ${s.status === 'ok' ? '' : `<span class="muted">· ${s.reason || ''}</span>`}
+        <span class="badge muted">信任 ${s.trust_level || '-'}</span>
+        ${s.mode === 'http' ? '<span class="badge up">后端API</span>' : ''}
+      </div>
+      <div class="ing-sum mt">
+        <div class="bt-chip"><b>目录场次</b><span>${meta.total}</span></div>
+        <div class="bt-chip"><b>已接入</b><span class="up">${meta.admitted}</span></div>
+        <div class="bt-chip"><b>拒绝</b><span class="risk">${meta.rejected}</span></div>
+        <div class="bt-chip"><b>连线</b><span class="brand">盘口 → 特征 → 推理链</span></div>
+      </div>
+      <div class="ing-table-wrap manual-table-wrap"><table class="ing-table">
+        <thead><tr><th>match_id</th><th>联赛</th><th>对阵</th><th>开赛</th><th>快照</th><th>赛果</th><th>信任</th><th>操作</th></tr></thead>
+        <tbody>${matches}</tbody>
+      </table></div>
+      ${renderManualAnalysis()}
+    </div>`;
+  }
+
   function renderIngest() {
     const trustedN = SOURCES.filter(s => s.base === "trusted").length;
     const lowN = SOURCES.filter(s => s.base === "low").length;
@@ -128,7 +257,7 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
       <div class="page-head">
         <div class="ph-title">数据接入监控<span class="badge mock" style="margin-left:8px">Mock 示意</span></div>
         <div class="ph-sub">数据源注册表 · 信任分级 · 三时间戳完整性 · 凭证隔离</div>
-        <div class="ph-actions"><button class="btn sm primary" onclick="window.__ingRefresh()">模拟采集刷新</button></div>
+        <div class="ph-actions"><button class="btn sm primary" onclick="window.__ingRefresh()">模拟采集刷新</button><button class="btn sm" onclick="window.__ingRefreshManual()">实时刷新·本地盘赔源</button></div>
       </div>
       <div class="pipeline-banner">数据平面契约：特征/AI 引擎无权访问源凭证；仅 trusted 且三时间戳完整性通过的源数据可进入 <code>statistics_eligible</code>。时间泄漏/倒挂/重复上报写入告警。</div>
 
@@ -157,11 +286,19 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
           <div class="card-bd ing-alerts">${alerts ? `<div class="timeline">${alerts}</div>` : '<div class="empty">无告警</div>'}</div>
         </div>
       </div>
+
+      <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">真实数据源 · 本地人工盘赔</div><div class="extra muted">经后端 HTTP · 目录根 env:OE_MANUAL_ODDS_ROOT 动态配置</div></div>
+        ${renderManualSource()}
+      </div>
     </div>`;
   }
 
   window.renderIngest = renderIngest;
   window.__ingRefresh = refreshNow;
+  window.__ingRefreshManual = refreshManual;
+  window.__ingAnalyzeManual = analyzeManualMatch;
+
+  refreshManual(); // 初次进入即向后端实时拉取本地盘赔源状态
 
   if (typeof module !== "undefined") {
     module.exports = { SOURCES, TRUST, recent, statsOf, ocrToken, renderIngest };

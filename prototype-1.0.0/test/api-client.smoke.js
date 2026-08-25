@@ -105,6 +105,14 @@ function testMock() {
     assert.equal(rev.ok, true);
     assert.equal(rev.data.verdict, 'approve');
 
+    // getManualOddsStatus：mock 适配器返回占位契约形状
+    const mso = await a.getManualOddsStatus();
+    assert.equal(mso.ok, true);
+    assert.equal(mso.data.source_id, 'src_manual_odds');
+    assert.equal(mso.data.trust_level, 'provisional');
+    assert.equal(mso.data.status, 'mock_placeholder');
+    assert.ok(Array.isArray(mso.data.matches));
+
     // 模式切换
     assert.equal(api.setMode('real'), 'real');
     assert.equal(api.getMode(), 'real');
@@ -115,17 +123,27 @@ function testMock() {
   })();
 }
 
-// ② http 适配器形状一致（假 fetch）
+// ② http 适配器形状一致（假 fetch，返回真实后端统一响应壳形状）
 function testHttp() {
   const s = makeSandbox();
   const calls = [];
+  const respond = (status, payload) => ({
+    ok: status < 400,
+    status,
+    json: () => Promise.resolve(payload),
+  });
   s.fetch = async (url, opts) => {
     calls.push({ url, opts });
-    const ok = !/\/missing/.test(url);
-    return {
-      ok,
-      json: () => Promise.resolve(ok ? { ok: true, data: { echo: true, path: url } } : { ok: false, error: 'not_found' }),
-    };
+    const path = url.replace(/^https?:\/\/[^/]+/, '');
+    if (path === '/api/matches') return respond(200, { status: 'ok', data: [{ match_id: 'M007', league: '日职联', home_team: '东京绿茵', away_team: '柏太阳神', kickoff: '2026-08-14T18:00:00+08:00' }] });
+    if (path === '/api/rules') return respond(200, { status: 'ok', data: [{ rule_id: 'R001', version_id: 'R001#1', version: 1, status: 'active', category: 'odds_change', direction: 'favor_upper', base_confidence: 0.5, priority: 50, trust_level: 'untrusted', conclusion: '升盘降水看好上盘' }] });
+    if (path === '/api/analysis/M007') return respond(200, { status: 'ok', data: { match_id: 'M007', at: '2026-08-14T18:00:00+08:00', hits: [{ rule_id: 'R001', version_id: 'R001#1', direction: 'favor_upper', confidence: 0.5, exact: true }], reasoning: [{ rule_id: 'R001', hit: true, dir: 'favor_upper', note: '条件满足，纳入推理链（conf=0.5）' }], prediction: { prediction_id: 'p1', final_direction: 'favor_upper', final_confidence: 0.5, created_at: 'x' }, arbitration: { direction: 'favor_upper', confidence: 0.5, dominant_rule_version_id: 'R001#1', manual_review_required: false, review_note: null } } });
+    if (path === '/api/rules/R001/versions') return respond(200, { status: 'ok', data: [{ version_id: 'R001#1', rule_id: 'R001', version: 1, status: 'active', trust_level: 'untrusted', category: 'odds_change', conclusion: '升盘降水看好上盘', created_at: 'x' }] });
+    if (path === '/api/backtest/R001') return respond(200, { status: 'ok', data: { rule_id: 'R001', job_id: 'bt_0001', adjudication: 'validated', sample_size: 30, metrics: { hit_rate: 0.6, sample_size: 30 }, thresholds: { hit_rate: 0.55 }, synthetic: true } });
+    if (path === '/api/ai/candidates') return respond(200, { status: 'ok', data: { candidates: [{ id: 'AI001', field: 'move_pattern', op: 'EQ', value: '升盘降水', direction: 'favor_upper', rationale: '升盘降水代表资金压向主队', sample_size: 6, hit_rate: 0.7, edge: 0.2, trust: 'untrusted', candidate_status: 'candidate', candidate_source: 'mock' }], provider: 'mock', degraded: false, baseline: {}, sample_count: 8, synthetic: true } });
+    if (/^\/api\/ai\/candidates\/[^/]+\/review$/.test(path)) return respond(200, { status: 'ok', data: { rule_id: 'AI001', version_id: 'AI001#1', status: 'proposed' } });
+    if (path === '/api/sources/manual-odds') return respond(200, { status: 'ok', data: { source_id: 'src_manual_odds', name: '本地人工盘赔', trust_level: 'provisional', status: 'ok', reason: null, mode: 'http', meta: { total: 2, admitted: 1, rejected: 1 }, matches: [{ match_id: 'M_TEST', league: '日职联', home_team: '东京绿茵', away_team: '柏太阳神', match_time: '2026-08-14T18:00:00+08:00', snapshots: 42 }] } });
+    return respond(404, { status: 'error', error: 'not_found' });
   };
   vm.createContext(s);
   vm.runInContext(SRC, s);
@@ -137,17 +155,56 @@ function testHttp() {
   return (async () => {
     const m = await a.listMatches();
     assert.equal(m.ok, true);
-    assert.equal(calls.length, 1);
+    assert.equal(m.data[0].match_id, 'M007');
     assert.match(calls[0].url, /\/api\/matches$/);
 
+    // 规则归一化：rule_id → id
+    const rules = await a.listRules();
+    assert.equal(rules.ok, true);
+    assert.equal(rules.data[0].id, 'R001');
+    assert.equal(rules.data[0].trust_level, 'untrusted');
+    assert.equal(rules.data[0].status, 'active');
+
+    // 推理链归一化：保留 { rule_id, hit, dir, note }
+    const analysis = await a.getAnalysis('M007');
+    assert.equal(analysis.ok, true);
+    assert.equal(analysis.data.reasoning[0].rule_id, 'R001');
+    assert.equal(analysis.data.reasoning[0].hit, true);
+    assert.equal(analysis.data.reasoning[0].dir, 'favor_upper');
+
+    // 回测归一化：sample_size → admitted
+    const bt = await a.getBacktest('R001');
+    assert.equal(bt.ok, true);
+    assert.equal(bt.data.admitted, 30);
+    assert.equal(bt.data.thresholds.hit_rate, 0.55);
+
+    // AI 候选归一化：candidates 数组 → 视图契约
+    const cand = await a.listAiCandidates();
+    assert.equal(cand.ok, true);
+    assert.equal(cand.data[0].id, 'AI001');
+    assert.equal(cand.data[0].pattern, '升盘降水代表资金压向主队');
+    assert.equal(cand.data[0].status, 'candidate');
+    assert.equal(cand.data[0].trust, 'untrusted');
+
+    // review 归一化
+    const rev = await a.reviewAiCandidate('AI001', 'approve');
+    assert.equal(rev.ok, true);
+    assert.equal(rev.data.status, 'proposed');
+
+    // getManualOddsStatus：http 适配器命中端点并保留字段
+    const mso = await a.getManualOddsStatus();
+    assert.equal(mso.ok, true);
+    assert.equal(mso.data.source_id, 'src_manual_odds');
+    assert.equal(mso.data.status, 'ok');
+    assert.equal(mso.data.mode, 'http');
+    assert.equal(mso.data.meta.admitted, 1);
+    assert.equal(mso.data.matches[0].match_id, 'M_TEST');
+    assert.equal(mso.data.matches[0].snapshots, 42);
+
+    // 404 → errBody
     const bad = await a.getRuleVersions('missing');
     assert.equal(bad.ok, false);
     assert.equal(bad.error, 'not_found');
-
-    const cand = await a.listAiCandidates();
-    assert.equal(cand.ok, true);
-    const r = await a.reviewAiCandidate('C001', 'reject');
-    assert.equal(r.ok, true);
     return 'http ok';
   })();
 }

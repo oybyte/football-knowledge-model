@@ -57,6 +57,8 @@ function matchRoute(method, parts) {
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'rules' && parts[3] === 'versions') return { handler: 'getRuleVersions', id: parts[2] };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'backtest') return { handler: 'getBacktest', id: parts[2] };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'ai' && parts[2] === 'candidates') return { handler: 'listAiCandidates' };
+    if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'manual-odds') return { handler: 'getManualOddsStatus' };
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'manual-odds' && parts[2] === 'analysis') return { handler: 'getManualAnalysis', id: parts[3] };
   }
   if (method === 'POST') {
     if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'ai' && parts[2] === 'candidates' && parts[4] === 'review') return { handler: 'reviewAiCandidate', id: parts[3] };

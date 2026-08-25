@@ -6,6 +6,7 @@
 'use strict';
 
 const { loadMockMatches, getMockMatch } = require('../data/mock');
+const { loadManualOdds, querySources } = require('../data');
 const { computeMatchFeatures } = require('../features');
 const { predict } = require('../engine');
 const { runBacktest, THRESHOLDS } = require('../backtest');
@@ -36,7 +37,33 @@ function listMatches() {
 function getAnalysis(service, params) {
   const match = getMockMatch(params.id);
   if (!match) return fail(404, 'match_not_found');
+  const analysis = buildAnalysis(service, match);
+  return ok({ ...analysis, source: 'mock' });
+}
 
+// ───────────────────────── GET /api/manual-odds/analysis/:id ─────────────────────────
+// 盘口数据.md → MatchSchema → 特征 → 推理链 端到端（真实本地人工盘赔源）。
+// 每次按当前 env 扫描定位场次，全部盘赔快照均早于开赛，且防泄漏。
+function getManualAnalysis(service, params) {
+  const res = loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+  if (res.status === 'not_configured') return fail(503, 'manual_odds_not_configured');
+  const id = decodeURIComponent(params.id || ''); // match_id 含中文，需解码
+  const match = (res.matches || []).find((m) => m.match_id === id);
+  if (!match) return fail(404, 'match_not_found_in_manual_source');
+  const analysis = buildAnalysis(service, match);
+  const snapShots = match.snapshots || [];
+  return ok({
+    ...analysis,
+    source: 'src_manual_odds',
+    trust_level: (snapShots[0] && snapShots[0].trust_level) || 'provisional',
+    snapshots: snapShots.length,
+    neutral: match.neutral,
+    strategy_meta: match.meta,
+  });
+}
+
+/** 共享分析核心：MatchSchema → 特征快照 → 规则检索/融合 → 推理链。 */
+function buildAnalysis(service, match) {
   const at = match.match_time; // 赛前分析锚点（数据须早于开赛）
   const feat = computeMatchFeatures(match, at);
   if (!feat.ok) return fail(422, feat.errors.join(', '));
@@ -77,7 +104,7 @@ function getAnalysis(service, params) {
     review_note: result.retrieval.arbitration.review_note,
   };
 
-  return ok({ match_id: match.match_id, at, hits, reasoning, prediction, arbitration });
+  return { match_id: match.match_id, at, features: feat.snapshot.features, hits, reasoning, prediction, arbitration, feat_errors: [] };
 }
 
 // ───────────────────────── GET /api/rules ─────────────────────────
@@ -159,13 +186,40 @@ async function reviewAiCandidate(service, params, body) {
   return fail(400, 'invalid_verdict');
 }
 
+// ───────────────────────── GET /api/sources/manual-odds ─────────────────────────
+// 本地人工盘赔源实时状态：根目录经 env:OE_MANUAL_ODDS_ROOT 动态配置，
+// 每次请求按当前环境扫描 → 前端「数据接入」视图实时可观测。
+function getManualOddsStatus() {
+  const src = querySources('src_manual_odds');
+  const res = loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+  return ok({
+    source_id: res.source_id,
+    name: (src && src.source_name) || '本地人工盘赔',
+    trust_level: (src && src.trust_level) || 'provisional',
+    status: res.status,
+    reason: res.reason || null,
+    meta: res.meta,
+    matches: (res.matches || []).map((m) => ({
+      match_id: m.match_id,
+      league: m.league,
+      home_team: m.home_team,
+      away_team: m.away_team,
+      match_time: m.match_time,
+      snapshots: m.snapshots.length,
+      actual_result: m.actual_result,
+    })),
+  });
+}
+
 module.exports = {
   listMatches,
   getAnalysis,
+  getManualAnalysis,
   listRules,
   getRuleVersions,
   getBacktest,
   listAiCandidates,
   reviewAiCandidate,
+  getManualOddsStatus,
   candidateRegistry,
 };

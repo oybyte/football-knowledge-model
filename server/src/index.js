@@ -60,8 +60,11 @@ function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PATH, see
   };
 
   if (http) {
-    const requested = typeof http === 'number' ? http
-      : (http && http.port) || Number(process.env.OE_PORT) || DEFAULT_HTTP_PORT;
+    // 显式 port（含 0 = 随机端口）优先；否则 OE_PORT / 默认 3000
+    let requested;
+    if (typeof http === 'number') requested = http;
+    else if (http && http.port != null) requested = http.port;
+    else requested = Number(process.env.OE_PORT) || DEFAULT_HTTP_PORT;
     const server = createHttpServer(svc, { logger });
     server.listen(requested, () => {
       svc.port = server.address().port; // port 0 → 实际分配端口

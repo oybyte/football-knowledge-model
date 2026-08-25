@@ -68,6 +68,16 @@ const SOURCES = Object.freeze({
     trust_level: 'trusted', status: 'active', config_ref: 'env:SELFTICKET_SC_API_KEY',
     quality_metrics: { missing_rate: 0, anomaly_rate: 0, latency_ms: 100 },
   },
+  src_schedule_sporttery: {
+    source_id: 'src_schedule_sporttery', source_name: '竞彩官方赛程', source_type: 'basic',
+    trust_level: 'trusted', status: 'active', config_ref: 'env:ODDS_SPORTTERY_SCHEDULE_BASE',
+    quality_metrics: { missing_rate: 0, anomaly_rate: 0, latency_ms: 200 },
+  },
+  src_manual_odds: {
+    source_id: 'src_manual_odds', source_name: '本地人工盘赔', source_type: 'odds',
+    trust_level: 'provisional', status: 'active', config_ref: 'env:OE_MANUAL_ODDS_ROOT',
+    quality_metrics: { missing_rate: 0.02, anomaly_rate: 0.02, latency_ms: 0 },
+  },
   src_mock_demo: {
     source_id: 'src_mock_demo', source_name: '本地模拟演示源', source_type: 'mock',
     trust_level: 'untrusted', status: 'active', config_ref: null,
