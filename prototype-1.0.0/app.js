@@ -54,8 +54,16 @@ const PAGE_TITLES = {
 };
 function topbarTitleHtml() {
   if (state.page === "home" && state.analyzeId) {
-    const m = getMatch();
-    return `<span class="tt-title">比赛分析</span><span class="tt-sep">/</span><span class="tt-sub">${m.home} vs ${m.away} · ${m.league}</span>`;
+    // 合并/官方场次不在 MATCHES 数组，须经 lottery 快照取标题；兜底固有场次。
+    // 单一取数出口 + 字段级兜底：场次缺失显示「载入中」，字段缺失不渲染 undefined。
+    const ml = typeof currentLotteryMatch === "function" ? currentLotteryMatch(state.analyzeId) : null;
+    const m = ml ? null : getMatch();
+    const src = ml || m || {};
+    const home = src.home != null ? String(src.home) : "";
+    const away = src.away != null ? String(src.away) : "";
+    const league = src.league != null ? String(src.league) : "";
+    const sub = home && away ? `${home} vs ${away}${league ? " · " + league : ""}` : "载入中";
+    return `<span class="tt-title">比赛分析</span><span class="tt-sep">/</span><span class="tt-sub">${sub}</span>`;
   }
   const t = PAGE_TITLES[state.page] || ["", ""];
   return `<span class="tt-title">${t[0]}</span><span class="tt-sep">/</span><span class="tt-sub">${t[1]}</span>`;
@@ -225,11 +233,12 @@ function renderMatchRow(m) {
     const lab = (b.key === "hhad" && b.handicap != null) ? `让球(${handicapTxt(b.handicap)})` : b.label;
     return `<span class="play-chip ${b.data ? "on" : ""}" title="${b.label}">${lab}</span>`;
   }).join("");
+  const od = m.oddsDetail;
   const on = state.analysisOn[m.id];
   const right = on ? renderSummary(m) : renderAnalysisOff(m);
   return `<div class="match-row ${on ? "on" : ""}">
     <div class="mr-card">
-      <div class="mc-top"><span class="mc-league">${m.league}</span><span class="mc-serial">${m.serial}</span><span class="badge real">真实</span></div>
+      <div class="mc-top"><span class="mc-league">${m.league}</span><span class="mc-serial">${m.serial}</span><span class="badge real">真实</span>${od ? `<span class="badge provisional" title="本地人工盘赔已关联 · ${od.snapshots} 条盘口快照 · provisional 信任级">盘赔明细 · ${od.snapshots}条</span>` : ""}</div>
       <div class="mc-teams">
         <div class="mc-team"><span class="mc-tn">${m.home}</span><span class="mc-pos">主</span></div>
         <div class="mc-vs">VS</div>
@@ -244,25 +253,106 @@ function renderMatchRow(m) {
 }
 
 function renderAnalysisOff(m) {
-  const hasOdds = MATCHES.some(function(x) { return x.id === m.id; });
+  const hasOdds = m.oddsDetail || MATCHES.some(function(x) { return x.id === m.id; });
   if (!hasOdds) {
     return '<div class="mr-summary off"><div class="off-msg">' + ICON.chart + '<span>暂无详细盘口数据，无法分析</span></div></div>';
   }
   return '<div class="mr-summary off">' +
-    '<div class="off-msg">' + ICON.chart + '<span>未开启分析预测</span></div>' +
+    '<div class="off-msg">' + ICON.chart + '<span>' + (m.oddsDetail ? '已关联「合并池 · 人工盘赔」推理链' : '未开启分析预测') + '</span></div>' +
     '<button class="btn sm primary" onclick="toggleAnalysis(\'' + m.id + '\',true)">' + ICON.spark + '开启分析预测</button>' +
   '</div>';
 }
 
 function toggleAnalysis(id, on) {
   if (on) {
-    const hasOdds = MATCHES.some(function(x) { return x.id === id; });
+    const ml = currentLotteryMatch(id);
+    const hasOdds = (ml && ml.oddsDetail) || MATCHES.some(function(x) { return x.id === id; });
     if (!hasOdds) { toast('暂无详细盘口数据，无法分析'); return; }
   }
   state.analysisOn[id] = on; render();
 }
 
+function currentLotteryMatch(id) {
+  if (typeof getCachedLotteryMatches !== "function") return null;
+  const all = getCachedLotteryMatches();
+  for (let i = 0; i < all.length; i++) if (String(all[i].id) === String(id)) return all[i];
+  return null;
+}
+
+// ───────────────── 合并池 · 人工盘赔推理链（后端规则融合） ─────────────────
+// 今日场次已关联「本地人工盘赔」时，推理链在后端 merged pool 上执行（真实盘赔特征）。
+// 结果异步落缓存再重渲染；方向仲裁遵循 favor_upper⇒upper / favor_lower⇒lower / draw⇒平 / undecidable⇒弃判。
+var _mergedAnalysis = {}; // official 数字 id → { loading, data }
+
+function ensureMergedAnalysis(m) {
+  if (_mergedAnalysis[m.id] && _mergedAnalysis[m.id].loading) return; // 已在加载
+  if (!_mergedAnalysis[m.id]) {
+    _mergedAnalysis[m.id] = { loading: true, data: null };
+    var api = (typeof window !== "undefined" && window.__ApiClient) ? window.__ApiClient.getApi() : null;
+    if (api && m.oddsDetail && typeof api.getMergedAnalysis === "function") {
+      api.getMergedAnalysis(m.oddsDetail.mergedMatchId).then(function (r) {
+        _mergedAnalysis[m.id] = { loading: false, data: r && r.ok ? r.data : null };
+        render();
+      })["catch"](function () { _mergedAnalysis[m.id] = { loading: false, data: null }; render(); });
+    } else {
+      _mergedAnalysis[m.id] = { loading: false, data: null };
+    }
+  }
+}
+
+// 方向词汇统一：后端引擎返回 favor_upper/favor_lower/draw/warning，需收敛到中文语义展示
+function dirLabel(d) {
+  if (d === "upper" || d === "favor_upper") return "上盘";
+  if (d === "lower" || d === "favor_lower") return "下盘";
+  if (d === "draw") return "平局";
+  if (d === "warning") return "风险";
+  return "弃判";
+}
+function dirCls(d) {
+  if (d === "upper" || d === "favor_upper") return "up";
+  if (d === "lower" || d === "favor_lower") return "down";
+  if (d === "warning") return "risk";
+  return "none";
+}
+function mergedDirText(arb) {
+  return dirLabel(arb && arb.direction);
+}
+function mergedDirCls(arb) {
+  return dirCls(arb && arb.direction);
+}
+function getMergedAnalysisSummary(m) {
+  ensureMergedAnalysis(m);
+  const mr = _mergedAnalysis[m.id];
+  if (!mr || mr.loading) {
+    return '<div class="mr-summary on"><div class="off-msg">' + ICON.chart + '<span>载入合并池盘赔推理链路 …</span></div></div>';
+  }
+  if (!mr.data || !mr.data.arbitration) {
+    return '<div class="mr-summary on"><div class="off-msg">' + ICON.chart + '<span>无可用证据，方向未定</span></div></div>';
+  }
+  const d = mr.data;
+  const hitsHtml = (d.hits || []).map(function (h) {
+    return `<div class="reason-line"><span class="badge ${dirCls(h.direction)}">${h.rule_id}</span> <span class="muted">${dirLabel(h.direction)} · conf=${h.confidence}</span></div>`;
+  }).join("") || '<div class="reason-line"><span class="muted">未命中规则</span></div>';
+  const arb = d.arbitration;
+  const conf = arb.confidence != null ? Math.round(arb.confidence * 100) : 0;
+  return `<div class="mr-summary on">
+    <div class="sum-grid">
+      <div class="sum-block" style="grid-column:1/-1">
+        <div class="sum-h">推理链（后端 · 合并人工盘赔）</div>
+        ${hitsHtml}
+      </div>
+    </div>
+    <div class="sum-foot">
+      <span class="vc-pill ${mergedDirCls(arb)}">${mergedDirText(arb)} · ${conf}%</span>
+      <div class="spacer"></div>
+      <button class="btn sm" onclick="toggleAnalysis('${m.id}',false)">关闭</button>
+      <button class="btn sm primary" onclick="enterAnalysis('${m.id}')">${ICON.chart}详细分析</button>
+    </div>
+  </div>`;
+}
+
 function renderSummary(m) {
+  if (m.oddsDetail) return getMergedAnalysisSummary(m);
   const cr = computeFor(m.id);
   if (!cr) return '<div class="mr-summary on"><div class="off-msg">' + ICON.chart + '<span>暂无详细盘口数据</span></div></div>';
   const { f, res } = cr;
@@ -343,7 +433,10 @@ function saveCurrentAnalysis() {
 
 // ============================ 分析壳（三栏复用） ============================
 function renderAnalysisShell() {
+  const ml = currentLotteryMatch(state.matchId);
+  if (ml && ml.oddsDetail) return renderMergedAnalysisShell(ml);
   const m = getMatch();
+  if (!m) return `<div class="analysis-shell"><div class="analysis-bar"><button class="btn sm" onclick="exitAnalysis()">${ICON.back} 返回列表</button><div class="ab-spacer"></div></div><div class="analysis-body"><main class="page" style="padding:18px"><div class="off-msg">${ICON.chart}<span>比赛不存在或尚未加载</span></div></main></div></div>`;
   return `<div class="analysis-shell">
     <div class="analysis-bar">
       <button class="btn sm" onclick="exitAnalysis()">${ICON.back} 返回列表</button>
@@ -356,6 +449,50 @@ function renderAnalysisShell() {
       <main class="page" style="flex:1 1 0;min-width:0;overflow:auto;padding:18px">${renderCenter()}</main>
       <aside class="page" style="flex:0 0 300px;min-width:0;overflow-y:auto;border-left:1px solid var(--bd-1);background:var(--bg-1);padding:16px">${renderRulesPanel()}</aside>
     </div>
+  </div>`;
+}
+
+// 合并盘赔场次的后端推理分析页（真实盘赔经后端规则融合，避免无 MATCHES 快照崩溃）
+function renderMergedAnalysisShell(ml) {
+  ensureMergedAnalysis(ml);
+  const od = ml.oddsDetail;
+  const mr = _mergedAnalysis[ml.id];
+  let body;
+  if (!mr || mr.loading) {
+    body = `<div class="page-head"><div class="ph-title">载入中</div></div><div class="off-msg">${ICON.chart}<span>载入合并池盘赔推理链路 …</span></div>`;
+  } else if (!mr.data || !mr.data.arbitration) {
+    body = `<div class="page-head"><div class="ph-title">无可用推理结果</div></div><div class="off-msg">${ICON.chart}<span>未检索到可执行规则，方向未定</span></div>`;
+  } else {
+    const d = mr.data;
+    const arb = d.arbitration;
+    const hitsRows = (d.hits || []).map(function (h) {
+      return `<tr><td class="l"><span class="badge ${dirCls(h.direction)}">${h.rule_id}</span></td><td>${dirLabel(h.direction)}</td><td class="num">${h.confidence}</td><td>${h.exact ? "精确" : "条件"}</td></tr>`;
+    }).join("");
+    const featsHtml = Object.keys(d.features || {}).slice(0, 24).map(function (k) {
+      const v = d.features[k];
+      return `<tr><td class="l">${k}</td><td class="num">${typeof v === "number" ? v.toFixed(3) : String(v == null ? "" : v)}</td></tr>`;
+    }).join("");
+    body = `<div class="page-head">
+        <div><div class="ph-title">${ml.home} <span class="muted">vs</span> ${ml.away}</div>
+        <div class="ph-sub">${ml.league} · ${ml.kickoff} · 序号 ${ml.serial} · 后端合并池 · 人工盘赔 ${od.snapshots} 条 (provisional)</div></div>
+        <div class="ph-actions"><span class="vc-pill ${mergedDirCls(arb)}">${mergedDirText(arb)} · ${arb.confidence != null ? Math.round(arb.confidence * 100) : 0}%</span></div>
+      </div>
+      <div class="page-section" style="margin-top:14px">
+        <div class="section-title">规则命中</div>
+        <table class="tbl"><tbody>${hitsRows || '<tr><td class="muted">未命中规则</td></tr>'}</tbody></table>
+      </div>
+      <div class="page-section" style="margin-top:14px">
+        <div class="section-title">特征快照（真实盘赔）</div>
+        <table class="tbl"><tbody>${featsHtml}</tbody></table>
+      </div>`;
+  }
+  return `<div class="analysis-shell">
+    <div class="analysis-bar">
+      <button class="btn sm" onclick="exitAnalysis()">${ICON.back} 返回列表</button>
+      <div class="ab-title">${ml.home} <span class="muted">vs</span> ${ml.away} <span class="badge provisional">人工盘赔 · ${od.snapshots}条</span></div>
+      <div class="ab-spacer"></div>
+    </div>
+    <div class="analysis-body"><main class="page" style="flex:1 1 0;min-width:0;overflow:auto;padding:18px">${body}</main></div>
   </div>`;
 }
 

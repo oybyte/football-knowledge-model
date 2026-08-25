@@ -130,16 +130,92 @@ const LOTTERY_GROUPS = [
 
 /** 缓存最新一次拉取的真实比赛 */
 var _cachedRealMatches = null;
+/** 合并池盘赔明细索引：合并键 → { mergedMatchId, snapshots, merged, provisional } */
+var _cachedMergedMap = null;
+
+// ── 语义键（与后端 normalizeTeamName 对齐：折叠全角/不换行空格/多余空白）─────
+function normName(s) {
+  s = String(s == null ? "" : s);
+  return s.replace(/[\u3000\u00a0]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// 联赛别名收敛：竞彩官方用全称（如「韩国职业联赛」），本地人工盘赔用简称（如「韩K联」）。
+// 归一化到同一规范名，使双源语义键能对齐；已为规范名/缩写名的返回自身。
+var LEAGUE_ALIAS = {
+  "韩国职业联赛": "韩K联",
+  "沙特职业联赛": "沙特联", "沙特阿拉伯职业联赛": "沙特联",
+  "欧洲冠军联赛": "欧冠杯", "欧冠联赛": "欧冠杯",
+  "欧罗巴联赛": "欧联杯", "欧洲联赛": "欧联杯",
+  "西班牙甲级联赛": "西甲",
+  "英格兰超级联赛": "英超",
+  "英格兰冠军联赛": "英冠",
+  "意大利甲级联赛": "意甲",
+  "德国甲级联赛": "德甲", "德国乙级联赛": "德乙",
+  "法国甲级联赛": "法甲", "法国乙级联赛": "法乙",
+  "荷兰甲级联赛": "荷甲",
+  "葡萄牙超级联赛": "葡超",
+  "巴西甲组联赛": "巴甲", "巴西甲级联赛": "巴甲",
+  "日本职业联赛": "日职联", "日本乙级联赛": "日职乙", "J2联": "日职乙",
+  "挪威超级联赛": "挪超",
+  "瑞典超级联赛": "瑞典超",
+  "芬兰超级联赛": "芬超",
+  "英格兰社区盾": "社区盾", "社区盾杯": "社区盾",
+  "英格兰联赛杯": "英联杯",
+  "韩国足总杯": "韩国杯",
+  "南美解放者杯": "解放者杯",
+  "美国职业大联盟": "美职联"
+};
+function normLeague(s) {
+  var n = normName(s);
+  return LEAGUE_ALIAS[n] || n;
+}
+function mergedKeyOf(o) {
+  return [normLeague(o.league), normName(o.home_team), normName(o.away_team)].join("|");
+}
+function lotteryMergedKey(m) {
+  return [normLeague(m.league), normName(m.home), normName(m.away)].join("|");
+}
 
 /**
- * 从后端 API 拉取真实竞彩数据。
- * @param {boolean} force true=手动刷新（?refresh=1 直连官方）；false=自动（当天缓存，公益网站减负）
+ * 拉取双源合并池（竞彩赛程 ∪ 本地人工盘赔），建立「语义键 → 盘赔明细」索引。
+ * 合并池来自后端本地扫描 md，不直连官方，故每次加载均可调用（公益网站零压力）。
  */
-function fetchRealMatches(force) {
-  // 优先通过 api-client 获取
-  var api = (typeof window !== "undefined" && window.__ApiClient)
-    ? window.__ApiClient.getApi()
-    : null;
+function fetchMergedDetail(api) {
+  function build(r) {
+    _cachedMergedMap = {};
+    if (r && r.ok && r.data && Array.isArray(r.data.pool)) {
+      r.data.pool.forEach(function (p) {
+        if (!p || !(p.snapshots > 0) || !p.league) return;
+        var k = mergedKeyOf(p);
+        _cachedMergedMap[k] = {
+          mergedMatchId: p.match_id,
+          snapshots: p.snapshots,
+          merged: !!p.merged,
+          provisional: true, // 人工盘赔诚实标记，绝不冒充官方
+          hasManualOdds: true,
+        };
+      });
+    }
+    return _cachedMergedMap;
+  }
+  return Promise.resolve(api.getMergedPool())
+    .then(build)
+    ["catch"](function () { _cachedMergedMap = {}; return _cachedMergedMap; });
+}
+
+/** 把已缓存合并池的盘赔明细挂载到官方今日场次（双源关联）。 */
+function enrichWithOdds(lotteryMatches) {
+  if (_cachedMergedMap) {
+    lotteryMatches.forEach(function (m) {
+      var d = _cachedMergedMap[lotteryMergedKey(m)];
+      if (d) m.oddsDetail = d;
+    });
+  }
+  return lotteryMatches;
+}
+
+/** 官方在售列表（权威 序号/让球/业务日/全部今日场次）。 */
+function fetchOfficialOdds(force, api) {
   if (api && typeof api.getSportteryOddsStatus === "function") {
     // mock 适配器返回普通对象、http 适配器返回 Promise，统一归一为 Promise
     return Promise.resolve(api.getSportteryOddsStatus(force ? { refresh: true } : undefined)).then(function (r) {
@@ -147,20 +223,13 @@ function fetchRealMatches(force) {
         _cachedRealMatches = r.data.matches;
         return r.data.matches.map(sportteryToLottery);
       }
-      // 使用缓存
-      if (_cachedRealMatches && _cachedRealMatches.length) {
-        return _cachedRealMatches.map(sportteryToLottery);
-      }
+      if (_cachedRealMatches && _cachedRealMatches.length) return _cachedRealMatches.map(sportteryToLottery);
       return [];
     })["catch"](function () {
-      // API 失败，用缓存
-      if (_cachedRealMatches && _cachedRealMatches.length) {
-        return _cachedRealMatches.map(sportteryToLottery);
-      }
+      if (_cachedRealMatches && _cachedRealMatches.length) return _cachedRealMatches.map(sportteryToLottery);
       return [];
     });
   }
-  // 尝试直接 fetch
   if (typeof fetch !== "undefined") {
     return fetch("http://localhost:3000/api/sources/sporttery-odds" + (force ? "?refresh=1" : ""))
       .then(function (r) { return r.json(); })
@@ -171,13 +240,28 @@ function fetchRealMatches(force) {
         }
         return [];
       })["catch"](function () {
-        if (_cachedRealMatches && _cachedRealMatches.length) {
-          return _cachedRealMatches.map(sportteryToLottery);
-        }
+        if (_cachedRealMatches && _cachedRealMatches.length) return _cachedRealMatches.map(sportteryToLottery);
         return [];
       });
   }
   return Promise.resolve([]);
+}
+
+/**
+ * 从后端 API 拉取真实竞彩数据（官方在售列表 + 合并池盘赔明细双源）。
+ * @param {boolean} force true=手动刷新（?refresh=1 直连官方）；false=自动（当天缓存，公益网站减负）
+ */
+function fetchRealMatches(force) {
+  var api = (typeof window !== "undefined" && window.__ApiClient)
+    ? window.__ApiClient.getApi()
+    : null;
+  return fetchOfficialOdds(force, api).then(function (lotteryMatches) {
+    // 并行拉取合并池盘赔明细（本地扫描，不直连官方）
+    var detail = api && typeof api.getMergedPool === "function"
+      ? fetchMergedDetail(api)
+      : Promise.resolve({});
+    return detail.then(function () { return enrichWithOdds(lotteryMatches); });
+  });
 }
 
 /**
@@ -191,11 +275,20 @@ function fetchLotteryMatches(force) {
 // 同步获取当前缓存的真实比赛列表（用于渲染兜底，避免异步闪烁）
 function getCachedLotteryMatches() {
   if (_cachedRealMatches && _cachedRealMatches.length) {
-    return _cachedRealMatches.map(sportteryToLottery);
+    return enrichWithOdds(_cachedRealMatches.map(sportteryToLottery));
   }
   return [];
 }
 
+/** 查询某官方场次是否已关联人工盘赔明细（含语义合并 id）。 */
+function getOddsDetail(id) {
+  if (typeof id === "undefined" || id === null) return null;
+  var all = getCachedLotteryMatches();
+  var m = null;
+  for (var i = 0; i < all.length; i++) { if (String(all[i].id) === String(id)) { m = all[i]; break; } }
+  return (m && m.oddsDetail) || null;
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { getCachedLotteryMatches, fetchLotteryMatches, LOTTERY_API, LOTTERY_GROUPS, sportteryToLottery };
+  module.exports = { getCachedLotteryMatches, fetchLotteryMatches, getOddsDetail, LOTTERY_API, LOTTERY_GROUPS, sportteryToLottery };
 }

@@ -66,7 +66,9 @@ function testMock() {
   vm.runInContext(SRC, s);
   const api = s.__ApiClient;
   assert.ok(api, '__ApiClient 应已挂载');
-  assert.equal(api.getMode(), 'mock');
+  // 默认真实数据（DEFAULT_MODE=real，已切真实数据开发）；本用例显式切 mock 验证离线适配器
+  assert.equal(api.getMode(), 'real');
+  assert.equal(api.setMode('mock'), 'mock');
 
   return (async () => {
     const a = api.getApi();
@@ -129,7 +131,7 @@ function testMock() {
     // 模式切换
     assert.equal(api.setMode('real'), 'real');
     assert.equal(api.getMode(), 'real');
-    assert.equal(s.localStorage.getItem('oe_api_mode'), 'real');
+    assert.equal(s.localStorage.getItem('oe_api_mode_v2'), 'real');
     assert.equal(api.getStatus().mode, 'real');
     assert.equal(api.getApi().name, 'http');
     return 'mock ok';

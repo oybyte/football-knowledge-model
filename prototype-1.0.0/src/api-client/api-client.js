@@ -403,6 +403,14 @@
     d.documentElement.setAttribute('data-mode', dataMode);
     if (!host) return;
 
+    // 幂等：render() 每次进入 api 页都会调 init()，徽章已存在时仅同步模式文案
+    var existing = d.getElementById('api-mode-badge');
+    if (existing) {
+      var modeEl = existing.querySelector('.amb-mode');
+      if (modeEl) modeEl.textContent = dataMode === 'real' ? '后端API' : 'mock数据';
+      return;
+    }
+
     var el = d.createElement('div');
     el.id = 'api-mode-badge';
     el.className = 'api-mode-badge';
@@ -413,6 +421,8 @@
       '<span class="amb-toggle">⇄</span>';
     el.addEventListener('click', function () {
       var next = setMode(getMode() === 'real' ? 'mock' : 'real');
+      var m = el.querySelector('.amb-mode');
+      if (m) m.textContent = next === 'real' ? '后端API' : 'mock数据';
       notifyStatus(next);
     });
     host.appendChild(el);
