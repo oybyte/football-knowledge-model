@@ -145,7 +145,12 @@ function create({
     if (typeof fetchImpl !== 'function') throw new Error('fetch_not_available');
     const res = await fetchImpl(endpoint, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        Referer: 'https://m.sporttery.cn/',
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+      },
     });
     if (!res || !res.ok) throw new Error('schedule_http_' + (res && res.status || 'unknown'));
     const j = await res.json();

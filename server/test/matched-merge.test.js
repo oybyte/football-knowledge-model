@@ -13,6 +13,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { mergeMatchSources } = require('../src/data');
+const { normalizeLeague, normalizeTeamName } = require('../src/data/normalize');
 
 /** 竞彩赛程元信息场次（basic，无快照，EMPTY_SNAPSHOTS 非致命）。 */
 function scheduleMatch(over = {}) {
@@ -119,4 +120,29 @@ test('⑤ meta 统计口径正确（含 schedule_total / manual_total）', () =>
   assert.equal(res.meta.manual_only, 1);
   assert.equal(res.meta.pool_size, 3);
   assert.equal(res.dismissed.length, 0);
+});
+
+// ───────────────────────── ⑥ 联赛别名收敛对齐（官方全称 ↔ 人工简称）─────────────────────────
+test('⑥ 官方「韩国职业联赛」与人工「韩K联」别名对齐 → merged:true', () => {
+  // 001 场真实场景：官方赛程用联赛全称，人工盘赔用简称
+  const sched = scheduleMatch({ match_id: '2041991', league: '韩国职业联赛', home_team: '金泉尚武', away_team: '全北现代', match_time: '2026-08-25T18:30:00+08:00' });
+  const manual = manualMatch({ match_id: '韩K联_金泉尚武_vs_全北现代', league: '韩K联', home_team: '金泉尚武', away_team: '全北现代', match_time: '2026-08-25T18:30:00+08:00', observed_at: '2026-08-25T10:00:00+08:00', received_at: '2026-08-25T10:00:00+08:00' });
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
+  assert.equal(res.meta.aligned, 1);
+  assert.equal(res.meta.manual_only, 0);
+  assert.equal(res.meta.conflicts, 0);
+  assert.equal(res.pool[0].meta.merged, true);
+  assert.equal(res.pool[0].match_id, '2041991');            // 官方数字 ID
+  assert.equal(res.pool[0].league, '韩国职业联赛');            // 官方联赛名
+  assert.equal(res.pool[0].snapshots[0].match_id, '2041991'); // 快照 match_id 跟随
+});
+
+test('⑥b normalizeLeague 别名表：全称→简称，简称幂等，未知原样', () => {
+  assert.equal(normalizeLeague('韩国职业联赛'), '韩K联');
+  assert.equal(normalizeLeague('　韩国职业联赛　'), '韩K联'); // 全角空白先折叠再收敛
+  assert.equal(normalizeLeague('韩K联'), '韩K联');            // 已为简称幂等
+  assert.equal(normalizeLeague('欧洲冠军联赛'), '欧冠杯');
+  assert.equal(normalizeLeague('英超'), '英超');
+  assert.equal(normalizeLeague(normalizeTeamName('西班牙甲级联赛')), '西甲');
+  assert.equal(normalizeLeague('自定义联赛'), '自定义联赛');     // 未知原样
 });

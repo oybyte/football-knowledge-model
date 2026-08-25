@@ -6,6 +6,12 @@
 //   OE_PORT     HTTP 端口（默认 3000）
 //   OE_API_KEY  API 密钥（设置后启用鉴权，默认无鉴权）
 //   OE_REDIS_URL Redis 连接（可选，设置后启用 Redis 缓存/锁/队列）
+//   OE_MANUAL_ODDS_ROOT 本地人工盘赔根目录（经 CredentialVault env: 注入，
+//     扫描其下各比赛子目录的 盘口数据.md；不配置则手动源为 not_configured）
+//   示例：node 启动前注入 $env:OE_MANUAL_ODDS_ROOT="F:\ocr_python_data\FootballScreenshotOcr\output"
+//   ODDS_SPORTTERY_SCHEDULE_BASE 竞彩官方赛程端点（经 CredentialVault env: 注入，
+//     双源合并以官方元信息升级人工盘赔；不配置则合并池为 manual_only）
+//   示例：$env:ODDS_SPORTTERY_SCHEDULE_BASE="https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry?poolCode=hhad,had,crs,ttg,hafu&channel=c"
 // ============================================================================
 'use strict';
 

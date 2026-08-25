@@ -15,12 +15,12 @@
 'use strict';
 
 const { validateMatch } = require('./schema');
-const { normalizeTeamName } = require('./normalize');
+const { normalizeTeamName, normalizeLeague } = require('./normalize');
 
-/** 语义对齐键：联赛|主队|客队（各自归一化）。 */
+/** 语义对齐键：联赛|主队|客队（各自归一化；联赛别名收敛统一官方全称/人工简称）。 */
 function matchKey(m) {
   return [
-    normalizeTeamName(String(m && m.league != null ? m.league : '')),
+    normalizeLeague(String(m && m.league != null ? m.league : '')),
     normalizeTeamName(String(m && m.home_team != null ? m.home_team : '')),
     normalizeTeamName(String(m && m.away_team != null ? m.away_team : '')),
   ].join('|');
