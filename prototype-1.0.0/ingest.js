@@ -257,7 +257,7 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
       <div class="page-head">
         <div class="ph-title">数据接入监控<span class="badge mock" style="margin-left:8px">Mock 示意</span></div>
         <div class="ph-sub">数据源注册表 · 信任分级 · 三时间戳完整性 · 凭证隔离</div>
-        <div class="ph-actions"><button class="btn sm primary" onclick="window.__ingRefresh()">模拟采集刷新</button><button class="btn sm" onclick="window.__ingRefreshManual()">实时刷新·本地盘赔源</button></div>
+        <div class="ph-actions"><button class="btn sm primary" onclick="window.__ingRefresh()">模拟采集刷新</button><button class="btn sm" onclick="window.__ingRefreshManual()">实时刷新·本地盘赔源</button><button class="btn sm" onclick="window.__ingRefreshSchedule()">手动刷新·竞彩赛程</button><button class="btn sm" onclick="window.__ingRefreshOdds()">手动刷新·竞彩赔率</button><button class="btn sm" onclick="window.__ingRefreshMerged()">实时刷新·合并池</button></div>
       </div>
       <div class="pipeline-banner">数据平面契约：特征/AI 引擎无权访问源凭证；仅 trusted 且三时间戳完整性通过的源数据可进入 <code>statistics_eligible</code>。时间泄漏/倒挂/重复上报写入告警。</div>
 
@@ -290,6 +290,230 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
       <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">真实数据源 · 本地人工盘赔</div><div class="extra muted">经后端 HTTP · 目录根 env:OE_MANUAL_ODDS_ROOT 动态配置</div></div>
         ${renderManualSource()}
       </div>
+
+      <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">真实数据源 · 竞彩官方赛程</div><div class="extra muted">经后端 HTTP · 端点注入 env:ODDS_SPORTTERY_SCHEDULE_BASE · 当天缓存（公益网站减负）</div></div>
+        ${renderScheduleSource()}
+      </div>
+
+      <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">真实数据源 · 竞彩官方赔率</div><div class="extra muted">直连 webapi.sporttery.cn · trusted 级别 · 当天缓存（公益网站减负，仅手动刷新直连）</div></div>
+        ${renderSportteryOddsSource()}
+      </div>
+
+      <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">真实比赛池 · 双源合并（竞彩赛程 ∪ 本地盘赔）</div><div class="extra muted">经后端 HTTP · 语义键对齐 · 时间防线剔除</div></div>
+        ${renderMergedPool()}
+      </div>
+    </div>`;
+  }
+
+  // ── 真实数据源可观测：竞彩官方赛程（当天缓存 · 公益网站减负） ──
+  let scheduleState = null; // null=加载中
+  async function refreshSchedule(force) {
+    scheduleState = null; if (window.render) window.render();
+    try {
+      const Api = window.__ApiClient;
+      if (!Api || typeof Api.getApi !== 'function') { scheduleState = { error: 'api_client_unavailable' }; if (window.render) window.render(); return; }
+      const r = await Api.getApi().getScheduleStatus(force ? { refresh: true } : undefined);
+      scheduleState = (r && r.ok) ? r.data : { error: (r && r.error) || 'http_error' };
+    } catch (e) {
+      scheduleState = { error: String((e && e.message) || e) };
+    }
+    if (window.render) window.render();
+  }
+  function renderScheduleSource() {
+    if (scheduleState === null) return `<div class="card-mb"><div class="empty">正在实时加载竞彩官方赛程状态…</div></div>`;
+    if (scheduleState.error) return `<div class="card-mb"><div class="callout risk"><strong>赛程源状态读取失败。</strong>${scheduleState.error}</div><span class="muted">请启动本地后端并切换「后端API」。</span></div>`;
+    const s = scheduleState;
+    const meta = s.meta || { total: 0, admitted: 0, rejected: 0 };
+    const schedCacheBadge = (s.cached === 'local')
+      ? '<span class="badge info">当日缓存·本地</span>'
+      : (s.cached === true ? '<span class="badge info">当日缓存·后端</span>' : '');
+    const rows = (s.matches || []).map((m) => `<tr>
+      <td class="mono">${m.match_id}</td>
+      <td><span class="ing-lg">${m.league || ''}</span></td>
+      <td><span class="mono">${m.home_team || ''}</span><span class="ing-name">vs ${m.away_team || ''}</span></td>
+      <td class="tts mono">${(m.match_time || '').replace('T', ' ').replace('+08:00', '')}</td>
+      <td><span class="badge info">${m.status || '-'}</span></td>
+    </tr>`).join("") || '<tr><td colspan="5" class="empty">当前无赛程场次</td></tr>';
+    const tip = s.status === 'ok'
+      ? '已接入真实竞彩赛程元信息（basic 源，无盘口快照；盘口快照由本地人工盘赔源补充）。'
+      : '（诚实降级，未接入真实数据）';
+    return `<div class="card-mb">
+      <div class="manual-src-head">
+        <span class="mono">${s.source_id || 'src_schedule_sporttery'}</span>
+        <span class="ing-name">竞彩官方赛程</span>
+        ${manualStatusBadge(s.status)}
+        ${schedCacheBadge}
+        ${s.status === 'ok' ? '' : `<span class="muted">· ${s.reason || ''}</span>`}
+        ${s.mode === 'http' ? '<span class="badge up">后端API</span>' : ''}
+      </div>
+      <div class="ing-sum mt">
+        <div class="bt-chip"><b>报文字段</b><span>${meta.total}</span></div>
+        <div class="bt-chip"><b>已接入</b><span class="up">${meta.admitted}</span></div>
+        <div class="bt-chip"><b>拒绝</b><span class="risk">${meta.rejected}</span></div>
+      </div>
+      <div class="ing-table-wrap manual-table-wrap"><table class="ing-table">
+        <thead><tr><th>match_id</th><th>联赛</th><th>对阵</th><th>开赛</th><th>状态</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="muted tts" style="font-size:12px">${tip} 端点经 CredentialVault 注入 · 全部 received_at 早于 match_time（防泄漏）</div>
+    </div>`;
+  }
+
+  // ── 真实数据源可观测：竞彩官方赔率（当天缓存 · 公益网站减负） ──
+  // 自动获取每天最多一次（当天缓存命中则零请求）；仅手动按钮直连 webapi.sporttery.cn。
+  let oddsState = null; // null=加载中
+  async function refreshOdds(force) {
+    oddsState = null; if (window.render) window.render();
+    try {
+      const Api = window.__ApiClient;
+      if (!Api || typeof Api.getApi !== 'function') { oddsState = { error: 'api_client_unavailable' }; if (window.render) window.render(); return; }
+      const r = await Api.getApi().getSportteryOddsStatus(force ? { refresh: true } : undefined);
+      oddsState = (r && r.ok) ? r.data : { error: (r && r.error) || 'http_error' };
+    } catch (e) {
+      oddsState = { error: String((e && e.message) || e) };
+    }
+    if (window.render) window.render();
+  }
+  function renderSportteryOddsSource() {
+    if (oddsState === null) return `<div class="card-mb"><div class="empty">正在读取竞彩官方赔率（当天缓存）…</div></div>`;
+    if (oddsState.error) return `<div class="card-mb"><div class="callout risk"><strong>赔率源拉取失败。</strong>${oddsState.error}</div><span class="muted">请确认网络可访问 webapi.sporttery.cn</span></div>`;
+    const s = oddsState;
+    const meta = s.meta || { total: 0, admitted: 0, rejected: 0 };
+    const cacheBadge = (s.cached === 'local')
+      ? '<span class="badge info">当日缓存·本地</span>'
+      : (s.cached === true ? '<span class="badge info">当日缓存·后端</span>' : '<span class="badge up">当日直连</span>');
+    const rows = (s.matches || []).map((m) => `<tr>
+      <td class="mono">${m.match_id}</td>
+      <td><span class="ing-lg">${m.league || ''}</span></td>
+      <td><span class="mono">${m.home_team || ''}</span><span class="ing-name">vs ${m.away_team || ''}</span></td>
+      <td class="tts mono">${(m.match_time || '').replace('T', ' ').replace('+08:00', '')}</td>
+      <td><span class="badge info">${m.status || '-'}</span></td>
+      <td><span class="ing-chip">${m.pool_count || 0}池</span></td>
+    </tr>`).join("") || '<tr><td colspan="6" class="empty">当前无在售赔率场次</td></tr>';
+    const tip = s.status === 'ok'
+      ? '官方赔率（胜平负/让球/比分/总进球/半全场），含 impliedProb/noVigProb/fairOdds/returnRate。'
+      : '（降级，未拉到真实赔率数据）';
+    return `<div class="card-mb">
+      <div class="manual-src-head">
+        <span class="mono">${s.source_id || 'src_odds_sporttery'}</span>
+        <span class="ing-name">竞彩官方赔率</span>
+        ${manualStatusBadge(s.status)}
+        ${cacheBadge}
+        ${s.status === 'ok' ? '' : `<span class="muted">· ${s.reason || ''}</span>`}
+        ${s.mode === 'http' ? '<span class="badge up">后端API</span>' : ''}
+        <span class="badge" style="background:#2a7d2a;color:#fff">trusted</span>
+      </div>
+      <div class="ing-sum mt">
+        <div class="bt-chip"><b>报文字段</b><span>${meta.total}</span></div>
+        <div class="bt-chip"><b>已接入</b><span class="up">${meta.admitted}</span></div>
+        <div class="bt-chip"><b>拒绝</b><span class="risk">${meta.rejected}</span></div>
+        <div class="bt-chip"><b>更新时间</b><span class="mono">${meta.updated_at || '-'}</span></div>
+      </div>
+      <div class="ing-table-wrap manual-table-wrap"><table class="ing-table">
+        <thead><tr><th>match_id</th><th>联赛</th><th>对阵</th><th>开赛</th><th>状态</th><th>赔率池</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="muted tts" style="font-size:12px">${tip} 公益网站减负：自动获取每天最多直连官方一次，其余走当天缓存；点击「手动刷新」才直连 webapi.sporttery.cn · trusted 级别 · 全部 received_at 早于 match_time（防泄漏）</div>
+    </div>`;
+  }
+
+  // ── 真实数据源可观测：双源合并「真实比赛池」（竞彩赛程 ∪ 本地人工盘赔） ──
+  let mergedState = null; // null=加载中
+  let mergedAnalysis = null; // 当前选中场次的推理链
+  async function refreshMerged() {
+    mergedState = null; if (window.render) window.render();
+    try {
+      const Api = window.__ApiClient;
+      if (!Api || typeof Api.getApi !== 'function') { mergedState = { error: 'api_client_unavailable' }; if (window.render) window.render(); return; }
+      const r = await Api.getApi().getMergedPool();
+      mergedState = (r && r.ok) ? r.data : { error: (r && r.error) || 'http_error' };
+    } catch (e) {
+      mergedState = { error: String((e && e.message) || e) };
+    }
+    mergedAnalysis = null;
+    if (window.render) window.render();
+  }
+  async function analyzeMergedMatch(i) {
+    if (!mergedState || !mergedState.pool) return;
+    const m = mergedState.pool[i]; if (!m) return;
+    mergedAnalysis = null; if (window.render) window.render();
+    try {
+      const Api = window.__ApiClient;
+      if (!Api || typeof Api.getApi !== 'function') { mergedAnalysis = { error: 'api_client_unavailable' }; if (window.render) window.render(); return; }
+      const r = await Api.getApi().getMergedAnalysis(m.match_id);
+      mergedAnalysis = (r && r.ok) ? r.data : { error: (r && r.error) || 'http_error' };
+    } catch (e) {
+      mergedAnalysis = { error: String((e && e.message) || e) };
+    }
+    if (window.render) window.render();
+  }
+  function renderMergedAnalysis() {
+    if (mergedAnalysis === null) return "";
+    if (mergedAnalysis.error) {
+      return `<div class="ing-manual-a"><div class="callout risk"><strong>合并池推理链读取失败。</strong>${mergedAnalysis.error}</div><span class="muted">请确认后端已配置 OE_MANUAL_ODDS_ROOT 与 ODDS_SPORTTERY_SCHEDULE_BASE。</span></div>`;
+    }
+    const a = mergedAnalysis;
+    const dir = (a.arbitration || {}).direction;
+    const conf = (a.arbitration || {}).confidence;
+    const hits = (a.hits || []).map(h => `<tr>
+      <td class="mono">${h.rule_id}</td>
+      <td class="mono">${h.version_id || "-"}</td>
+      <td>${dirBadge(h.direction, h.confidence)}</td>
+      <td class="mono">${(h.exact ? "精确" : "近似")}</td>
+    </tr>`).join("") || '<tr><td colspan="4" class="empty">无命中的规则</td></tr>';
+    return `<div class="ing-manual-a">
+      <div class="a-head">
+        <span class="mono">推理链 · ${a.match_id || ""}</span>
+        <span class="ing-name">${a.merged ? "已对齐官方赛程" : "未对齐（manual_only）"}</span>
+        ${dirBadge(dir, conf)}
+      </div>
+      <div class="ing-table-wrap manual-table-wrap"><table class="ing-table">
+        <thead><tr><th>规则</th><th>版本</th><th>方向</th><th>命中</th></tr></thead>
+        <tbody>${hits}</tbody>
+      </table></div>
+      <div class="muted tts" style="font-size:12px">盘口快照 → 特征 → 规则检索/融合 → 方向仲裁（合并池端到端）</div>
+    </div>`;
+  }
+  function renderMergedPool() {
+    if (mergedState === null) return `<div class="card-mb"><div class="empty">正在实时加载双源合并「真实比赛池」…</div></div>`;
+    if (mergedState.error) return `<div class="card-mb"><div class="callout risk"><strong>合并池读取失败。</strong>${mergedState.error}</div><span class="muted">请启动本地后端并切换「后端API」。</span></div>`;
+    const s = mergedState;
+    const meta = s.meta || { schedule_total: 0, manual_total: 0, aligned: 0, manual_only: 0, conflicts: 0, pool_size: 0 };
+    const rows = (s.pool || []).map((m, i) => `<tr>
+      <td class="mono">${m.match_id}</td>
+      <td><span class="ing-lg">${m.league || ''}</span></td>
+      <td><span class="mono">${m.home_team || ''}</span><span class="ing-name">vs ${m.away_team || ''}</span></td>
+      <td class="tts mono">${(m.match_time || '').replace('T', ' ').replace('+08:00', '')}</td>
+      <td>${m.merged ? '<span class="badge up">已对齐</span>' : '<span class="badge info">manual_only</span>'}</td>
+      <td class="mono">${m.snapshots}</td>
+      <td>${m.actual_result ? `<span class="badge info">${m.actual_result}</span>` : '<span class="muted">-</span>'}</td>
+      <td><button class="btn sm" onclick="window.__ingAnalyzeMerged(${i})">推理链</button></td>
+    </tr>`).join("") || '<tr><td colspan="8" class="empty">当前无合并场次（请配置真实源）</td></tr>';
+    const tip = s.status === 'ok'
+      ? '已合并真实比赛池：竞彩官方赛程（trusted 元信息）∪ 本地人工盘赔（provisional 盘口快照），语义键对齐。'
+      : '（诚实降级：未配置真实源或全部场次被时间防线剔除）';
+    return `<div class="card-mb">
+      <div class="manual-src-head">
+        <span class="mono">src_merged_pool</span>
+        <span class="ing-name">真实比赛池 · 双源合并</span>
+        ${manualStatusBadge(s.status)}
+        ${s.status === 'ok' ? '' : `<span class="muted">· ${s.reason || ''}</span>`}
+        ${s.mode === 'http' ? '<span class="badge up">后端API</span>' : ''}
+      </div>
+      <div class="ing-sum mt">
+        <div class="bt-chip"><b>赛程</b><span>${meta.schedule_total}</span></div>
+        <div class="bt-chip"><b>盘赔</b><span>${meta.manual_total}</span></div>
+        <div class="bt-chip"><b>已对齐</b><span class="up">${meta.aligned}</span></div>
+        <div class="bt-chip"><b>仅盘赔</b><span>${meta.manual_only}</span></div>
+        <div class="bt-chip"><b>时间防线剔除</b><span class="risk">${meta.conflicts}</span></div>
+        <div class="bt-chip"><b>入池</b><span class="up">${meta.pool_size}</span></div>
+      </div>
+      <div class="ing-table-wrap manual-table-wrap"><table class="ing-table">
+        <thead><tr><th>match_id</th><th>联赛</th><th>对阵</th><th>开赛</th><th>对齐</th><th>快照</th><th>赛果</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      ${renderMergedAnalysis()}
+      <div class="muted tts" style="font-size:12px">${tip} 官方 match_time 早于盘口快照接收的场次被时间防线剔除（防泄漏）</div>
     </div>`;
   }
 
@@ -297,8 +521,16 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
   window.__ingRefresh = refreshNow;
   window.__ingRefreshManual = refreshManual;
   window.__ingAnalyzeManual = analyzeManualMatch;
+  // 竞彩赛程/赔率：手动刷新才直连体彩官方（公益网站减负）
+  window.__ingRefreshSchedule = function () { refreshSchedule(true); };
+  window.__ingRefreshOdds = function () { refreshOdds(true); };
+  window.__ingRefreshMerged = refreshMerged;
+  window.__ingAnalyzeMerged = analyzeMergedMatch;
 
   refreshManual(); // 初次进入即向后端实时拉取本地盘赔源状态
+  refreshSchedule(false); // 自动获取当天竞彩赛程（当天缓存命中则零请求）
+  refreshOdds(false); // 自动获取当天竞彩赔率（当天缓存命中则零请求）
+  refreshMerged(); // 初次进入即向后端实时拉取双源合并「真实比赛池」
 
   if (typeof module !== "undefined") {
     module.exports = { SOURCES, TRUST, recent, statsOf, ocrToken, renderIngest };

@@ -92,7 +92,7 @@ const state = {
   ruleFamFilter: "all",
   ruleSearch: "",
   ruleTab: "rules",
-  lotteryGroup: "all",
+  lotteryGroup: "today",
   followed: {},
   analysisOn: {},
   settings: loadSettings()
@@ -136,7 +136,25 @@ const FAM_COLOR = { cross: "#8b5cf6", temporal: "#38bdf8", resonance: "#10b981",
 function fmt(v, n) { if (v == null || (typeof v === "number" && isNaN(v))) return "—"; return (typeof v === "number") ? v.toFixed(n == null ? 2 : n) : v; }
 function getMatch() { return MATCHES.find(m => m.id === state.matchId); }
 function compute() { const m = getMatch(); const f = computeFeatures(m); const res = evaluate(RULES, f, m, state); return { m, f, res }; }
-function computeFor(id) { const m = MATCHES.find(x => x.id === id); const f = computeFeatures(m); const res = evaluate(RULES, f, m, state); return { m, f, res }; }
+function computeFor(id) {
+  // 真实比赛在竞彩列表里，有详细赔率但没有盘口快照
+  const mLottery = (typeof getCachedLotteryMatches === "function" ? getCachedLotteryMatches() : []).find(x => x.id === id);
+  if (mLottery) {
+    // 找到同名的详细盘口快照
+    const m = MATCHES.find(x => x.id === id || (x.home === mLottery.home && x.away === mLottery.away));
+    if (m) {
+      const f = computeFeatures(m); const res = evaluate(RULES, f, m, state); return { m, f, res };
+    }
+    toast(`比赛 ${mLottery.home} vs ${mLottery.away} 暂无详细盘口快照，需手动提供`);
+    return null;
+  }
+  // 本地 Mock 比赛
+  const m = MATCHES.find(x => x.id === id);
+  if (m) {
+    const f = computeFeatures(m); const res = evaluate(RULES, f, m, state); return { m, f, res };
+  }
+  return null;
+}
 function bmColor(name) { for (const k in BM_COLORS) if (name.includes(k)) return BM_COLORS[k]; return "#64748b"; }
 function fmtTime(ts) { const d = new Date(ts); const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 function toast(msg) {
@@ -174,29 +192,44 @@ function setPage(p) { state.page = p; render(); }
 // ============================ 首页 · 竞彩赛事列表（竖向 + 右侧分析结论） ============================
 function renderLotteryList() {
   const active = state.lotteryGroup;
-  let matches = LOTTERY_MATCHES;
+  const allMatches = (typeof getCachedLotteryMatches === "function") ? getCachedLotteryMatches() : [];
+  let matches = allMatches;
   if (active !== "all") matches = matches.filter(m => m.dateGroup === active);
   const onCount = matches.filter(m => state.analysisOn[m.id]).length;
   const datebar = `<div class="lottery-datebar"><span class="chip ${active === "all" ? "active" : ""}" onclick="setLotteryGroup('all')">全部</span>${LOTTERY_GROUPS.map(g => `<span class="chip ${active === g.id ? "active" : ""}" onclick="setLotteryGroup('${g.id}')">${g.label}</span>`).join("")}</div>`;
   const rows = matches.map(m => renderMatchRow(m)).join("");
+  const total = allMatches.length;
+  const emptyBlock = matches.length ? "" : (
+    `<div class="home-empty">${ICON.chart}<div class="he-t">${active === "today" ? "今日可买暂无赛事" : "该分类暂无赛事"}</div>` +
+    `<div class="he-s">可点右上角「手动刷新」拉取最新数据；若已连接后端数据源且当天无在售赛事，则为正常空态。</div>` +
+    `</div>`
+  );
   return `<div class="home-list">
     <div class="home-banner">
-      <div class="hb-left"><div class="hb-title">中国体育彩票 · 竞彩足球</div><div class="hb-sub">共 ${LOTTERY_MATCHES.length} 场在售 · 已开启分析 ${onCount} 场（默认不分析，需手动开启）</div></div>
-      <div class="hb-right"><button class="btn sm" onclick="refreshLottery()">${ICON.replay}刷新赛事</button></div>
+      <div class="hb-left"><div class="hb-title">中国体育彩票 · 竞彩足球</div><div class="hb-sub">共 ${total || 0} 场 · 已开启分析 ${onCount} 场 · 当天数据已缓存（公益网站减负，仅手动刷新会直连官方）</div></div>
+      <div class="hb-right"><button class="btn sm" onclick="refreshLottery()">${ICON.replay}手动刷新</button></div>
     </div>
     ${datebar}
     <div class="match-rows">${rows}</div>
+    ${emptyBlock}
   </div>`;
 }
 
+function handicapTxt(n) {
+  const v = Math.round(n * 100) / 100;
+  return v > 0 ? "+" + v : String(v);
+}
 function renderMatchRow(m) {
   const hist = loadHistory()[m.id];
-  const bt = m.betTypes.map(b => `<span class="play-chip ${b.data ? "on" : ""}">${b.label}</span>`).join("");
+  const bt = m.betTypes.map(b => {
+    const lab = (b.key === "hhad" && b.handicap != null) ? `让球(${handicapTxt(b.handicap)})` : b.label;
+    return `<span class="play-chip ${b.data ? "on" : ""}" title="${b.label}">${lab}</span>`;
+  }).join("");
   const on = state.analysisOn[m.id];
   const right = on ? renderSummary(m) : renderAnalysisOff(m);
   return `<div class="match-row ${on ? "on" : ""}">
     <div class="mr-card">
-      <div class="mc-top"><span class="mc-league">${m.league}</span><span class="mc-serial">${m.serial}</span>${m.real ? '<span class="badge real">真实</span>' : '<span class="badge mock">Mock</span>'}</div>
+      <div class="mc-top"><span class="mc-league">${m.league}</span><span class="mc-serial">${m.serial}</span><span class="badge real">真实</span></div>
       <div class="mc-teams">
         <div class="mc-team"><span class="mc-tn">${m.home}</span><span class="mc-pos">主</span></div>
         <div class="mc-vs">VS</div>
@@ -211,16 +244,28 @@ function renderMatchRow(m) {
 }
 
 function renderAnalysisOff(m) {
-  return `<div class="mr-summary off">
-    <div class="off-msg">${ICON.chart}<span>未开启分析预测</span></div>
-    <button class="btn sm primary" onclick="toggleAnalysis('${m.id}',true)">${ICON.spark}开启分析预测</button>
-  </div>`;
+  const hasOdds = MATCHES.some(function(x) { return x.id === m.id; });
+  if (!hasOdds) {
+    return '<div class="mr-summary off"><div class="off-msg">' + ICON.chart + '<span>暂无详细盘口数据，无法分析</span></div></div>';
+  }
+  return '<div class="mr-summary off">' +
+    '<div class="off-msg">' + ICON.chart + '<span>未开启分析预测</span></div>' +
+    '<button class="btn sm primary" onclick="toggleAnalysis(\'' + m.id + '\',true)">' + ICON.spark + '开启分析预测</button>' +
+  '</div>';
 }
 
-function toggleAnalysis(id, on) { state.analysisOn[id] = on; render(); }
+function toggleAnalysis(id, on) {
+  if (on) {
+    const hasOdds = MATCHES.some(function(x) { return x.id === id; });
+    if (!hasOdds) { toast('暂无详细盘口数据，无法分析'); return; }
+  }
+  state.analysisOn[id] = on; render();
+}
 
 function renderSummary(m) {
-  const { f, res } = computeFor(m.id);
+  const cr = computeFor(m.id);
+  if (!cr) return '<div class="mr-summary on"><div class="off-msg">' + ICON.chart + '<span>暂无详细盘口数据</span></div></div>';
+  const { f, res } = cr;
   const s = marketSummary(m, f, res);
   const vcls = res.verdict.includes("上盘") ? "up" : (res.verdict.includes("下盘") ? "down" : "none");
   const onexMax = Math.max(s.onex.h, s.onex.d, s.onex.a);
@@ -270,7 +315,14 @@ function onexBar(label, pct, hot) {
 }
 
 function setLotteryGroup(g) { state.lotteryGroup = g; render(); }
-function refreshLottery() { render(); toast("赛事列表已刷新"); }
+function refreshLottery() {
+  // 手动刷新：直连体彩官方（公益网站减负——自动获取每天最多一次，之后仅手动）
+  if (typeof fetchLotteryMatches === "function") {
+    fetchLotteryMatches(true).then(function() { render(); toast("赛事列表已刷新"); });
+  } else {
+    render(); toast("赛事列表已刷新");
+  }
+}
 
 function enterAnalysis(id) {
   state.page = "home"; state.analyzeId = id; state.matchId = id;
@@ -308,22 +360,15 @@ function renderAnalysisShell() {
 }
 
 function renderMatchCol() {
-  let list = MATCHES;
-  if (state.matchFilter === "real") list = MATCHES.filter(m => m.real);
-  else if (state.matchFilter === "mock") list = MATCHES.filter(m => !m.real);
+  const list = MATCHES.filter(m => m.real); // 归档仅真实历史
   const items = list.map(m => `
     <div class="match-item ${m.id === state.matchId ? "active" : ""}" onclick="selectMatch('${m.id}')">
-      <div class="teams">${m.home} <span class="muted" style="font-weight:400">vs</span> ${m.away} ${m.real ? '<span class="badge real">真实</span>' : '<span class="badge mock">Mock</span>'}</div>
+      <div class="teams">${m.home} <span class="muted" style="font-weight:400">vs</span> ${m.away} <span class="badge real">真实</span></div>
       <div class="meta"><span>${m.league}</span><span>${m.kickoff}</span></div>
     </div>`).join("");
   return `<aside class="match-col">
     <div class="hd">
-      <div class="section-title">比赛 (${MATCHES.length})</div>
-      <div class="filter-chips" style="margin-bottom:10px">
-        <span class="chip ${state.matchFilter === "all" ? "active" : ""}" onclick="setMatchFilter('all')">全部</span>
-        <span class="chip ${state.matchFilter === "real" ? "active" : ""}" onclick="setMatchFilter('real')">真实</span>
-        <span class="chip ${state.matchFilter === "mock" ? "active" : ""}" onclick="setMatchFilter('mock')">Mock</span>
-      </div>
+      <div class="section-title">比赛 (${list.length})</div>
     </div>${items}
   </aside>`;
 }
@@ -753,7 +798,7 @@ function renderSettings() {
         <div class="setting-row"><label>竞彩接口地址</label><input class="inp" value="${s.apiUrl}" oninput="updateSetting('apiUrl',this.value)" placeholder="https://api.sporttery.cn/..."></div>
         <div class="setting-row"><label>接口密钥</label><input class="inp" type="password" value="${s.apiKey}" oninput="updateSetting('apiKey',this.value)" placeholder="在设置页配置"></div>
         <div class="setting-row"><label>同步频率</label><select class="inp" onchange="updateSetting('sync',this.value)">${["5m", "15m", "30m", "1h", "手动"].map(o => `<option ${s.sync === o ? "selected" : ""}>${o}</option>`).join("")}</select></div>
-        <div class="setting-note">原型阶段以本地赛事模拟接口返回；接入真实竞彩接口后替换 lottery.js 的 fetchLotteryMatches()。</div>
+        <div class="setting-note">数据现已通过后端直连 webapi.sporttery.cn 获取真实竞彩赛程（含赔率池）。</div>
       </div></div>
       <div class="card"><div class="card-hd"><div class="title">规则引擎</div></div><div class="card-bd">
         <div class="setting-row"><label>置信度口径</label>
@@ -774,7 +819,7 @@ function renderSettings() {
       </div></div>
       <div class="card"><div class="card-hd"><div class="title">关于</div></div><div class="card-bd">
         <div class="setting-row"><label>版本</label><span class="muted mono">1.0.0 (交互原型)</span></div>
-        <div class="setting-row"><label>数据来源</label><span class="muted">竞彩官方接口（模拟）</span></div>
+        <div class="setting-row"><label>数据来源</label><span class="muted">竞彩官方接口（后端实时直连）</span></div>
         <div class="setting-note">本原型为产品级交互验证，后续开发将完全照此实现。规则引擎(RULES) / 特征层(features) / 数据层(data) 已解耦。</div>
       </div></div>
     </div>`;
@@ -864,3 +909,7 @@ function goSearchFeature(name) {
 bindGlobalSearch();
 render();
 if (window.__ApiClient) window.__ApiClient.init();
+// 自动获取当天竞彩数据（当天缓存命中则零请求；公益网站每天最多自动直连一次）
+if (typeof fetchLotteryMatches === "function") {
+  fetchLotteryMatches(false).then(function() { render(); });
+}

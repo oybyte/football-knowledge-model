@@ -112,63 +112,6 @@ const MATCHES = [
       { time: "08-14 14:18", h: 1.68, d: 3.71, a: 3.90, kh: 0.91, kd: 0.93, ka: 0.80 },
       { time: "08-11 20:32", h: 1.62, d: 3.71, a: 4.25, kh: 0.88, kd: 0.93, ka: 0.87 }
     ]
-  },
-
-  // ============================== MOCK 演示场（仅让球盘，覆盖各信号） ==============================
-  {
-    id: "M001", real: false, league: "英超", home: "曼城", away: "狼队", neutral: false, kickoff: "mock",
-    handicap: [
-      { name: "澳门",   initial: { h: -1.00, hw: 0.95, aw: 0.90 }, current: { h: -1.25, hw: 0.85, aw: 0.95 }, kelly: 0.99, volume: 1300, volumeBaseline: 600 },
-      { name: "威廉",   initial: { h: -1.00, hw: 0.92, aw: 0.88 }, current: { h: -1.25, hw: 0.88, aw: 0.92 }, kelly: 1.00, volume: 1100, volumeBaseline: 550 },
-      { name: "立博",   initial: { h: -0.75, hw: 0.90, aw: 0.86 }, current: { h: -1.00, hw: 0.84, aw: 0.90 }, kelly: 0.97, volume: 900,  volumeBaseline: 500 },
-      { name: "皇冠",   initial: { h: -1.00, hw: 0.94, aw: 0.87 }, current: { h: -1.25, hw: 0.86, aw: 0.94 }, kelly: 1.01, volume: 1500, volumeBaseline: 700 },
-      { name: "Bet365", initial: { h: -1.00, hw: 0.93, aw: 0.85 }, current: { h: -1.25, hw: 0.87, aw: 0.93 }, kelly: 0.98, volume: 1000, volumeBaseline: 520 }
-    ]
-  },
-  {
-    id: "M002", real: false, league: "意甲", home: "尤文", away: "萨索洛", neutral: false, kickoff: "mock",
-    handicap: [
-      { name: "澳门",   initial: { h: -0.75, hw: 0.90, aw: 0.92 }, current: { h: -0.50, hw: 0.98, aw: 0.84 }, kelly: 0.95, volume: 700, volumeBaseline: 600 },
-      { name: "威廉",   initial: { h: -0.75, hw: 0.91, aw: 0.89 }, current: { h: -0.50, hw: 0.97, aw: 0.85 }, kelly: 0.96, volume: 680, volumeBaseline: 550 },
-      { name: "立博",   initial: { h: -0.75, hw: 0.89, aw: 0.91 }, current: { h: -0.50, hw: 0.99, aw: 0.83 }, kelly: 0.94, volume: 650, volumeBaseline: 530 },
-      { name: "皇冠",   initial: { h: -0.75, hw: 0.92, aw: 0.88 }, current: { h: -0.50, hw: 0.96, aw: 0.86 }, kelly: 0.97, volume: 720, volumeBaseline: 580 }
-    ]
-  },
-  {
-    id: "M003", real: false, league: "西甲", home: "皇马", away: "赫塔菲", neutral: false, kickoff: "mock",
-    handicap: [
-      { name: "澳门",   initial: { h: -1.50, hw: 0.90, aw: 0.92 }, current: { h: -1.50, hw: 0.90, aw: 0.92 }, kelly: 0.85, volume: 300, volumeBaseline: 600 },
-      { name: "威廉",   initial: { h: -1.50, hw: 0.91, aw: 0.89 }, current: { h: -1.50, hw: 0.91, aw: 0.89 }, kelly: 0.86, volume: 280, volumeBaseline: 550 },
-      { name: "立博",   initial: { h: -1.50, hw: 0.89, aw: 0.91 }, current: { h: -1.50, hw: 0.89, aw: 0.91 }, kelly: 0.84, volume: 260, volumeBaseline: 530 },
-      { name: "皇冠",   initial: { h: -1.50, hw: 0.92, aw: 0.88 }, current: { h: -1.50, hw: 0.92, aw: 0.88 }, kelly: 0.87, volume: 320, volumeBaseline: 580 }
-    ]
-  },
-  {
-    id: "M004", real: false, league: "德甲", home: "拜仁", away: "奥格斯堡", neutral: false, kickoff: "mock",
-    handicap: [
-      { name: "澳门",   initial: { h: -1.75, hw: 0.82, aw: 0.90 }, current: { h: -1.75, hw: 0.86, aw: 0.88 }, kelly: 0.97, volume: 700, volumeBaseline: 600 },
-      { name: "威廉",   initial: { h: -1.25, hw: 0.90, aw: 0.88 }, current: { h: -1.25, hw: 0.90, aw: 0.88 }, kelly: 0.95, volume: 600, volumeBaseline: 550 },
-      { name: "立博",   initial: { h: -1.25, hw: 0.91, aw: 0.87 }, current: { h: -1.25, hw: 0.91, aw: 0.87 }, kelly: 0.96, volume: 580, volumeBaseline: 530 },
-      { name: "皇冠",   initial: { h: -1.25, hw: 0.89, aw: 0.89 }, current: { h: -1.25, hw: 0.89, aw: 0.89 }, kelly: 0.94, volume: 650, volumeBaseline: 580 }
-    ]
-  },
-  {
-    id: "M005", real: false, league: "法甲", home: "巴黎", away: "兰斯", neutral: false, kickoff: "mock",
-    handicap: [
-      { name: "澳门",   initial: { h: -1.00, hw: 0.95, aw: 0.85 }, current: { h: -1.25, hw: 0.88, aw: 0.90 }, kelly: 0.99, volume: 1300, volumeBaseline: 600 },
-      { name: "威廉",   initial: { h: -1.00, hw: 0.85, aw: 0.95 }, current: { h: -1.25, hw: 0.95, aw: 0.85 }, kelly: 0.97, volume: 1200, volumeBaseline: 550 },
-      { name: "立博",   initial: { h: -1.00, hw: 0.84, aw: 0.96 }, current: { h: -1.25, hw: 0.96, aw: 0.84 }, kelly: 0.98, volume: 1100, volumeBaseline: 530 },
-      { name: "皇冠",   initial: { h: -1.00, hw: 0.93, aw: 0.87 }, current: { h: -1.25, hw: 0.87, aw: 0.93 }, kelly: 1.00, volume: 1400, volumeBaseline: 580 }
-    ]
-  },
-  {
-    id: "M006", real: false, league: "荷甲", home: "阿贾克斯", away: "前进之鹰", neutral: false, kickoff: "mock",
-    handicap: [
-      { name: "澳门",   initial: { h: -1.50, hw: 0.90, aw: 0.92 }, current: { h: -1.75, hw: 0.83, aw: 0.95 }, kelly: 1.06, volume: 2600, volumeBaseline: 640 },
-      { name: "威廉",   initial: { h: -1.50, hw: 0.91, aw: 0.89 }, current: { h: -1.75, hw: 0.84, aw: 0.94 }, kelly: 1.04, volume: 2400, volumeBaseline: 600 },
-      { name: "立博",   initial: { h: -1.50, hw: 0.89, aw: 0.91 }, current: { h: -1.75, hw: 0.85, aw: 0.93 }, kelly: 1.05, volume: 2300, volumeBaseline: 580 },
-      { name: "皇冠",   initial: { h: -1.50, hw: 0.92, aw: 0.88 }, current: { h: -1.75, hw: 0.83, aw: 0.95 }, kelly: 1.06, volume: 2600, volumeBaseline: 640 }
-    ]
   }
 ];
 

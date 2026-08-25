@@ -113,6 +113,19 @@ function testMock() {
     assert.equal(mso.data.status, 'mock_placeholder');
     assert.ok(Array.isArray(mso.data.matches));
 
+    // getMergedPool：mock 适配器返回占位契约形状（含 meta 统计口径）
+    const mrg = await a.getMergedPool();
+    assert.equal(mrg.ok, true);
+    assert.equal(mrg.data.status, 'degraded');
+    assert.equal(mrg.data.meta.pool_size, 0);
+    assert.ok(Array.isArray(mrg.data.pool));
+    assert.ok(Array.isArray(mrg.data.dismissed));
+
+    // getMergedAnalysis：mock 占位
+    const mga = await a.getMergedAnalysis('M_TEST');
+    assert.equal(mga.ok, true);
+    assert.equal(mga.data.arbitration.direction, 'undecidable');
+
     // 模式切换
     assert.equal(api.setMode('real'), 'real');
     assert.equal(api.getMode(), 'real');
@@ -143,6 +156,8 @@ function testHttp() {
     if (path === '/api/ai/candidates') return respond(200, { status: 'ok', data: { candidates: [{ id: 'AI001', field: 'move_pattern', op: 'EQ', value: '升盘降水', direction: 'favor_upper', rationale: '升盘降水代表资金压向主队', sample_size: 6, hit_rate: 0.7, edge: 0.2, trust: 'untrusted', candidate_status: 'candidate', candidate_source: 'mock' }], provider: 'mock', degraded: false, baseline: {}, sample_count: 8, synthetic: true } });
     if (/^\/api\/ai\/candidates\/[^/]+\/review$/.test(path)) return respond(200, { status: 'ok', data: { rule_id: 'AI001', version_id: 'AI001#1', status: 'proposed' } });
     if (path === '/api/sources/manual-odds') return respond(200, { status: 'ok', data: { source_id: 'src_manual_odds', name: '本地人工盘赔', trust_level: 'provisional', status: 'ok', reason: null, mode: 'http', meta: { total: 2, admitted: 1, rejected: 1 }, matches: [{ match_id: 'M_TEST', league: '日职联', home_team: '东京绿茵', away_team: '柏太阳神', match_time: '2026-08-14T18:00:00+08:00', snapshots: 42 }] } });
+    if (path === '/api/sources/merged') return respond(200, { status: 'ok', data: { source: 'src_merged_pool', status: 'ok', mode: 'http', meta: { schedule_total: 1, manual_total: 1, aligned: 1, manual_only: 0, conflicts: 0, pool_size: 1 }, pool: [{ match_id: '2041049', league: '日职联', home_team: '东京绿茵', away_team: '柏太阳神', match_time: '2026-08-14T18:00:00+08:00', merged: true, snapshots: 42, actual_result: null }], dismissed: [] } });
+    if (/^\/api\/merged\/analysis\//.test(path)) return respond(200, { status: 'ok', data: { source: 'src_merged_pool', match_id: '2041049', merged: true, snapshots: 42, hits: [{ rule_id: 'R001', version_id: 'R001#1', direction: 'favor_upper', confidence: 0.5, exact: true }], reasoning: [{ rule_id: 'R001', hit: true, dir: 'favor_upper', note: '条件满足' }], arbitration: { direction: 'favor_upper', confidence: 0.5, dominant_rule_version_id: 'R001#1', manual_review_required: false, review_note: null }, mode: 'http' } });
     return respond(404, { status: 'error', error: 'not_found' });
   };
   vm.createContext(s);
@@ -200,6 +215,24 @@ function testHttp() {
     assert.equal(mso.data.meta.admitted, 1);
     assert.equal(mso.data.matches[0].match_id, 'M_TEST');
     assert.equal(mso.data.matches[0].snapshots, 42);
+
+    // getMergedPool：http 适配器命中合并端点，保留 meta 统计口径
+    const mrg = await a.getMergedPool();
+    assert.equal(mrg.ok, true);
+    assert.equal(mrg.data.status, 'ok');
+    assert.equal(mrg.data.mode, 'http');
+    assert.equal(mrg.data.meta.aligned, 1);
+    assert.equal(mrg.data.pool[0].match_id, '2041049');
+    assert.equal(mrg.data.pool[0].merged, true);
+
+    // getMergedAnalysis：http 适配器命中合并分析端点，推理链归一化
+    const mga = await a.getMergedAnalysis('2041049');
+    assert.equal(mga.ok, true);
+    assert.equal(mga.data.mode, 'http');
+    assert.equal(mga.data.merged, true);
+    assert.equal(mga.data.reasoning[0].rule_id, 'R001');
+    assert.equal(mga.data.reasoning[0].hit, true);
+    assert.equal(mga.data.reasoning[0].dir, 'favor_upper');
 
     // 404 → errBody
     const bad = await a.getRuleVersions('missing');

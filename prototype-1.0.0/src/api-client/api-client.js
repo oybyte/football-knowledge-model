@@ -2,17 +2,17 @@
 // 原型-后端集成 · api-client —— 前后端契约客户端
 // 阶段 2.5。职责：
 //   1) API 客户端层：封装 比赛 / 特征 / 分析 / 规则 / 回测 / AI 候选 六类能力。
-//   2) 双适配器：mock（读原型全局数据，离线自洽）+ http（fetch 后端 REST）。
-//   3) 模式开关：localStorage 持久化（oe_api_mode），默认 mock，可切 real。
+//   2) 双适配器：http（fetch 后端 REST，默认）+ mock（离线降级，不用于首页数据）。
+//   3) 模式开关：localStorage 持久化（oe_api_mode_v2），默认真实（后端 API），可切离线 Mock。
 // 使用（浏览器）：window.__ApiClient.getApi().listRules()  等。
 // 纯脚本、无 DOM 依赖（DOM 注入均在 init() 中集中、且存在性守卫）。
 // ============================================================================
 (function (global) {
   'use strict';
 
-  var MODE_KEY = 'oe_api_mode';
+  var MODE_KEY = 'oe_api_mode_v2'; // v2：已切真实数据开发，键迭代使旧的 mock 持久化失效
   var DEFAULT_BASE = 'http://localhost:3000'; // 后端服务地址（对齐 server OE_PORT 默认 3000）
-  var DEFAULT_MODE = 'mock';
+  var DEFAULT_MODE = 'real'; // 默认真实数据（后端 API）；mock 仅作离线降级
 
   // ───────────────────────── 工具 ─────────────────────────
   function storageGet(key, dflt) {
@@ -28,6 +28,23 @@
     try {
       if (typeof global.localStorage !== 'undefined') global.localStorage.setItem(key, val);
     } catch (e) { /* 忽略 */ }
+  }
+
+  // ── 体彩官方数据「当天缓存」（公益网站减负）─────────────────────────
+  // 中国体彩官网为公益网站：自动获取每天最多一次，跨天自动失效；
+  // 仅 opts.refresh（用户手动刷新）才发起新请求并更新缓存。
+  function bjDayKey() {
+    var d = new Date(Date.now() + 8 * 3600000);
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+  }
+  function dayCacheRead(key) {
+    var raw = storageGet(key + ':' + bjDayKey(), null);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  }
+  function dayCacheWrite(key, data) {
+    storageSet(key + ':' + bjDayKey(), JSON.stringify(data));
   }
 
   // ───────────────────────── 契约基元 ─────────────────────────
@@ -138,8 +155,54 @@
       });
     },
 
+    getSportteryOddsStatus: function () {
+      // Mock 占位：竞彩官方赔率仅在 http 适配（后端直连 sporttery.cn）下可观测。
+      return okBody({
+        source_id: 'src_odds_sporttery',
+        name: '竞彩官方赔率',
+        trust_level: 'trusted',
+        status: 'mock_placeholder',
+        reason: 'mock 模式不直连 webapi.sporttery.cn，切到后端 API 可实时观测',
+        meta: { total: 0, admitted: 0, rejected: 0 },
+        matches: [],
+      });
+    },
+
+    getScheduleStatus: function () {
+      // Mock 占位：竞彩官方赛程仅在 http 适配（后端经 env 端点）下可观测。
+      return okBody({
+        source_id: 'src_schedule_sporttery',
+        status: 'mock_placeholder',
+        reason: 'mock 模式不拉取竞彩赛程，切到后端 API 可实时观测',
+        meta: { total: 0, admitted: 0, rejected: 0 },
+        matches: [],
+      });
+    },
+
     getManualAnalysis: function (matchId) {
       // Mock 占位：真实盘口数据→特征→推理链仅在 http 适配（后端扫描 md）下可用。
+      return okBody({
+        source: 'mock_placeholder',
+        match_id: matchId,
+        reasoning: [],
+        arbitration: { direction: 'undecidable', manual_review_required: true },
+        feat_errors: [],
+      });
+    },
+
+    getMergedPool: function () {
+      // Mock 占位：双源合并（竞彩赛程 ∪ 本地盘赔）仅在 http 适配下可观测。
+      return okBody({
+        source: 'mock_placeholder',
+        status: 'degraded',
+        reason: 'mock 模式不合并真实源，切到后端 API 可实时观测',
+        meta: { schedule_total: 0, manual_total: 0, aligned: 0, manual_only: 0, conflicts: 0, pool_size: 0 },
+        pool: [],
+        dismissed: [],
+      });
+    },
+
+    getMergedAnalysis: function (matchId) {
       return okBody({
         source: 'mock_placeholder',
         match_id: matchId,
@@ -243,9 +306,56 @@
         });
       },
 
+      getSportteryOddsStatus: function (opts) {
+        var force = !!(opts && opts.refresh);
+        // 当天缓存命中 → 不发请求（公益网站减负，自动获取每天最多一次）
+        // 缓存键带结构版本（:2），旧结构缺 serial/business_date/handicap 时自动失效重拉。
+        if (!force) {
+          var cached = dayCacheRead('oe:sporttery-odds:2');
+          if (cached) { cached.cached = 'local'; cached.mode = 'http'; return Promise.resolve(okBody(cached)); }
+        }
+        return req('GET', '/api/sources/sporttery-odds' + (force ? '?refresh=1' : '')).then(function (r) {
+          if (!r.ok) return r;
+          r.data.mode = 'http';
+          dayCacheWrite('oe:sporttery-odds:2', r.data);
+          return r;
+        });
+      },
+
+      getScheduleStatus: function (opts) {
+        var force = !!(opts && opts.refresh);
+        if (!force) {
+          var cached = dayCacheRead('oe:sporttery-schedule');
+          if (cached) { cached.cached = 'local'; cached.mode = 'http'; return Promise.resolve(okBody(cached)); }
+        }
+        return req('GET', '/api/sources/schedule' + (force ? '?refresh=1' : '')).then(function (r) {
+          if (!r.ok) return r;
+          r.data.mode = 'http';
+          dayCacheWrite('oe:sporttery-schedule', r.data);
+          return r;
+        });
+      },
+
       getManualAnalysis: function (matchId) {
         return req('GET', '/api/manual-odds/analysis/' + encodeURIComponent(matchId)).then(function (r) {
           if (!r.ok) return r;
+          r.data.mode = 'http';
+          return r;
+        });
+      },
+
+      getMergedPool: function () {
+        return req('GET', '/api/sources/merged').then(function (r) {
+          if (!r.ok) return r;
+          r.data.mode = 'http';
+          return r;
+        });
+      },
+
+      getMergedAnalysis: function (matchId) {
+        return req('GET', '/api/merged/analysis/' + encodeURIComponent(matchId)).then(function (r) {
+          if (!r.ok) return r;
+          r.data.reasoning = (r.data.reasoning || []).map(reasoningView);
           r.data.mode = 'http';
           return r;
         });
