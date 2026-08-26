@@ -176,6 +176,20 @@ class MinimalRedisServer {
         }
         return n;
       }
+      case 'INCR': {
+        // INCR key —— 数值自增（限流固定窗口用）
+        this._purge(key);
+        const cur = Number(this._store.get(key)) || 0;
+        const nv = cur + 1;
+        this._store.set(key, String(nv));
+        return nv;
+      }
+      case 'EXPIRE': {
+        // EXPIRE key seconds
+        const secs = Number(args[2]);
+        if (this._store.has(key)) { this._expires.set(key, Date.now() + secs * 1000); return 1; }
+        return 0;
+      }
       case 'RPUSH': {
         if (!this._lists.has(key)) this._lists.set(key, []);
         const list = this._lists.get(key);

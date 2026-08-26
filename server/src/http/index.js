@@ -85,6 +85,8 @@ function matchRoute(method, parts) {
  * @param {string[]} [opts.revokedKeys]
  * @param {number} [opts.rateLimitMax]
  * @param {number} [opts.rateLimitWindowMs]
+ * @param {'memory'|'redis'} [opts.rateLimitStore]
+ * @param {object} [opts.redis]
  * @returns {import('node:http').Server}
  */
 function createHttpServer(service, opts = {}) {
@@ -118,8 +120,9 @@ function createHttpServer(service, opts = {}) {
         return sendJson(res, 404, { status: 'error', error: 'not_found' });
       }
 
-      // 限流（所有已匹配路由，含 health/metrics，防单客户端打爆）
-      if (!gateway.rateLimit(req, res)) return;
+      // 限流（所有已匹配路由，含 health/metrics，防单客户端打爆）。
+      // Redis 共享限流为异步中间件；await 对同步内存布尔同样成立。
+      if (!(await gateway.rateLimit(req, res))) return;
 
       // 鉴权（health/metrics 除外）
       if (route.handler !== 'health' && route.handler !== 'metrics') {

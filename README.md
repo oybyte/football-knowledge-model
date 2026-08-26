@@ -48,11 +48,12 @@ $env:OE_API_KEY_REVOKED="key-b"              # 撤销 Key（命中返回 403 for
 $env:OE_API_KEY="sha256:<echo -n my-secret-key | sha256sum 输出的 hex>"
 ```
 
-限流（内存固定窗口，按客户端 IP）：超限返回 429 + Retry-After；`max<=0` 禁用。
+限流（固定窗口，按客户端 IP）：超限返回 429 + Retry-After；`max<=0` 禁用。单实例默认 `memory` 后端即可；多实例共享限流计数设 `OE_RATE_LIMIT_STORE=redis`（需 `OE_REDIS_URL` 已接线），计数存 Redis（键 `rl:<ip>`）跨实例合并。
 
 ```powershell
 $env:OE_RATE_LIMIT_MAX=300            # 每窗口最大请求数（默认 300）
 $env:OE_RATE_LIMIT_WINDOW_MS=60000    # 窗口毫秒（默认 60000）
+$env:OE_RATE_LIMIT_STORE=memory       # 限流存储：memory（默认）| redis（多实例共享）
 ```
 
 鉴权事件（成功/失败）自动写入 SQLite 审计日志（`audit_logs`，append-only）。
@@ -98,7 +99,7 @@ docker compose up -d --build
 编排要点：
 
 - **Redis** `redis:7-alpine`：数据落持久化卷 `redis-data`，提供 `service_healthy` 健康检查；后端依赖它就绪后才启动，因此缓存/队列/锁走真实 Redis，而非内存回退。
-- **后端**：多阶段 Node:22 构建，数据落持久化卷 `oe-data`；`OE_REDIS_URL=redis://redis:6379/0`、`TZ`、网关鉴权（`OE_API_KEY` / `OE_API_KEYS` / `OE_API_KEY_REVOKED`）与限流（`OE_RATE_LIMIT_MAX` / `OE_RATE_LIMIT_WINDOW_MS`）透传；人工盘赔目录 bind-mount 到容器 `/tmp/manual-odds`（只读），后端经 `OE_MANUAL_ODDS_ROOT=/tmp/manual-odds` 读取，宿主源目录由 `.env` 的 `OE_MANUAL_ODDS_ROOT` 指定——换目录只改 `.env`，不改代码。
+- **后端**：多阶段 Node:22 构建，数据落持久化卷 `oe-data`；`OE_REDIS_URL=redis://redis:6379/0`、`TZ`、网关鉴权（`OE_API_KEY` / `OE_API_KEYS` / `OE_API_KEY_REVOKED`）与限流（`OE_RATE_LIMIT_MAX` / `OE_RATE_LIMIT_WINDOW_MS`，共享计数 `OE_RATE_LIMIT_STORE=redis`）透传；人工盘赔目录 bind-mount 到容器 `/tmp/manual-odds`（只读），后端经 `OE_MANUAL_ODDS_ROOT=/tmp/manual-odds` 读取，宿主源目录由 `.env` 的 `OE_MANUAL_ODDS_ROOT` 指定——换目录只改 `.env`，不改代码。
 - **前端**：`nginx` 静态托管 `prototype-1.0.0`，`http://localhost:8080`。
 - 后端连接失败（如仅停掉 Redis）会**快速失败并降级内存**（有限重试后回退，不挂起），`getStatus().infra.backend` 可观测当前是 `redis` 还是 `memory`。
 

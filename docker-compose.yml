@@ -36,6 +36,8 @@ services:
       - OE_API_KEY_REVOKED=${OE_API_KEY_REVOKED:-}
       - OE_RATE_LIMIT_MAX=${OE_RATE_LIMIT_MAX:-300}
       - OE_RATE_LIMIT_WINDOW_MS=${OE_RATE_LIMIT_WINDOW_MS:-60000}
+      # 多实例共享限流计数：redis（需 OE_REDIS_URL 已接线且本服务已连上）；默认 memory
+      - OE_RATE_LIMIT_STORE=${OE_RATE_LIMIT_STORE:-memory}
       # 可选：真实本地人工盘赔目录。在 .env 中设 OE_MANUAL_ODDS_ROOT=<宿主机源目录>
       # （如 D:\ocr_python_data\FootballScreenshotOcr\output），compose 会把它 bind-mount
       # 到容器 /tmp/manual-odds（只读），此处指向该挂载点供后端扫描。

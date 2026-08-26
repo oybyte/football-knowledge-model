@@ -95,6 +95,9 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
   const rules = createRuleService({ store: persistence.ruleStore, lockManager });
   if (doSeed) rules.seed();
 
+  // 限流存储后端（函数体作用域，getStatus 可观测；http 分支内再按环境变量定值）
+  let rateLimitStore = 'memory';
+
   const svc = {
     ...persistence,
     rules,
@@ -111,6 +114,7 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
           queue: analysisQueue.constructor.name,
           lock: lockManager ? lockManager.constructor.name : 'MemoryLockManager',
           backend: backendType,
+          rateLimit: rateLimitStore,
         },
         ruleVersions: persistence.ruleStore.size(),
         activeRules: persistence.ruleStore.getActive().length,
@@ -138,7 +142,9 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
     // 限流配置（OE_RATE_LIMIT_MAX / OE_RATE_LIMIT_WINDOW_MS；未设置走中间件默认值）
     const rateLimitMax = Number(process.env.OE_RATE_LIMIT_MAX) || undefined;
     const rateLimitWindowMs = Number(process.env.OE_RATE_LIMIT_WINDOW_MS) || undefined;
-    const server = createHttpServer(svc, { logger, apiKey, rateLimitMax, rateLimitWindowMs });
+    // 限流存储：memory（默认，单实例）| redis（多实例共享计数，需 Redis 已接线）
+    rateLimitStore = process.env.OE_RATE_LIMIT_STORE === 'redis' && redisClient ? 'redis' : 'memory';
+    const server = createHttpServer(svc, { logger, apiKey, rateLimitMax, rateLimitWindowMs, rateLimitStore, redis: redisClient });
     server.listen(requested, () => {
       svc.port = server.address().port; // port 0 → 实际分配端口
     });

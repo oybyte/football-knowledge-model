@@ -14,6 +14,7 @@ const path = require('node:path');
 
 const { createService, resolveHttpPort } = require('../src');
 const { createHttpServer } = require('../src/http');
+const { MinimalRedisServer } = require('./helpers/resp-server');
 
 /** 最小 盘口数据.md 样例（结构对齐真实文件，用于端点接入测试）。 */
 const SAMPLE_MD = `# 盘口截图数据
@@ -462,6 +463,39 @@ test('限流 · OE_RATE_LIMIT_MAX 超限返回 429 + Retry-After', async () => {
     assert.equal(r3.body.error, 'rate_limited');
     assert.ok(Number(r3.headers['retry-after']) >= 1);
   });
+});
+
+test('限流 · OE_RATE_LIMIT_STORE=redis 走 Redis 共享计数（真实 RESP）', async (t) => {
+  const savedStore = process.env.OE_RATE_LIMIT_STORE;
+  const savedMax = process.env.OE_RATE_LIMIT_MAX;
+  const resp = new MinimalRedisServer();
+  const port = await resp.listen();
+  t.after(() => resp.close());
+  process.env.OE_RATE_LIMIT_STORE = 'redis';
+  process.env.OE_RATE_LIMIT_MAX = '2';
+  const svc = await createService({ dbPath: ':memory:', http: { port: 0 }, redisUrl: `redis://127.0.0.1:${port}` });
+  const server = svc.server;
+  await new Promise((r) => (server.listening ? r() : server.once('listening', r)));
+  const sPort = server.address().port;
+  try {
+    assert.equal(svc.getStatus().infra.rateLimit, 'redis', 'infra 应上报 redis 限流后端');
+    assert.equal(svc.getStatus().infra.backend, 'redis', 'Redis 已接线');
+    const r1 = await request(sPort, 'GET', '/api/matches');
+    const r2 = await request(sPort, 'GET', '/api/matches');
+    const r3 = await request(sPort, 'GET', '/api/matches');
+    assert.equal(r1.status, 200);
+    assert.equal(r2.status, 200);
+    assert.equal(r3.status, 429);
+    assert.equal(r3.body.error, 'rate_limited');
+    assert.ok(Number(r3.headers['retry-after']) >= 1);
+  } finally {
+    await new Promise((r) => server.close(r));
+    svc.close();
+    if (savedStore === undefined) delete process.env.OE_RATE_LIMIT_STORE;
+    else process.env.OE_RATE_LIMIT_STORE = savedStore;
+    if (savedMax === undefined) delete process.env.OE_RATE_LIMIT_MAX;
+    else process.env.OE_RATE_LIMIT_MAX = savedMax;
+  }
 });
 
 // ───────────────────────── createService({http}) 集成 ─────────────────────────

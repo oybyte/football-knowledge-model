@@ -6,7 +6,7 @@
 
 const { createAuthMiddleware } = require('./auth');
 const { createHealthHandler, createMetricsHandler } = require('./health');
-const { createRateLimitMiddleware } = require('./rateLimit');
+const { createRateLimitMiddleware, createRateLimitRedisMiddleware } = require('./rateLimit');
 
 /**
  * 创建网关中间件集
@@ -18,6 +18,8 @@ const { createRateLimitMiddleware } = require('./rateLimit');
  *   audit?: (message: string, payload: object) => void,
  *   rateLimitMax?: number,
  *   rateLimitWindowMs?: number,
+ *   rateLimitStore?: 'memory' | 'redis',  // 默认 memory；redis=多实例共享计数
+ *   redis?: object,                        // 共享 ioredis 客户端（redis 限流用）
  *   logger?: object,
  * }} [opts]
  */
@@ -25,11 +27,19 @@ function createGateway(service, opts = {}) {
   const auth = createAuthMiddleware(opts);
   const health = createHealthHandler(service, opts);
   const metrics = createMetricsHandler(service);
-  const rateLimit = createRateLimitMiddleware({
-    max: opts.rateLimitMax,
-    windowMs: opts.rateLimitWindowMs,
-    logger: opts.logger,
-  });
+  const useRedis = opts.rateLimitStore === 'redis';
+  const rateLimit = useRedis
+    ? createRateLimitRedisMiddleware({
+        max: opts.rateLimitMax,
+        windowMs: opts.rateLimitWindowMs,
+        redis: opts.redis,
+        logger: opts.logger,
+      })
+    : createRateLimitMiddleware({
+        max: opts.rateLimitMax,
+        windowMs: opts.rateLimitWindowMs,
+        logger: opts.logger,
+      });
 
   return { auth, rateLimit, health, metrics };
 }

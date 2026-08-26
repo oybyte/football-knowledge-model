@@ -52,9 +52,11 @@
 - server/src/gateway/auth.js 生产级鉴权：支持多 Key（OE_API_KEYS 逗号分隔，兼容单 Key OE_API_KEY）+ 撤销 Key（OE_API_KEY_REVOKED 逗号分隔）→ 401/403 语义。401 = 未认证（缺少或无效 Key）；403 = 已认证但无权限（Key 有效但被撤销）。有效 Key 集合 = 全部配置 Key − 撤销 Key；全部被撤销时视为未配置跳过鉴权（开发模式）。
 - 生产级密钥校验：常量时间比较（crypto.timingSafeEqual）防时序侧信道；支持 sha256 哈希密钥配置（前缀 `sha256:<hex>`，明文与哈希可混用），配置/日志不落明文密钥；撤销列表同样支持明文或哈希形式。
 - 鉴权审计落库：鉴权事件（auth_ok INFO / auth_rejected WARN）经审计回调写入 audit_logs（append-only），含 status / reason（missing_key / revoked_key / invalid_key）/ path / method，可追溯每一次认证成败。
-- 限流中间件（server/src/gateway/rateLimit.js）：内存固定窗口按客户端 IP 限流（X-Forwarded-For 优先），超限返回 429 + Retry-After，并带 X-RateLimit-Limit / X-RateLimit-Remaining 头；max<=0 禁用。所有已匹配路由（含 health/metrics）先限流后鉴权，防单客户端打爆。可经环境变量 OE_RATE_LIMIT_MAX / OE_RATE_LIMIT_WINDOW_MS 配置（默认 300 次 / 60s）。
+- 限流中间件（server/src/gateway/rateLimit.js）：按客户端 IP 限流，超限返回 429 + Retry-After，并带 X-RateLimit-Limit / X-RateLimit-Remaining 头；max<=0 禁用。所有已匹配路由（含 health/metrics）先限流后鉴权，防单客户端打爆。可经环境变量 OE_RATE_LIMIT_MAX / OE_RATE_LIMIT_WINDOW_MS 配置（默认 300 次 / 60s）。两种存储后端：
+  - memory（默认）：单实例内存固定窗口，满足单后端部署。
+  - redis（OE_RATE_LIMIT_STORE=redis，需 OE_REDIS_URL 已接线）：多实例共享计数——键 `rl:<ip>`，INCR + EXPIRE 固定窗口（窗口锚定在首次请求的 EXPIRE），多个后端实例计数合并，实现多实例共享限流存储；Redis 不可用时回退内存限流（不熔断开放，记日志可观测）。getStatus().infra.rateLimit 上报实际后端（memory/redis）。docker-compose.yml 已透传 OE_RATE_LIMIT_STORE。
 - 鉴权范围：所有受保护 API（/api/* 业务端点）需携带 X-Api-Key 头或 ?api_key= 参数；/api/health 与 /api/metrics 跳过鉴权（供探活与监控）。未配置任何有效 Key 时跳过鉴权（auth_disabled 开发模式）。
-- 测试：gateway.test.js（多 Key / 撤销 403 / 缺少 401 / sha256 哈希 / 常量时间 / 审计回调）+ rate-limit.test.js（未超限 + 头 / 429 + Retry-After / 不同 IP 独立计数 / 禁用 / 窗口重置 / clientIp + x-forwarded-for）；http-server.test.js（http 层鉴权集成 Header/Query 通过、错误 401、撤销 403、health/metrics 跳过、鉴权审计落库、OE_RATE_LIMIT_MAX 超限 429）。
+- 测试：gateway.test.js（多 Key / 撤销 403 / 缺少 401 / sha256 哈希 / 常量时间 / 审计回调）+ rate-limit.test.js（未超限 + 头 / 429 + Retry-After / 不同 IP 独立计数 / 禁用 / 窗口重置 / clientIp + x-forwarded-for）+ rate-limit-redis.test.js（真实 RESP 协议走 Redis 共享计数 / 跨两个中间件对象计数合并 / 窗口 EXPIRE 过期重置 / Redis 不可用回退内存，4 用例）+ http-server.test.js（http 层鉴权集成 Header/Query 通过、错误 401、撤销 403、health/metrics 跳过、鉴权审计落库、内存 OE_RATE_LIMIT_MAX 超限 429、OE_RATE_LIMIT_STORE=redis 走真实 RESP 共享计数 429 与 infra 上报）。
 
 ### 阶段 4 · G12 数据模型（SQLite 迁移落地）
 - server/migrations/001_init.sql：架构评审 P0 缺口的 12 张 qd_* 表（qd_rule_versions / qd_evidence_snapshots / qd_matches / qd_odds_snapshots / qd_match_features / qd_predictions / qd_analysis_commands / qd_audit_log / qd_data_sources / qd_backtest_jobs / qd_ai_candidates / qd_field_registry）全部落地，字段与设计文档（docs/design/data-model-1.0.0/data-model-1.0.0.html）逐列对齐。
@@ -69,7 +71,7 @@
 - 公益网站减负（前端）：本地 localStorage 当天缓存 + 后端当天缓存双层，自动获取每日一次，右上角「手动刷新」按钮带 refresh=1 强制直连。
 
 ## 验证
-- 后端全量回归 366 用例绿（`npm test` = `node --test "test/*.test.js"`，干净退出无残留句柄），覆盖数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（5 用例，连本机真实 redis-server 实测）+ G12 数据模型迁移（migrations.test.js 6 用例：12 表齐全 / 触发器生效 / 12 索引 / 幂等 / 外键 / 关键表字段对齐）+ 网关鉴权（gateway.test.js 多 Key / 撤销 403 / 缺少 401 / sha256 哈希 / 常量时间 / 审计回调）+ 限流（rate-limit.test.js 6 用例：未超限 / 429 / 独立计数 / 禁用 / 窗口重置 / clientIp）+ http 层鉴权集成（Header/Query 通过、错误 401、撤销 403、health/metrics 跳过、鉴权审计落库、OE_RATE_LIMIT_MAX 超限 429）。
+- 后端全量回归 371 用例绿（`npm test` = `node --test "test/*.test.js"`，干净退出无残留句柄），覆盖数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（5 用例，连本机真实 redis-server 实测）+ G12 数据模型迁移（migrations.test.js 6 用例：12 表齐全 / 触发器生效 / 12 索引 / 幂等 / 外键 / 关键表字段对齐）+ 网关鉴权（gateway.test.js 多 Key / 撤销 403 / 缺少 401 / sha256 哈希 / 常量时间 / 审计回调）+ 限流（rate-limit.test.js 6 用例：未超限 / 429 / 独立计数 / 禁用 / 窗口重置 / clientIp + rate-limit-redis.test.js 4 用例：Redis 共享计数 / 跨实例合并 / EXPIRE 窗口重置 / Redis 宕机回退内存）+ http 层鉴权集成（Header/Query 通过、错误 401、撤销 403、health/metrics 跳过、鉴权审计落库、OE_RATE_LIMIT_MAX 超限 429、OE_RATE_LIMIT_STORE=redis 走真实 RESP 共享计数 429 + infra 上报）。
 - 端口解析纯函数（resolveHttpPort）用例：不绑定真实 3000，验证显式端口 > OE_PORT > 默认 3000 优先级。
 - 本地人工盘赔源实测：目录注入后扫描 75 场比赛；单场（韩K联 金泉尚武 vs 全北现代，001 场）解析 37 份盘口快照入合并池，信任分级 provisional、0 时间泄漏、0 冲突剔除。
 - 双源合并实测（HTTP 集成）：配置本地盘赔目录 + 官方赛程端点后，联赛别名收敛使 001 场语义键对齐 → merged:true（官方数字 match_id / 队名 / 开赛时间覆盖，快照 match_id 跟随）；未命中赛程的人工场次 manual_only 保留；时间防线剔除生效；/api/merged/analysis 打通 盘口→特征→推理链（命中 R007/R008/R013，方向 favor_upper，置信度 0.5）。
@@ -77,7 +79,7 @@
 - 前端端到端实测（浏览器）：首页「今日可买」16 场在售赛事渲染；001 场「开启分析预测」→ 推理链加载 → 「关闭」收起 → 「详细分析」进入分析面板 → 「返回列表」退出，全按钮矩阵操作 window error / unhandledrejection 双通道捕获为零错误。
 
 ## 未实现 / 待后续
-- 服务部署与 API 网关：网关鉴权（多 Key / 撤销 / 常量时间 / sha256 哈希 / 401/403）、限流（429 + Retry-After）、鉴权审计落库与 G12 数据模型（12 张 qd_* 表 + 不可变触发器 + 索引）均已落地，见上文。剩余生产化：编排的端到端部署实测（docker compose up 实际拉起三服务联调，需有 Docker 的机器）、生产网关部署形态（TLS 终止 / 多实例共享限流存储 / 密钥轮换）。
+- 服务部署与 API 网关：网关鉴权（多 Key / 撤销 / 常量时间 / sha256 哈希 / 401/403）、限流（内存 / Redis 共享两种后端，429 + Retry-After）、鉴权审计落库与 G12 数据模型（12 张 qd_* 表 + 不可变触发器 + 索引）均已落地，见上文。剩余生产化：编排的端到端部署实测（docker compose up 实际拉起三服务联调，需有 Docker 的机器）、生产网关部署形态补充（TLS 终止 / 密钥轮换）。
 - 线上长期运行观测与规则持续优化流水线。
 
 ## 事实状态
