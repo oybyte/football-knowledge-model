@@ -153,6 +153,11 @@ node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
 
 架构评审 P0 缺口的 12 张 `qd_*` 表已按设计文档（`docs/design/data-model-1.0.0/data-model-1.0.0.html`）落地为 SQLite 迁移（`server/migrations/001_init.sql`）：规则版本 / 证据快照 / 比赛 / 盘口快照 / 比赛特征 / 预测 / 分析命令 / 审计 / 数据源 / 回测作业 / AI 候选 / 字段注册表。不可变性在 DB 层强制（6 个触发器禁 UPDATE/DELETE）+ 12 个查询索引 + 外键约束。服务启动时自动应用迁移（幂等，可重复执行）。
 
+配套提供 G12 数据访问层与迁移回填：
+- `server/src/db/g12/repository.js` —— `createG12Repository(db)` 为 12 张 `qd_*` 表提供类型化写读（insert/get/count/all/listBy），列名收缩 + 必填校验（诚实失败，绝不捏造缺值）+ JSON 字段序列化 + 不可变护栏（不可变表应用层 update/delete/patch 抛错，DB 触发器兜底）。
+- `server/src/db/g12/backfill.js` —— `backfillG12` 把运行时持久化层存量按 FK 依赖序、事务内幂等回填到 G12 表（data_sources → matches → audit_log → rule_versions → predictions），缺 match 的预测跳过并计数、缺值不捏造。
+- `createDb`（`server/src/db`）已装配 `qd` 仓库与 `backfillG12`。测试：`test/g12-repository.test.js`（8 用例）＋ `test/g12-backfill.test.js`（3 用例）。
+
 ## 当前状态
 
 原型使用本地模拟赛事和盘口数据，数据层、特征层、规则层已经解耦。真实竞彩接口、后端服务、SQLite 数据库、正式 DSL、时间泄漏校验、回测和 ROI 置信度已实现，详见 `docs/current-status.md`。

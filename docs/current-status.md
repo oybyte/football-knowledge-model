@@ -64,7 +64,10 @@
 - server/migrations/001_init.sql：架构评审 P0 缺口的 12 张 qd_* 表（qd_rule_versions / qd_evidence_snapshots / qd_matches / qd_odds_snapshots / qd_match_features / qd_predictions / qd_analysis_commands / qd_audit_log / qd_data_sources / qd_backtest_jobs / qd_ai_candidates / qd_field_registry）全部落地，字段与设计文档（docs/design/data-model-1.0.0/data-model-1.0.0.html）逐列对齐。
 - 不可变性在 DB 层强制：6 个 qd_* 不可变触发器（禁 UPDATE/DELETE）+ 12 个查询索引 + 外键约束（如 qd_odds_snapshots → qd_matches / qd_data_sources）。复杂嵌套字段 payload_json 整存，标量列用于索引与查询。
 - server/src/db/migrate.js 迁移执行器：按版本号顺序执行 migrations/*.sql（幂等，IF NOT EXISTS 可重复执行），schema.js migrate() 在建表 + 不可变触发器后自动应用迁移。
-- 测试：migrations.test.js（12 表齐全 / 触发器生效 / 12 索引 / 幂等 / 外键 / 关键表字段对齐）+ db-persistence.test.js 更新为 17 张表 + 16 触发器断言。
+- server/src/db/g12/repository.js 数据访问层 createG12Repository(db)：12 张 qd_* 表的类型化写读（insert/get/count/all/listBy），列名收缩 + 必填校验（诚实失败，绝不捏造缺值）+ JSON 字段序列化 + 不可变护栏（不可变表应用层 update/delete/patch 抛 G12ImmutableError，DB 触发器兜底）。每个实体既有短别名（qd.data_sources…）也有全表名（qd.qd_data_sources…），entity 元信息可自省。
+- server/src/db/g12/backfill.js 迁移回填 backfillG12：把运行时持久化层（rule_store / prediction_store / audit_store 及外部 match/data_source/field 源）存量批量幂等回填到 G12 qd_* 表。全程事务内执行（任一步失败整体回滚）、INSERT OR IGNORE 按 PK 幂等、严格 FK 依赖序（data_sources → matches → audit_log → rule_versions → predictions）；规则/比赛/数据源缺失值不捏造，缺 match 的预测跳过并计数（predictions_skipped_no_match），审计锚点缺失补占位、已存在则优先复用。
+- 接线：ruleStore / auditStore 新增只读 listAll() 支持批量回填；createDb 装配 qd 仓库 + backfillG12。
+- 测试：migrations.test.js（12 表齐全 / 触发器生效 / 12 索引 / 幂等 / 外键 / 关键表字段对齐）+ db-persistence.test.js 更新为 17 张表 + 16 触发器断言 + g12-repository.test.js（8 用例：类型化插入读取计数 / 幂等 INSERT OR IGNORE / 缺必要列 G12ValidationError / 不可变表 update/delete/patch 抛 G12ImmutableError + DB 触发器兜底 / 外键拒绝悬空 / listBy）+ g12-backfill.test.js（3 用例：FK 序迁移到 qd_* 表且缺赛果不捏造 / 幂等重复执行增量归零 / 事务原子性中途抛错整体回滚）。
 
 ### 阶段 2 · 前端原型（prototype-1.0.0）
 - 预测链流水线、规则治理、回测结果、数据接入监控、特征引擎、DSL 引擎、AI 引擎、规则库（增强 DSL 索引 + 检索命中预览）。
@@ -73,7 +76,7 @@
 - 公益网站减负（前端）：本地 localStorage 当天缓存 + 后端当天缓存双层，自动获取每日一次，右上角「手动刷新」按钮带 refresh=1 强制直连。
 
 ## 验证
-- 后端全量回归 375 用例绿（`npm test` = `node --test "test/*.test.js"`，干净退出无残留句柄）。
+- 后端全量回归 383 用例绿（`npm test` = `node --test "test/*.test.js"`，干净退出无残留句柄）。
 - 真实 Redis 运行时验收（real-redis-e2e.test.js 2 用例，可跳过式）：对**真实 Redis daemon**（OE_TEST_REDIS_URL 或本地 127.0.0.1:16379，无则 t.skip）一验证 createService({redisUrl}) 接线 backend=redis（cache/queue/lock 均为 Redis 适配器）且「重启后缓存不丢」在真实 Redis 上成立；二验证生产形态 HTTP 运行时（http.apiKey + OE_RATE_LIMIT_STORE=redis）在真实守护进程上 infra.backend=redis、infra.rateLimit=redis，health 免鉴权 200 → 缺 Key 401 → 带 Key 200——补齐 RESP 内存替身之外的守护进程级运行时证据（补上 deploy-smoke 用 mock、real-redis 只看 infra 层之间的夹缝），CI 无外部依赖不因缺 Redis 失败。
 - 测试覆盖：数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（5 用例，连本机真实 redis-server 实测）+ G12 数据模型迁移（migrations.test.js 6 用例：12 表齐全 / 触发器生效 / 12 索引 / 幂等 / 外键 / 关键表字段对齐）+ 网关鉴权（gateway.test.js 多 Key / 撤销 403 / 缺少 401 / sha256 哈希 / 常量时间 / 审计回调）+ 限流（rate-limit.test.js 6 用例：未超限 / 429 / 独立计数 / 禁用 / 窗口重置 / clientIp + rate-limit-redis.test.js 4 用例：Redis 共享计数 / 跨实例合并 / EXPIRE 窗口重置 / Redis 宕机回退内存）+ http 层鉴权集成（Header/Query 通过、错误 401、撤销 403、health/metrics 跳过、鉴权审计落库、OE_RATE_LIMIT_MAX 超限 429、OE_RATE_LIMIT_STORE=redis 走真实 RESP 共享计数 429 + infra 上报）+ 密钥轮换生命周期（rotate-key.test.js 2 用例：加入新 Key → 宽限期双 Key 并存 → 撤销回收旧 Key，含撤销优先恒 403 断言与审计落库区 auth_ok/auth_rejected）。
 - 端口解析纯函数（resolveHttpPort）用例：不绑定真实 3000，验证显式端口 > OE_PORT > 默认 3000 优先级。

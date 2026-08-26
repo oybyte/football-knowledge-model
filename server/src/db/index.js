@@ -10,6 +10,8 @@ const { migrate } = require('./schema');
 const { SqliteRuleStore } = require('./ruleStore');
 const { SqlitePredictionStore } = require('./predictionStore');
 const { SqliteAuditStore } = require('./auditStore');
+const { createG12Repository } = require('./g12/repository');
+const { backfillG12 } = require('./g12/backfill');
 
 /**
  * 创建持久化存储实例。
@@ -21,6 +23,8 @@ const { SqliteAuditStore } = require('./auditStore');
  *   ruleStore: SqliteRuleStore,
  *   predictionStore: SqlitePredictionStore,
  *   auditStore: SqliteAuditStore,
+ *   qd: ReturnType<typeof createG12Repository>,   // G12 数据访问层
+ *   backfillG12: typeof backfillG12,               // G12 迁移回填（事务+幂等）
  *   close: () => void,
  * }}
  */
@@ -32,6 +36,8 @@ function createDb({ path = ':memory:', logger } = {}) {
     ruleStore: new SqliteRuleStore(db, { logger }),
     predictionStore: new SqlitePredictionStore(db),
     auditStore: new SqliteAuditStore(db),
+    qd: createG12Repository(db),
+    backfillG12,
     close() { db.close(); },
   };
 }

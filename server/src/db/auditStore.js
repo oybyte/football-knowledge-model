@@ -17,6 +17,7 @@ class SqliteAuditStore {
       ts, level, service, trace_id, message, payload_json
     ) VALUES (?, ?, ?, ?, ?, ?)`);
     this._recent = db.prepare('SELECT seq, payload_json FROM audit_logs ORDER BY ts DESC, seq DESC LIMIT ?');
+    this._all = db.prepare('SELECT seq, payload_json FROM audit_logs ORDER BY seq');
     this._count = db.prepare('SELECT COUNT(*) AS n FROM audit_logs');
   }
 
@@ -46,6 +47,11 @@ class SqliteAuditStore {
    */
   query({ limit = 100 } = {}) {
     return this._recent.all(limit).map((r) => ({ ...JSON.parse(r.payload_json), seq: r.seq }));
+  }
+
+  /** @returns {Object[]} 全部审计记录（升序，供 G12 回填等批量只读） */
+  listAll() {
+    return this._all.all().map((r) => ({ ...JSON.parse(r.payload_json), seq: r.seq }));
   }
 
   /** @returns {number} */

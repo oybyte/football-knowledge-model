@@ -34,6 +34,7 @@ class SqliteRuleStore {
     this._byRule = db.prepare('SELECT payload_json FROM rule_versions WHERE rule_id = ? ORDER BY version DESC');
     this._active = db.prepare("SELECT payload_json FROM rule_versions WHERE status = 'active'");
     this._byStatus = db.prepare('SELECT payload_json FROM rule_versions WHERE status = ?');
+    this._allRow = db.prepare('SELECT payload_json FROM rule_versions');
     this._count = db.prepare('SELECT COUNT(*) AS n FROM rule_versions');
   }
 
@@ -78,6 +79,11 @@ class SqliteRuleStore {
   /** @param {string} status @returns {Object[]} */
   getByStatus(status) {
     return this._byStatus.all(status).map((r) => deepFreeze(JSON.parse(r.payload_json)));
+  }
+
+  /** @returns {Object[]} 全部版本（供 G12 回填等批量只读） */
+  listAll() {
+    return this._allRow.all().map((r) => deepFreeze(JSON.parse(r.payload_json)));
   }
 
   /** @returns {number} */
