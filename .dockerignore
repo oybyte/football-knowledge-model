@@ -13,3 +13,6 @@ server/data/
 prototype-1.0.0/
 docs/
 test/
+# 真实密钥/本地覆盖不入构建上下文（.env.example 保留）
+.env
+.env.local
