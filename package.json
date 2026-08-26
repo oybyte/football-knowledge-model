@@ -1,0 +1,12 @@
+{
+  "name": "odds-edge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "竞彩足球盘赔分析系统 — 一键启动入口",
+  "scripts": {
+    "run": "node run.js",
+    "server": "node server/bin/start.js",
+    "web": "node prototype-1.0.0/serve.js",
+    "test": "node --test \"server/test/*.test.js\""
+  }
+}
