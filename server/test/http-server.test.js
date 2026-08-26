@@ -88,7 +88,7 @@ function request(port, method, path, body) {
 
 /** 启动一个隔离服务 + 服务器，跑完自动关闭。 */
 async function withServer(fn) {
-  const svc = createService({ dbPath: ':memory:' });
+  const svc = await createService({ dbPath: ':memory:' });
   const server = createHttpServer(svc);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
@@ -350,7 +350,7 @@ test('正常响应携带 CORS 头', async () => {
 
 // ───────────────────────── createService({http}) 集成 ─────────────────────────
 test('createService({http}) 启动服务器并优雅关闭', async () => {
-  const svc = createService({ dbPath: ':memory:', http: { port: 0 } });
+  const svc = await createService({ dbPath: ':memory:', http: { port: 0 } });
   assert.ok(svc.server, '应创建 server');
   await new Promise((resolve) => svc.server.once('listening', resolve));
   const port = svc.server.address().port;

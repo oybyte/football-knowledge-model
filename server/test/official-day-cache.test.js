@@ -43,7 +43,7 @@ function request(port, method, path, body) {
 
 /** 启动一个隔离服务 + 服务器（每次 fresh 实例 → fresh 当天缓存），跑完自动关闭。 */
 async function withServer(fn) {
-  const svc = createService({ dbPath: ':memory:' });
+  const svc = await createService({ dbPath: ':memory:' });
   const server = createHttpServer(svc);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;

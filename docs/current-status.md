@@ -31,6 +31,7 @@
 - 不可变性在 DB 层强制（触发器拒绝 UPDATE/DELETE）+ 应用层护栏双保险；幂等（INSERT OR IGNORE）、回填 once-only、事务回滚。
 - rules/index.js 新增 createRuleService({store}) 工厂，可注入 SqliteRuleStore 驱动状态机全生命周期。
 - server/src/index.js 服务启动入口：createService 工厂（SQLite 落库 + createRuleService 注入 + seed 幂等 + 优雅关闭），bin/start.js CLI（npm start，OE_DB_PATH 指定路径）。
+- Redis 生产接线（server/src/index.js connectRedis + createService 装配）：设置 OE_REDIS_URL（或注入 redis 实例）即自动接线三类基础设施——缓存层（RedisCacheAdapter）、分析任务队列（RedisAnalysisQueue）、规则级排他锁（RedisLockManager 注入 createRuleService）。共享单个 ioredis 客户端（lazyConnect + retryStrategy），关闭时 clear 锁心跳并 quit；连接失败或未配置时优雅降级内存实现并记日志，不抛致命错误。getStatus().infra 上报各 backend 类型（cache/queue/lock/backend），启动与运维可观测。测试：server/test/redis-service-bootstrap.test.js（5 用例，用假 redis 实例验证 Redis backend 装配 + 无 Redis 内存回退 + 失效 url 降级）。
 
 ### 阶段 4 · HTTP 层
 - server/src/http/：samples（mock 合成样本/证据）+ handlers（REST 端点）+ index（createHttpServer：CORS + 路由 + 统一响应壳）。
@@ -46,7 +47,7 @@
 - 公益网站减负（前端）：本地 localStorage 当天缓存 + 后端当天缓存双层，自动获取每日一次，右上角「手动刷新」按钮带 refresh=1 强制直连。
 
 ## 验证
-- 后端全量回归 319 用例绿（`node --test`，22 个测试文件），覆盖数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列。
+- 后端全量回归 324 用例绿（`node --test`，23 个测试文件），覆盖数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）。
 - 端口解析纯函数（resolveHttpPort）用例：不绑定真实 3000，验证显式端口 > OE_PORT > 默认 3000 优先级。
 - 本地人工盘赔源实测：目录注入后扫描 75 场比赛；单场（韩K联 金泉尚武 vs 全北现代，001 场）解析 37 份盘口快照入合并池，信任分级 provisional、0 时间泄漏、0 冲突剔除。
 - 双源合并实测（HTTP 集成）：配置本地盘赔目录 + 官方赛程端点后，联赛别名收敛使 001 场语义键对齐 → merged:true（官方数字 match_id / 队名 / 开赛时间覆盖，快照 match_id 跟随）；未命中赛程的人工场次 manual_only 保留；时间防线剔除生效；/api/merged/analysis 打通 盘口→特征→推理链（命中 R007/R008/R013，方向 favor_upper，置信度 0.5）。
@@ -55,7 +56,7 @@
 
 ## 未实现 / 待后续
 - 服务部署与 API 网关（当前为 SQLite 落库 + 本地 HTTP 服务，网关路由骨架已有测试，尚无生产网关 / 鉴权 / 部署）。
-- Redis 缓存 / 队列 / 分布式锁的生产接线（适配器与锁已有测试，当前默认内存实现，重启丢缓存）。
+- Redis 生产接线已完成（缓存/队列/锁经 OE_REDIS_URL 自动切换真实 Redis，见上文）。剩余生产化：真实 Redis 部署与服务编排、网关鉴权 / 部署。
 - 线上长期运行观测与规则持续优化流水线。
 
 ## 事实状态

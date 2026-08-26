@@ -25,8 +25,8 @@ function rmDir(file) {
   try { fs.rmSync(path.dirname(file), { recursive: true, force: true }); } catch (e) { /* 忽略 */ }
 }
 
-test('启动 · 默认路径创建文件 DB + 种子规则落库', () => {
-  const svc = createService({ dbPath: tmpDbPath() });
+test('启动 · 默认路径创建文件 DB + 种子规则落库', async () => {
+  const svc = await createService({ dbPath: tmpDbPath() });
   const dbPath = svc.getStatus().dbPath;
   assert.ok(fs.existsSync(dbPath), 'DB 文件应存在');
   assert.equal(svc.ruleStore.size(), PROTOTYPE_COUNT, '原型规则全部落库');
@@ -37,9 +37,9 @@ test('启动 · 默认路径创建文件 DB + 种子规则落库', () => {
   rmDir(dbPath);
 });
 
-test('启动 · seed 幂等：重启同一文件不重复不丢失', () => {
+test('启动 · seed 幂等：重启同一文件不重复不丢失', async () => {
   const file = tmpDbPath();
-  const a = createService({ dbPath: file });
+  const a = await createService({ dbPath: file });
   assert.equal(a.ruleStore.size(), PROTOTYPE_COUNT);
   // 重启前写入一条自定义规则，验证重启后仍在
   a.ruleStore.insert({
@@ -52,16 +52,16 @@ test('启动 · seed 幂等：重启同一文件不重复不丢失', () => {
   });
   a.close();
 
-  const b = createService({ dbPath: file });
+  const b = await createService({ dbPath: file });
   assert.equal(b.ruleStore.size(), PROTOTYPE_COUNT + 1, '重启 seed 不重复');
   assert.ok(b.ruleStore.getById('R900#1'), '重启后自定义规则仍在');
   b.close();
   rmDir(file);
 });
 
-test('启动 · 状态机经启动入口 rules.stateMachine 可用（落库转换）', () => {
+test('启动 · 状态机经启动入口 rules.stateMachine 可用（落库转换）', async () => {
   const file = tmpDbPath();
-  const svc = createService({ dbPath: file });
+  const svc = await createService({ dbPath: file });
   const r = svc.rules.store.insert({
     version_id: 'R901#1', rule_id: 'R901', version: 1, status: 'draft',
     category: 'odds_change', condition: { type: 'ATOMIC', field: 'kelly_index.max', op: 'GTE', value: 3 },
@@ -78,16 +78,16 @@ test('启动 · 状态机经启动入口 rules.stateMachine 可用（落库转�
   rmDir(file);
 });
 
-test('启动 · seed:false 不迁移原型规则', () => {
-  const svc = createService({ dbPath: tmpDbPath(), seed: false });
+test('启动 · seed:false 不迁移原型规则', async () => {
+  const svc = await createService({ dbPath: tmpDbPath(), seed: false });
   const dbPath = svc.getStatus().dbPath;
   assert.equal(svc.ruleStore.size(), 0);
   svc.close();
   rmDir(dbPath);
 });
 
-test('启动 · getStatus 返回各存储计数', () => {
-  const svc = createService({ dbPath: tmpDbPath() });
+test('启动 · getStatus 返回各存储计数', async () => {
+  const svc = await createService({ dbPath: tmpDbPath() });
   const st = svc.getStatus();
   assert.ok(st.dbPath);
   assert.equal(st.ruleVersions, PROTOTYPE_COUNT);
@@ -98,9 +98,9 @@ test('启动 · getStatus 返回各存储计数', () => {
   rmDir(st.dbPath);
 });
 
-test('启动 · close 后 DB 文件仍存在（数据已落盘）', () => {
+test('启动 · close 后 DB 文件仍存在（数据已落盘）', async () => {
   const file = tmpDbPath();
-  const svc = createService({ dbPath: file });
+  const svc = await createService({ dbPath: file });
   svc.close();
   assert.ok(fs.existsSync(file), 'close 后文件保留，数据持久化');
   rmDir(file);
