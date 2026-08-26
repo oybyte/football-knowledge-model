@@ -59,7 +59,17 @@ OE_API_KEY_REVOKED="key-b"
 | 验收项 | 命令 | 期望 |
 |---|---|---|
 | 共享计数 | 连续 `curl -i -H "X-Api-Key: key-a" http://localhost:3000/api/matches` 共 6 次 | 第 6 次 `429` + `Retry-After`；响应带 `X-RateLimit-Limit/Remaining` |
-| 计数跨实例合并 | 同时 scale 两个 backend（`docker compose up -d --scale backend=2`）后同 IP 打满 | 计数在实例间合并，超限一致 `429` |
+| 计数跨实例合并 | 见下方「多实例共享限流演示」 | 计数在 Redis 中跨实例合并，超限一致 `429` |
+
+> 跨实例共享计数的**自动化权威证据**：`server/test/rate-limit-redis.test.js` 的「跨实例合并」用例（两个逻辑实例打同一 Redis，计数合并、超限 429），无需 Docker 即可回归。下述是可选的真实多容器演示。
+
+**多实例共享限流演示（可选，需先准备）**
+本仓库 `docker-compose.yml` 为开发便利固定了 `container_name: oe-backend` 与宿主端口 `3000:3000`，这两者都与 `--scale` 不兼容（固定 container_name 的 service 无法 scale，且多个副集会抢同一宿主端口）。要真实演示多副本，需临时去掉固定标识与端口发布冲突：
+
+1. 临时编辑 `docker-compose.yml`：删除 backend 的 `container_name: oe-backend`，并去掉/改注释 `ports` 的 `3000:3000` 一行。
+2. 拉起两个副本共享同一 Redis 计数：`docker compose up -d --build --scale backend=2`。
+3. 对同一 IP 打到 6 次（经负载或任一副本的内部端口），验证两个副本都观测到合并后的 `X-RateLimit-Remaining`，第 6 次为 `429`——证明计数在 Redis（键 `rl:<ip>`）中跨实例一致。
+4. 演示完恢复 `docker-compose.yml`（还原 container_name / 端口）后再 `docker compose up -d`。
 
 ## 5. 非 Docker 的运行时联结证据（可先行自证）
 
