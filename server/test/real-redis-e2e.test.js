@@ -13,6 +13,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -42,6 +43,22 @@ async function redisReachable() {
   } finally {
     try { probe.disconnect(); } catch { /* noop */ }
   }
+}
+
+/** 发起一次 HTTP 请求。 */
+function httpReq(port, path, extraHeaders) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1', port, method: 'GET', path,
+      headers: extraHeaders || {},
+    }, (res) => {
+      let raw = '';
+      res.on('data', (c) => { raw += c; });
+      res.on('end', () => resolve({ status: res.statusCode, raw }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 test('生产形态 · 真实 Redis 上 backend=redis 且重启后缓存不丢', async (t) => {
@@ -75,4 +92,46 @@ test('生产形态 · 真实 Redis 上 backend=redis 且重启后缓存不丢', 
     // 清理唯一测试键，避免残留
     try { await svcB.cache.del(`${NS}:persist`); } catch { /* noop */ }
   }
+});
+
+test('生产形态 · 真实 Redis 上 HTTP 鉴权 + Redis 共享限流接线在真实守护进程生效', async (t) => {
+  if (!await redisReachable()) {
+    t.skip(`未检测到真实 Redis（${URL}），跳过真实 Redis 运行时验收`);
+    return;
+  }
+
+  const savedStore = process.env.OE_RATE_LIMIT_STORE;
+  const savedMax = process.env.OE_RATE_LIMIT_MAX;
+  // max 设高，避免本地共享 Redis 上 rl:127.0.0.1 既有计数干扰鉴权流程（本用例不断言 429；
+  // 429/跨实例合并机制已由 deploy-smoke(mock) 与 rate-limit-redis.test.js 覆盖）。
+  process.env.OE_RATE_LIMIT_STORE = 'redis';
+  process.env.OE_RATE_LIMIT_MAX = '1000';
+  t.after(() => {
+    if (savedStore === undefined) delete process.env.OE_RATE_LIMIT_STORE;
+    else process.env.OE_RATE_LIMIT_STORE = savedStore;
+    if (savedMax === undefined) delete process.env.OE_RATE_LIMIT_MAX;
+    else process.env.OE_RATE_LIMIT_MAX = savedMax;
+  });
+
+  const svc = await createService({
+    dbPath: tmpDb(),
+    http: { port: 0, apiKey: 'prod-key' },
+    redisUrl: URL,
+  });
+  const server = svc.server;
+  await new Promise((r) => (server.listening ? r() : server.once('listening', r)));
+  const { port } = server.address();
+  t.after(() => { try { server.close(); } catch { /* noop */ } svc.close(); });
+
+  const st = svc.getStatus();
+  assert.equal(st.infra.backend, 'redis', '真实 Redis 下后端接线为 redis');
+  assert.equal(st.infra.rateLimit, 'redis', 'OE_RATE_LIMIT_STORE=redis 且 Redis 已接线 → 共享限流走真实 Redis');
+
+  // 生产形态 HTTP 运行时：health 免鉴权 → 缺 Key 401 → 带 Key 200
+  const h = await httpReq(port, '/api/health');
+  assert.equal(h.status, 200);
+  const noKey = await httpReq(port, '/api/matches');
+  assert.equal(noKey.status, 401);
+  const ok = await httpReq(port, '/api/matches', { 'X-Api-Key': 'prod-key' });
+  assert.equal(ok.status, 200);
 });
