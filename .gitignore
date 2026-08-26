@@ -2,6 +2,11 @@
 .idea/
 .vscode/
 
+# Env (secrets / local overrides) — .env.example is the committed template
+.env
+.env.local
+!.env.example
+
 # Local workspace memory
 .workbuddy/
 
@@ -14,3 +19,6 @@ Thumbs.db
 
 # Tool cache
 .trae-html-share-packages/
+
+# Local tool binaries (redis-dev.ps1 downloads Redis-for-Windows here)
+.tools/

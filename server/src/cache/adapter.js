@@ -197,17 +197,21 @@ async function createCacheAdapter(opts = {}) {
   }
 
   if (redisUrl) {
+    let client;
     try {
       const { default: IORedis } = require('ioredis');
-      const client = new IORedis(redisUrl, {
+      client = new IORedis(redisUrl, {
         maxRetriesPerRequest: 3,
-        retryStrategy(times) { return Math.min(times * 200, 3000); },
+        // 快速失败：有限重试后返回 null → connect() 拒绝 → 降级内存，避免无限重试挂起
+        retryStrategy(times) { return times > 3 ? null : Math.min(times * 200, 3000); },
         lazyConnect: true,
       });
+      client.on('error', () => {});
       await client.connect();
       logger.info('cache_redis_connected', { url: redisUrl.replace(/\/\/.*@/, '//***@') });
       return new RedisCacheAdapter(client, { defaultTtlMs, logger });
     } catch (e) {
+      if (client) { try { client.disconnect(); } catch { /* noop */ } }
       logger.warn('cache_redis_unavailable_fallback_memory', { error: e.message });
     }
   }

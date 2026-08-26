@@ -44,12 +44,18 @@ function tmpDbPath() {
 
 // ───────────────────────── ① 迁移与不可变触发器 ─────────────────────────
 
-test('迁移 · 建 5 张表 + 10 个不可变触发器', () => {
+test('迁移 · 建 17 张表（5 运行时 + 12 G12 qd_*）+ 16 个不可变触发器', () => {
   const { db, close } = createDb();
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((r) => r.name);
-  assert.deepEqual(tables, ['audit_logs', 'backfill_results', 'evidences', 'predictions', 'rule_versions']);
+  assert.deepEqual(tables, [
+    'audit_logs', 'backfill_results', 'evidences', 'predictions',
+    'qd_ai_candidates', 'qd_analysis_commands', 'qd_audit_log', 'qd_backtest_jobs',
+    'qd_data_sources', 'qd_evidence_snapshots', 'qd_field_registry', 'qd_match_features',
+    'qd_matches', 'qd_odds_snapshots', 'qd_predictions', 'qd_rule_versions',
+    'rule_versions',
+  ]);
   const triggers = db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name").all().map((r) => r.name);
-  assert.equal(triggers.length, 10);
+  assert.equal(triggers.length, 16);
   close();
 });
 

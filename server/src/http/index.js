@@ -80,11 +80,27 @@ function matchRoute(method, parts) {
  * @param {Object} service createService 返回的服务上下文
  * @param {Object} [opts]
  * @param {import('../lib/logger').Logger} [opts.logger]
+ * @param {string} [opts.apiKey]
+ * @param {string[]} [opts.apiKeys]
+ * @param {string[]} [opts.revokedKeys]
+ * @param {number} [opts.rateLimitMax]
+ * @param {number} [opts.rateLimitWindowMs]
  * @returns {import('node:http').Server}
  */
 function createHttpServer(service, opts = {}) {
   const logger = opts.logger || defaultLogger;
-  const gateway = createGateway(service, { logger, apiKey: opts.apiKey });
+  // 鉴权事件落库审计（audit_logs，append-only）：成功 INFO / 失败 WARN。
+  const audit = (message, payload) => {
+    if (service.auditStore) {
+      service.auditStore.append({
+        level: message === 'auth_ok' ? 'INFO' : 'WARN',
+        service: 'gateway',
+        message,
+        ...payload,
+      });
+    }
+  };
+  const gateway = createGateway(service, { ...opts, logger, audit });
 
   return http.createServer(async (req, res) => {
     try {
@@ -101,6 +117,9 @@ function createHttpServer(service, opts = {}) {
         logger.warn('http_route_not_found', { method: req.method, path: url.pathname });
         return sendJson(res, 404, { status: 'error', error: 'not_found' });
       }
+
+      // 限流（所有已匹配路由，含 health/metrics，防单客户端打爆）
+      if (!gateway.rateLimit(req, res)) return;
 
       // 鉴权（health/metrics 除外）
       if (route.handler !== 'health' && route.handler !== 'metrics') {

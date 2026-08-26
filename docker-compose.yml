@@ -32,9 +32,18 @@ services:
       - OE_DB_PATH=/app/data/odds-edge.db
       - OE_REDIS_URL=redis://redis:6379/0
       - OE_API_KEY=${OE_API_KEY:-}
+      - OE_API_KEYS=${OE_API_KEYS:-}
+      - OE_API_KEY_REVOKED=${OE_API_KEY_REVOKED:-}
+      - OE_RATE_LIMIT_MAX=${OE_RATE_LIMIT_MAX:-300}
+      - OE_RATE_LIMIT_WINDOW_MS=${OE_RATE_LIMIT_WINDOW_MS:-60000}
+      # 可选：真实本地人工盘赔目录。在 .env 中设 OE_MANUAL_ODDS_ROOT=<宿主机源目录>
+      # （如 D:\ocr_python_data\FootballScreenshotOcr\output），compose 会把它 bind-mount
+      # 到容器 /tmp/manual-odds（只读），此处指向该挂载点供后端扫描。
+      - OE_MANUAL_ODDS_ROOT=/tmp/manual-odds
       - TZ=Asia/Shanghai
     volumes:
       - oe-data:/app/data
+      - ${OE_MANUAL_ODDS_ROOT:-/tmp/nonexistent}:/tmp/manual-odds:ro
     depends_on:
       redis:
         condition: service_healthy

@@ -8,6 +8,9 @@
     "test": "node --test \"test/*.test.js\"",
     "start": "node bin/start.js"
   },
+  "dependencies": {
+    "ioredis": "^6.0.0"
+  },
   "engines": {
     "node": ">=22"
   }

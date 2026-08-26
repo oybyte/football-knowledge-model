@@ -84,7 +84,7 @@ describe('createCacheAdapter', () => {
   });
 
   it('传入无效 redisUrl 时降级到内存', async () => {
-    const a = await createCacheAdapter({ redisUrl: 'redis://localhost:16379' });
+    const a = await createCacheAdapter({ redisUrl: 'redis://127.0.0.1:63999' });
     assert.ok(a instanceof MemoryCacheAdapter);
     await a.clear();
   });

@@ -62,7 +62,7 @@ const SAMPLE_MD = `# 盘口截图数据
 | 胜 | 4.5 | 1,456 | 13,284 | -66 |`;
 
 /** 发起一次 HTTP 请求。 */
-function request(port, method, path, body) {
+function request(port, method, path, body, extraHeaders) {
   return new Promise((resolve, reject) => {
     const payload = body == null ? null : JSON.stringify(body);
     const req = http.request({
@@ -70,7 +70,10 @@ function request(port, method, path, body) {
       port,
       method,
       path,
-      headers: payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {},
+      headers: {
+        ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
+        ...(extraHeaders || {}),
+      },
     }, (res) => {
       let raw = '';
       res.on('data', (c) => { raw += c; });
@@ -345,6 +348,119 @@ test('正常响应携带 CORS 头', async () => {
     const r = await request(port, 'GET', '/api/matches');
     assert.equal(r.headers['access-control-allow-origin'], '*');
     assert.equal(r.headers['content-type'], 'application/json; charset=utf-8');
+  });
+});
+
+// ───────────────────────── 网关鉴权集成（http 层）─────────────────────────
+/** 带鉴权配置启动隔离服务器；env 为临时环境变量（结束后恢复）。 */
+async function withAuthServer(env, fn) {
+  const saved = {};
+  for (const k of Object.keys(env)) saved[k] = process.env[k];
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  const svc = await createService({ dbPath: ':memory:', http: { port: 0 } });
+  const server = svc.server;
+  await new Promise((r) => (server.listening ? r() : server.once('listening', r)));
+  const port = server.address().port;
+  try {
+    await fn(port, svc);
+  } finally {
+    await new Promise((r) => server.close(r));
+    svc.close();
+    for (const k of Object.keys(env)) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+}
+
+test('鉴权 · 配置 OE_API_KEY 后无 Key 请求返回 401', async () => {
+  await withAuthServer({ OE_API_KEY: 'gw-key-1' }, async (port) => {
+    const r = await request(port, 'GET', '/api/matches');
+    assert.equal(r.status, 401);
+    assert.equal(r.body.status, 'error');
+    assert.equal(r.body.error, 'unauthorized');
+  });
+});
+
+test('鉴权 · 配置 OE_API_KEY 后错误 Key 返回 401', async () => {
+  await withAuthServer({ OE_API_KEY: 'gw-key-1' }, async (port) => {
+    const r = await request(port, 'GET', '/api/matches', null, { 'X-Api-Key': 'wrong' });
+    assert.equal(r.status, 401);
+  });
+});
+
+test('鉴权 · 正确 Key（Header）通过并返回数据', async () => {
+  await withAuthServer({ OE_API_KEY: 'gw-key-1' }, async (port) => {
+    const r = await request(port, 'GET', '/api/matches', null, { 'X-Api-Key': 'gw-key-1' });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.status, 'ok');
+  });
+});
+
+test('鉴权 · 正确 Key（Query）通过', async () => {
+  await withAuthServer({ OE_API_KEY: 'gw-key-1' }, async (port) => {
+    const r = await request(port, 'GET', '/api/matches?api_key=gw-key-1');
+    assert.equal(r.status, 200);
+  });
+});
+
+test('鉴权 · 多 Key（OE_API_KEYS）任一有效 Key 通过', async () => {
+  await withAuthServer({ OE_API_KEYS: 'gw-a, gw-b' }, async (port) => {
+    const ra = await request(port, 'GET', '/api/matches', null, { 'X-Api-Key': 'gw-a' });
+    assert.equal(ra.status, 200);
+    const rb = await request(port, 'GET', '/api/matches', null, { 'X-Api-Key': 'gw-b' });
+    assert.equal(rb.status, 200);
+  });
+});
+
+test('鉴权 · 撤销 Key（OE_API_KEY_REVOKED）返回 403 forbidden', async () => {
+  await withAuthServer({ OE_API_KEYS: 'gw-a, gw-b', OE_API_KEY_REVOKED: 'gw-b' }, async (port) => {
+    const rb = await request(port, 'GET', '/api/matches', null, { 'X-Api-Key': 'gw-b' });
+    assert.equal(rb.status, 403);
+    assert.equal(rb.body.error, 'forbidden');
+    const ra = await request(port, 'GET', '/api/matches', null, { 'X-Api-Key': 'gw-a' });
+    assert.equal(ra.status, 200);
+  });
+});
+
+test('鉴权 · health/metrics 跳过鉴权（无 Key 可访问）', async () => {
+  await withAuthServer({ OE_API_KEY: 'gw-key-1' }, async (port) => {
+    const h = await request(port, 'GET', '/api/health');
+    assert.equal(h.status, 200);
+    assert.equal(h.body.status, 'ok');
+    const m = await request(port, 'GET', '/api/metrics');
+    assert.equal(m.status, 200);
+    assert.ok(m.raw.includes('uptime_seconds'));
+  });
+});
+
+test('鉴权 · 失败/成功请求写入审计落库（auditStore）', async () => {
+  await withAuthServer({ OE_API_KEY: 'gw-key-1' }, async (port, svc) => {
+    await request(port, 'GET', '/api/matches'); // 无 Key → 401
+    await request(port, 'GET', '/api/matches', null, { 'X-Api-Key': 'gw-key-1' }); // 成功
+    const entries = svc.auditStore.query({ limit: 20 });
+    const rejected = entries.filter((e) => e.message === 'auth_rejected');
+    const ok = entries.filter((e) => e.message === 'auth_ok');
+    assert.ok(rejected.length >= 1, '应有 auth_rejected 审计');
+    assert.equal(rejected[0].status, 401);
+    assert.equal(rejected[0].service, 'gateway');
+    assert.ok(ok.length >= 1, '应有 auth_ok 审计');
+  });
+});
+
+test('限流 · OE_RATE_LIMIT_MAX 超限返回 429 + Retry-After', async () => {
+  await withAuthServer({ OE_RATE_LIMIT_MAX: '2' }, async (port) => {
+    const r1 = await request(port, 'GET', '/api/matches');
+    const r2 = await request(port, 'GET', '/api/matches');
+    const r3 = await request(port, 'GET', '/api/matches');
+    assert.equal(r1.status, 200);
+    assert.equal(r2.status, 200);
+    assert.equal(r3.status, 429);
+    assert.equal(r3.body.error, 'rate_limited');
+    assert.ok(Number(r3.headers['retry-after']) >= 1);
   });
 });
 

@@ -61,7 +61,7 @@ describe('createAnalysisQueue', () => {
   });
 
   it('无效 redisUrl 时降级到内存', async () => {
-    const q = await createAnalysisQueue({ redisUrl: 'redis://localhost:16379' });
+    const q = await createAnalysisQueue({ redisUrl: 'redis://127.0.0.1:63999' });
     assert.ok(q instanceof MemoryAnalysisQueue);
   });
 });

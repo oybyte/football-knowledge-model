@@ -7,6 +7,8 @@
 // ============================================================================
 'use strict';
 
+const { runMigrations } = require('./migrate');
+
 const DDL = `
 CREATE TABLE IF NOT EXISTS rule_versions (
   version_id      TEXT PRIMARY KEY,
@@ -93,12 +95,13 @@ BEGIN SELECT RAISE(ABORT, 'immutable_violation: DELETE not allowed on audit_logs
 `;
 
 /**
- * 建表 + 建不可变触发器（幂等，可重复执行）。
+ * 建表 + 建不可变触发器 + 应用 G12 迁移（幂等，可重复执行）。
  * @param {import('node:sqlite').DatabaseSync} db
  */
 function migrate(db) {
   db.exec(DDL);
   db.exec(IMMUTABLE_TRIGGERS);
+  runMigrations(db);
 }
 
 module.exports = { migrate, DDL, IMMUTABLE_TRIGGERS };

@@ -146,35 +146,39 @@ class RedisAnalysisQueue extends AnalysisQueue {
 
 /**
  * 创建分析任务队列（自动检测 Redis）
- * @param {{ redisUrl?: string, redis?: object, logger?: object, concurrency?: number }} [opts]
+ * @param {{ redisUrl?: string, redis?: object, logger?: object, concurrency?: number, prefix?: string }} [opts]
  * @returns {Promise<AnalysisQueue>}
  */
 async function createAnalysisQueue(opts = {}) {
-  const { redisUrl, redis, logger = defaultLogger, concurrency } = opts;
+  const { redisUrl, redis, logger = defaultLogger, concurrency, prefix } = opts;
 
   if (redis) {
     logger.info('queue_using_redis');
-    return new RedisAnalysisQueue(redis, { logger, concurrency });
+    return new RedisAnalysisQueue(redis, { logger, concurrency, prefix });
   }
 
   if (redisUrl) {
+    let client;
     try {
       const { default: IORedis } = require('ioredis');
-      const client = new IORedis(redisUrl, {
+      client = new IORedis(redisUrl, {
         maxRetriesPerRequest: 3,
-        retryStrategy(times) { return Math.min(times * 200, 3000); },
+        // 快速失败：有限重试后返回 null → connect() 拒绝 → 降级内存，避免无限重试挂起
+        retryStrategy(times) { return times > 3 ? null : Math.min(times * 200, 3000); },
         lazyConnect: true,
       });
+      client.on('error', () => {});
       await client.connect();
       logger.info('queue_redis_connected');
-      return new RedisAnalysisQueue(client, { logger, concurrency });
+      return new RedisAnalysisQueue(client, { logger, concurrency, prefix });
     } catch (e) {
+      if (client) { try { client.disconnect(); } catch { /* noop */ } }
       logger.warn('queue_redis_unavailable_fallback_memory', { error: e.message });
     }
   }
 
   logger.info('queue_using_memory_adapter');
-  return new MemoryAnalysisQueue({ logger, concurrency });
+  return new MemoryAnalysisQueue({ logger, concurrency, prefix });
 }
 
 module.exports = {

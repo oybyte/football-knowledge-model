@@ -30,6 +30,33 @@ $env:OE_PORT=3000            # 后端端口，默认 3000
 $env:OE_REDIS_URL="redis://localhost:6379"   # 启用真实 Redis 缓存/队列/锁（可选）
 ```
 
+### 网关鉴权 / 限流（可选）
+
+设置任一 API Key 后，所有受保护 API（`/api/*` 业务端点）需携带 `X-Api-Key` 头或 `?api_key=` 参数；`/api/health` 与 `/api/metrics` 跳过鉴权（供探活与监控）。留空 = 开发模式跳过鉴权。
+
+```powershell
+$env:OE_API_KEY="my-secret-key"              # 单 Key（兼容）
+$env:OE_API_KEYS="key-a,key-b"               # 多 Key（逗号分隔，任一有效即可）
+$env:OE_API_KEY_REVOKED="key-b"              # 撤销 Key（命中返回 403 forbidden）
+```
+
+语义：401 = 未认证（缺少或无效 Key）；403 = 已认证但无权限（Key 有效但被撤销）。有效 Key 集合 = 全部配置 Key − 撤销 Key。
+
+生产级密钥校验：常量时间比较（`crypto.timingSafeEqual`）防时序侧信道；密钥可用明文，也可用 sha256 哈希（前缀 `sha256:<hex>`，配置/日志不落明文）：
+
+```powershell
+$env:OE_API_KEY="sha256:<echo -n my-secret-key | sha256sum 输出的 hex>"
+```
+
+限流（内存固定窗口，按客户端 IP）：超限返回 429 + Retry-After；`max<=0` 禁用。
+
+```powershell
+$env:OE_RATE_LIMIT_MAX=300            # 每窗口最大请求数（默认 300）
+$env:OE_RATE_LIMIT_WINDOW_MS=60000    # 窗口毫秒（默认 60000）
+```
+
+鉴权事件（成功/失败）自动写入 SQLite 审计日志（`audit_logs`，append-only）。
+
 单独启动某层：
 
 ```powershell
@@ -47,9 +74,76 @@ python -m http.server 8137
 
 然后打开 `http://localhost:8137/prototype-1.0.0/`。
 
+## Docker Compose 一键编排（真实 Redis + 后端 + 前端）
+
+要跑通「真实数据链路」——后端连真实 Redis（缓存/队列/锁），前端静态托管，一次性拉起三服务：
+
+```powershell
+# 1) 复制环境变量模板（可选；不设也能起，只是不接人工盘赔目录）
+Copy-Item .env.example .env
+
+# 2) 如需接入本地人工盘赔，在 .env 中填入宿主机源目录后：
+#    OE_MANUAL_ODDS_ROOT=D:\ocr_python_data\FootballScreenshotOcr\output
+
+# 3) 拉起全栈
+docker compose up -d --build
+```
+
+启动后访问：
+
+- 前端：`http://localhost:8080`
+- 后端 API：`http://localhost:3000`（可 `curl http://localhost:3000/api/health` 探活）
+- 服务与健康检查状态：`docker compose ps`（Redis `service_healthy` 门控后端启动）
+
+编排要点：
+
+- **Redis** `redis:7-alpine`：数据落持久化卷 `redis-data`，提供 `service_healthy` 健康检查；后端依赖它就绪后才启动，因此缓存/队列/锁走真实 Redis，而非内存回退。
+- **后端**：多阶段 Node:22 构建，数据落持久化卷 `oe-data`；`OE_REDIS_URL=redis://redis:6379/0`、`TZ`、网关鉴权（`OE_API_KEY` / `OE_API_KEYS` / `OE_API_KEY_REVOKED`）与限流（`OE_RATE_LIMIT_MAX` / `OE_RATE_LIMIT_WINDOW_MS`）透传；人工盘赔目录 bind-mount 到容器 `/tmp/manual-odds`（只读），后端经 `OE_MANUAL_ODDS_ROOT=/tmp/manual-odds` 读取，宿主源目录由 `.env` 的 `OE_MANUAL_ODDS_ROOT` 指定——换目录只改 `.env`，不改代码。
+- **前端**：`nginx` 静态托管 `prototype-1.0.0`，`http://localhost:8080`。
+- 后端连接失败（如仅停掉 Redis）会**快速失败并降级内存**（有限重试后回退，不挂起），`getStatus().infra.backend` 可观测当前是 `redis` 还是 `memory`。
+
+停止与清理：
+
+```powershell
+docker compose down          # 停止（保留数据卷）
+docker compose down -v       # 停止并删除数据卷（Redis/DB 数据一并清空）
+```
+
+本地（非 Docker）联调同样指定 `OE_REDIS_URL` 即可启用真实 Redis 缓存/队列/锁，见上文「本地运行」。
+
+## 本地真实 Redis 联调（无 Docker 环境）
+
+若本机没有 Docker，可用仓库自带的一键脚本拉起一个**真实 Redis 服务端**（Redis-for-Windows 官方社区移植，免安装单文件，首次运行自动下载到 `.tools\redis\`）：
+
+```powershell
+.\scripts\redis-dev.ps1 start     # 启动真实 Redis（默认端口 16379，后台）
+.\scripts\redis-dev.ps1 status    # 查看状态
+.\scripts\redis-dev.ps1 stop      # 停止
+```
+
+启动后让后端连它：
+
+```powershell
+$env:OE_REDIS_URL="redis://127.0.0.1:16379"
+npm run server
+```
+
+验证真实 Redis 接线（缓存/队列/锁 + 重启缓存不丢）的自动化测试：
+
+```powershell
+cd server
+node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
+```
+
+> 说明：`real-redis-e2e.test.js` 会先探测 `OE_REDIS_URL`（默认 `redis://127.0.0.1:16379`）是否可达；不可达时自动跳过（不失败），因此可安全纳入全量回归。另有 `test/redis-resp-integration.test.js` 用纯 Node 的 RESP 协议替身验证同一套接线，不依赖任何 Redis 服务端。
+
+## 数据模型（G12）
+
+架构评审 P0 缺口的 12 张 `qd_*` 表已按设计文档（`docs/design/data-model-1.0.0/data-model-1.0.0.html`）落地为 SQLite 迁移（`server/migrations/001_init.sql`）：规则版本 / 证据快照 / 比赛 / 盘口快照 / 比赛特征 / 预测 / 分析命令 / 审计 / 数据源 / 回测作业 / AI 候选 / 字段注册表。不可变性在 DB 层强制（6 个触发器禁 UPDATE/DELETE）+ 12 个查询索引 + 外键约束。服务启动时自动应用迁移（幂等，可重复执行）。
+
 ## 当前状态
 
-原型使用本地模拟赛事和盘口数据，数据层、特征层、规则层已经解耦。真实竞彩接口、后端服务、数据库、正式 DSL、时间泄漏校验、回测和 ROI 置信度仍未实现，详见 `docs/current-status.md`。
+原型使用本地模拟赛事和盘口数据，数据层、特征层、规则层已经解耦。真实竞彩接口、后端服务、SQLite 数据库、正式 DSL、时间泄漏校验、回测和 ROI 置信度已实现，详见 `docs/current-status.md`。
 
 ## 版本约定
 

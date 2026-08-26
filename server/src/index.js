@@ -34,17 +34,25 @@ async function connectRedis({ redisUrl, redis, logger = defaultLogger } = {}) {
     return { client: redis, type: 'redis' };
   }
   if (redisUrl) {
+    let client;
     try {
       const { default: IORedis } = require('ioredis');
-      const client = new IORedis(redisUrl, {
+      client = new IORedis(redisUrl, {
         maxRetriesPerRequest: 3,
-        retryStrategy(times) { return Math.min(times * 200, 3000); },
+        // 快速失败：RetryStrategy 在有限次重试后返回 null → connect() 拒绝 → 上层降级内存。
+        // 绝不能无限重试，否则 await connect() 永不 resolve，createService 挂起/进程不退出。
+        retryStrategy(times) { return times > 3 ? null : Math.min(times * 200, 3000); },
         lazyConnect: true,
       });
+      // 主动挂 error 监听：连接/重连失败时避免 ioredis 抛「Unhandled error event」
+      client.on('error', () => {});
       await client.connect();
       logger.info('infra_redis_connected', { url: redisUrl.replace(/\/\/.*@/, '//***@') });
       return { client, type: 'redis' };
     } catch (e) {
+      // 失败必须断开：disconnect() 停止 retryStrategy 重连定时器，否则句柄不释放、
+      // 事件循环不退出（回归/部署进程挂起），也无残留 error 冒泡。
+      if (client) { try { client.disconnect(); } catch { /* noop */ } }
       logger.warn('infra_redis_unavailable_fallback_memory', { error: e.message });
     }
   }
@@ -74,14 +82,14 @@ async function connectRedis({ redisUrl, redis, logger = defaultLogger } = {}) {
  *   close: () => void,
  * }}
  */
-async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PATH, seed: doSeed = true, http = false, logger = defaultLogger, redisUrl, redis } = {}) {
+async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PATH, seed: doSeed = true, http = false, logger = defaultLogger, redisUrl, redis, queuePrefix } = {}) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const persistence = createDb({ path: dbPath, logger });
 
   // Redis 基础设施（缓存 / 队列 / 锁），可用则接真实 Redis，否则回退内存
   const { client: redisClient, type: backendType } = await connectRedis({ redisUrl, redis, logger });
   const cacheLayer = await createCacheLayer(redisClient ? { redis: redisClient, logger } : { logger });
-  const analysisQueue = await createAnalysisQueue(redisClient ? { redis: redisClient, logger } : { logger });
+  const analysisQueue = await createAnalysisQueue(redisClient ? { redis: redisClient, logger, prefix: queuePrefix } : { logger, prefix: queuePrefix });
   const lockManager = redisClient ? new RedisLockManager(redisClient, { logger }) : undefined;
 
   const rules = createRuleService({ store: persistence.ruleStore, lockManager });
@@ -114,7 +122,12 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
     close() {
       if (lockManager && typeof lockManager.clear === 'function') lockManager.clear();
       persistence.close();
-      if (redisClient && typeof redisClient.quit === 'function') redisClient.quit();
+      if (redisClient) {
+        // 强制断开：disconnect() 立即关 socket（相比异步 quit() 无竞态、不出 QUIT），
+        // 否则测试/回归进程残留连接句柄不退出。
+        if (typeof redisClient.disconnect === 'function') { try { redisClient.disconnect(); } catch { /* noop */ } }
+        else if (typeof redisClient.quit === 'function') redisClient.quit();
+      }
     },
   };
 
@@ -122,7 +135,10 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
     // 显式 port（含 0 = 随机端口）优先；否则 OE_PORT / 默认 3000
     const requested = resolveHttpPort(http, process.env);
     const apiKey = (typeof http === 'object' && http.apiKey) || process.env.OE_API_KEY;
-    const server = createHttpServer(svc, { logger, apiKey });
+    // 限流配置（OE_RATE_LIMIT_MAX / OE_RATE_LIMIT_WINDOW_MS；未设置走中间件默认值）
+    const rateLimitMax = Number(process.env.OE_RATE_LIMIT_MAX) || undefined;
+    const rateLimitWindowMs = Number(process.env.OE_RATE_LIMIT_WINDOW_MS) || undefined;
+    const server = createHttpServer(svc, { logger, apiKey, rateLimitMax, rateLimitWindowMs });
     server.listen(requested, () => {
       svc.port = server.address().port; // port 0 → 实际分配端口
     });
