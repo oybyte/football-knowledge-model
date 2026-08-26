@@ -42,6 +42,8 @@ $env:OE_API_KEY_REVOKED="key-b"              # 撤销 Key（命中返回 403 for
 
 语义：401 = 未认证（缺少或无效 Key）；403 = 已认证但无权限（Key 有效但被撤销）。有效 Key 集合 = 全部配置 Key − 撤销 Key。
 
+密钥轮换（新增 → 宽限期 → 撤销回收）的完整运维流程见 [docs/ops/key-rotation.md](docs/ops/key-rotation.md)，配套脚本 `.\scripts\key-rotate.ps1` 生成新 Key / 转 sha256 / 探测旧 Key 调用余量。
+
 生产级密钥校验：常量时间比较（`crypto.timingSafeEqual`）防时序侧信道；密钥可用明文，也可用 sha256 哈希（前缀 `sha256:<hex>`，配置/日志不落明文）：
 
 ```powershell
