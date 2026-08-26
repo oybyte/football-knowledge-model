@@ -87,7 +87,9 @@ function matchRoute(method, parts) {
  * @param {number} [opts.rateLimitWindowMs]
  * @param {'memory'|'redis'} [opts.rateLimitStore]
  * @param {object} [opts.redis]
- * @returns {import('node:http').Server}
+ * @param {string} [opts.tlsCertificate] 证书文件路径（与 tlsKey 同设即以 HTTPS 终止 TLS）
+ * @param {string} [opts.tlsKey] 私钥文件路径
+ * @returns {import('node:http').Server} 普通 HTTP 或 HTTPS（node:https）服务器
  */
 function createHttpServer(service, opts = {}) {
   const logger = opts.logger || defaultLogger;
@@ -104,7 +106,7 @@ function createHttpServer(service, opts = {}) {
   };
   const gateway = createGateway(service, { ...opts, logger, audit });
 
-  return http.createServer(async (req, res) => {
+  const requestHandler = async (req, res) => {
     try {
       if (req.method === 'OPTIONS') {
         res.writeHead(204, CORS_HEADERS);
@@ -146,7 +148,30 @@ function createHttpServer(service, opts = {}) {
       logger.error('http_unhandled', { error: err.message });
       sendJson(res, 500, { status: 'error', error: 'internal_error' });
     }
-  });
+  };
+
+  // TLS 终止（生产网关形态）：同时提供证书与私钥即以 HTTPS 启动。
+  // 配置了 TLS 但证书/私钥读取失败 → 抛错快速失败（绝不静默降级明文 HTTP，避免安全降级）。
+  if (opts.tlsCertificate || opts.tlsKey) {
+    const fs = require('node:fs');
+    if (!opts.tlsCertificate || !opts.tlsKey) {
+      throw new Error('tls_misconfigured: 需同时设置 tlsCertificate 与 tlsKey');
+    }
+    let tls;
+    try {
+      tls = {
+        cert: fs.readFileSync(opts.tlsCertificate),
+        key: fs.readFileSync(opts.tlsKey),
+      };
+    } catch (e) {
+      throw new Error(`tls_misconfigured: 证书/私钥读取失败（${e.message}）`);
+    }
+    const https = require('node:https');
+    logger.info('http_tls_enabled');
+    return https.createServer(tls, requestHandler);
+  }
+
+  return http.createServer(requestHandler);
 }
 
 module.exports = { createHttpServer, matchRoute, sendJson, CORS_HEADERS };

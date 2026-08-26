@@ -56,6 +56,13 @@ $env:OE_RATE_LIMIT_WINDOW_MS=60000    # 窗口毫秒（默认 60000）
 $env:OE_RATE_LIMIT_STORE=memory       # 限流存储：memory（默认）| redis（多实例共享）
 ```
 
+TLS 终止（可选）：`OE_TLS_CERT` / `OE_TLS_KEY` 两个文件路径同设即以后端直连 HTTPS 启动（`getStatus().scheme=https`），生产多由 nginx/负载均衡反向代理终止 TLS。
+
+```powershell
+$env:OE_TLS_CERT="C:\certs\server.crt"   # 证书文件路径（与 OE_TLS_KEY 同设即 HTTPS）
+$env:OE_TLS_KEY="C:\certs\server.key"    # 私钥文件路径
+```
+
 鉴权事件（成功/失败）自动写入 SQLite 审计日志（`audit_logs`，append-only）。
 
 单独启动某层：

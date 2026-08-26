@@ -5,6 +5,7 @@
 //   OE_DB_PATH  SQLite 文件路径（默认 server/data/odds-edge.db）
 //   OE_PORT     HTTP 端口（默认 3000）
 //   OE_API_KEY  API 密钥（设置后启用鉴权，默认无鉴权）
+//   OE_TLS_CERT / OE_TLS_KEY  证书/私钥文件路径（同设即以 HTTPS 终止 TLS，默认 HTTP）
 //   OE_REDIS_URL Redis 连接（可选，设置后启用 Redis 缓存/锁/队列）
 //   OE_MANUAL_ODDS_ROOT 本地人工盘赔根目录（经 CredentialVault env: 注入，
 //     扫描其下各比赛子目录的 盘口数据.md；不配置则手动源为 not_configured）
@@ -31,7 +32,8 @@ createService({
   console.log('[odds-edge] service started');
   console.log(JSON.stringify(service.getStatus(), null, 2));
   if (service.server) {
-    console.log(`[odds-edge] http listening on http://localhost:${service.port}`);
+    const scheme = service.getStatus().scheme || 'http';
+    console.log(`[odds-edge] ${scheme} listening on ${scheme}://localhost:${service.port}`);
   }
 
   let shuttingDown = false;

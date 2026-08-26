@@ -38,6 +38,9 @@ services:
       - OE_RATE_LIMIT_WINDOW_MS=${OE_RATE_LIMIT_WINDOW_MS:-60000}
       # 多实例共享限流计数：redis（需 OE_REDIS_URL 已接线且本服务已连上）；默认 memory
       - OE_RATE_LIMIT_STORE=${OE_RATE_LIMIT_STORE:-memory}
+      # 可选：直连后端时启用 TLS 终止（同设即 HTTPS）。生产多由 nginx/负载均衡终止。
+      # OE_TLS_CERT=${OE_TLS_CERT:-}
+      # OE_TLS_KEY=${OE_TLS_KEY:-}
       # 可选：真实本地人工盘赔目录。在 .env 中设 OE_MANUAL_ODDS_ROOT=<宿主机源目录>
       # （如 D:\ocr_python_data\FootballScreenshotOcr\output），compose 会把它 bind-mount
       # 到容器 /tmp/manual-odds（只读），此处指向该挂载点供后端扫描。

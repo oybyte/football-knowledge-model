@@ -97,6 +97,8 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
 
   // 限流存储后端（函数体作用域，getStatus 可观测；http 分支内再按环境变量定值）
   let rateLimitStore = 'memory';
+  // TLS 终止是否启用（.env: OE_TLS_CERT / OE_TLS_KEY 同设即 HTTPS）
+  let tlsOn = false;
 
   const svc = {
     ...persistence,
@@ -109,6 +111,7 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
     getStatus() {
       return {
         dbPath,
+        scheme: tlsOn ? 'https' : 'http',
         infra: {
           cache: cacheLayer.cache.constructor.name,
           queue: analysisQueue.constructor.name,
@@ -144,7 +147,19 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
     const rateLimitWindowMs = Number(process.env.OE_RATE_LIMIT_WINDOW_MS) || undefined;
     // 限流存储：memory（默认，单实例）| redis（多实例共享计数，需 Redis 已接线）
     rateLimitStore = process.env.OE_RATE_LIMIT_STORE === 'redis' && redisClient ? 'redis' : 'memory';
-    const server = createHttpServer(svc, { logger, apiKey, rateLimitMax, rateLimitWindowMs, rateLimitStore, redis: redisClient });
+    // TLS 终止：OE_TLS_CERT / OE_TLS_KEY 同设即 HTTPS（缺任一即视为未启用并告警提示）
+    const tlsCertificate = (typeof http === 'object' && http.tlsCertificate) || process.env.OE_TLS_CERT;
+    const tlsKey = (typeof http === 'object' && http.tlsKey) || process.env.OE_TLS_KEY;
+    tlsOn = !!(tlsCertificate && tlsKey);
+    if ((tlsCertificate && !tlsKey) || (!tlsCertificate && tlsKey)) {
+      logger.warn('tls_misconfigured_ignored', { hasCert: !!tlsCertificate, hasKey: !!tlsKey });
+      tlsOn = false;
+    }
+    const server = createHttpServer(svc, {
+      logger, apiKey, rateLimitMax, rateLimitWindowMs, rateLimitStore, redis: redisClient,
+      tlsCertificate: tlsOn ? tlsCertificate : undefined,
+      tlsKey: tlsOn ? tlsKey : undefined,
+    });
     server.listen(requested, () => {
       svc.port = server.address().port; // port 0 → 实际分配端口
     });
