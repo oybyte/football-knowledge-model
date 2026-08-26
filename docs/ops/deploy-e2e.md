@@ -1,8 +1,20 @@
 # 部署端到端验证手册（Docker Compose 实测）
 
-生产网关/部署形态的**实现与自动化测试**均已在无 Docker 环境下落地（`server/test` 全量 378 用例绿，含生产配置合并冒烟 `deploy-smoke.test.js`）。本手册是**唯一依赖 Docker 的收尾验收**：在有 Docker 的机器上把三服务真实拉起，逐项核验生产形态。
+生产网关/部署形态的**实现与自动化测试**均已在无 Docker 环境下落地（`server/test` 全量 375 用例绿，含生产配置合并冒烟 `deploy-smoke.test.js` 与真实 Redis 守护进程级运行时验收 `real-redis-e2e.test.js`）。本手册是**唯一依赖 Docker 的收尾验收**：把三服务真实拉起（可于本机手动，或交由 CI 的 Docker runner 自动化）逐项核验生产形态。
 
 前置：已安装 Docker Engine + Docker Compose v2（`docker compose version` 可运行）。
+
+## 0a. 一键自动化验证（推荐，无需本机 Docker）
+
+仓库内置 `.github/workflows/deploy-e2e.yml`，把本手册 §0–§6 固化为 GitHub Actions 作业——在 Actions 页面 **Run workflow**（`workflow_dispatch` 手动触发，不占日常 push 资源）即可在 Docker runner 上实际 `docker compose up -d --build` 拉起三服务，并确定性断言：
+
+- 编排健康：三服务 running，backend healthcheck 就绪（`service_healthy` 门控生效）、`redis-cli ping` → PONG、前端 `:8080` → 200；
+- 网关鉴权：缺 Key 401 / 无效 Key 401 / 有效 Key 200 / 被撤销 Key 403；
+- Redis 共享限流：`OE_RATE_LIMIT_STORE=redis`、`OE_RATE_LIMIT_MAX=6`，确定性序列 health(#1)→noKey(#2)→nope(#3)→key-a200(#4)→key-b403(#5)→key-a200(#6)→**key-a 429(#7)**，证明生产部署中 Redis（键 `rl:<ip>`）跨计数生效；
+- 后端全量回归：`cd server && npm test`；
+- teardown：`docker compose down -v` 清卷，保证下轮 `rl:<ip>` 从 0 开始。
+
+> 手动方式（本机有 Docker 时）见下方 §0–§6。
 
 ## 0. 准备 ↔ 一键拉起
 

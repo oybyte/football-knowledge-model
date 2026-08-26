@@ -1,0 +1,67 @@
+# ============================================================================
+# 部署端到端验证工作流（docker compose 上机实测的自动化形态）
+# 与 docs/ops/deploy-e2e.md §0–§6 对应：在 GitHub Actions 的 Docker runner 上
+# 实际拉起 redis + backend + frontend 三服务，并逐项断言生产网关/部署形态。
+#
+# 触发：手动（workflow_dispatch）。不在 push 上自动跑，避免每次提交都构建镜像、
+# 也不在默认环境持续占资源；需要时在 Actions 页 Run workflow 即可得到权威证据。
+# 其中 redis-data / oe-data 卷在 teardown 用 down -v 清零，保证 rl:<ip> 计数从 0
+# 开始，从而确定性断言行 #6 → 429（Redis 共享限流在生产部署中生效）。
+# ============================================================================
+
+name: deploy-e2e
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 构建并拉起三服务（redis + backend + frontend）
+        run: docker compose up -d --build
+        env:
+          OE_API_KEYS: key-a,key-b
+          OE_API_KEY_REVOKED: key-b
+          OE_RATE_LIMIT_STORE: redis
+          # 计数序列：health(#1) → noKey(#2)→nope(#3)→key-a200(#4)→key-b403(#5)
+          # →key-a200(#6) →key-a429(#7)。max=6 使 #6 仍放行、#7 超限，确定性 429。
+          OE_RATE_LIMIT_MAX: "6"
+
+      - name: 等待 backend 健康（service_healthy 门控 + healthcheck）
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/health || true)
+            if [ "$code" = "200" ]; then echo "backend healthy"; exit 0; fi
+            sleep 3
+          done
+          echo "backend not healthy"; docker compose ps; exit 1
+
+      - name: 编排健康 + Redis 可达
+        run: |
+          docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)" = "200"
+          docker compose exec -T redis redis-cli ping | grep -q PONG
+
+      - name: 生产形态验收 · 鉴权 401/401/200/403 + Redis 共享限流 429
+        run: |
+          base=http://localhost:3000
+          h() { curl -s -o /dev/null -w '%{http_code}' "$1" "${@:2}"; }
+          test "$(h $base/api/matches)" = "401" && echo "1 health+noKey=401 ok"
+          test "$(h $base/api/matches -H 'X-Api-Key: nope')" = "401" && echo "2 invalidKey=401 ok"
+          test "$(h $base/api/matches -H 'X-Api-Key: key-a')" = "200" && echo "3 validKey=200 ok"
+          test "$(h $base/api/matches -H 'X-Api-Key: key-b')" = "403" && echo "4 revokedKey=403 ok"
+          test "$(h $base/api/matches -H 'X-Api-Key: key-a')" = "200" && echo "5 still-budget ok"
+          test "$(h $base/api/matches -H 'X-Api-Key: key-a')" = "429" && echo "6 rate_limited=429 ok (Redis 共享计数)"
+
+      - name: 后端全量回归
+        run: npm test
+        working-directory: server
+
+      - name: 清理（含数据卷，保证下轮计数从 0）
+        if: always()
+        run: docker compose down -v
