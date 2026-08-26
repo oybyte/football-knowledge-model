@@ -58,6 +58,10 @@ jobs:
           test "$(h $base/api/matches -H 'X-Api-Key: key-a')" = "200" && echo "5 still-budget ok"
           test "$(h $base/api/matches -H 'X-Api-Key: key-a')" = "429" && echo "6 rate_limited=429 ok (Redis 共享计数)"
 
+      - name: 安装后端依赖
+        run: npm install
+        working-directory: server
+
       - name: 后端全量回归
         run: npm test
         working-directory: server
