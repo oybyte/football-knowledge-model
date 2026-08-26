@@ -121,6 +121,8 @@ docker compose down -v       # 停止并删除数据卷（Redis/DB 数据一并�
 
 本地（非 Docker）联调同样指定 `OE_REDIS_URL` 即可启用真实 Redis 缓存/队列/锁，见上文「本地运行」。
 
+> 生产网关/部署形态的端到端验收（探活 / 鉴权 401·403 / Redis 持久化跨重启 / 多实例共享限流 429）已固化为 [docs/ops/deploy-e2e.md](docs/ops/deploy-e2e.md)——在有 Docker 的机器上按 §0–§6 逐项核验即可；密钥轮换流程见 [docs/ops/key-rotation.md](docs/ops/key-rotation.md)。
+
 ## 本地真实 Redis 联调（无 Docker 环境）
 
 若本机没有 Docker，可用仓库自带的一键脚本拉起一个**真实 Redis 服务端**（Redis-for-Windows 官方社区移植，免安装单文件，首次运行自动下载到 `.tools\redis\`）：

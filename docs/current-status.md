@@ -82,7 +82,7 @@
 - 前端端到端实测（浏览器）：首页「今日可买」16 场在售赛事渲染；001 场「开启分析预测」→ 推理链加载 → 「关闭」收起 → 「详细分析」进入分析面板 → 「返回列表」退出，全按钮矩阵操作 window error / unhandledrejection 双通道捕获为零错误。
 
 ## 未实现 / 待后续
-- 服务部署与 API 网关：网关鉴权（多 Key / 撤销 / 常量时间 / sha256 哈希 / 401/403）、限流（内存 / Redis 共享两种后端，429 + Retry-After）、TLS 终止（OE_TLS_CERT / OE_TLS_KEY）、鉴权审计落库、G12 数据模型（12 张 qd_* 表 + 不可变触发器 + 索引）与密钥轮换流程（docs/ops/key-rotation.md + scripts/key-rotate.ps1）均已落地，见上文。剩余生产化：编排的端到端部署实测（docker compose up 实际拉起三服务联调，**本机无 Docker，需 Docker 机器执行**）。
+- 服务部署与 API 网关：网关鉴权（多 Key / 撤销 / 常量时间 / sha256 哈希 / 401/403）、限流（内存 / Redis 共享两种后端，429 + Retry-After）、TLS 终止（OE_TLS_CERT / OE_TLS_KEY）、鉴权审计落库、G12 数据模型（12 张 qd_* 表 + 不可变触发器 + 索引）、密钥轮换流程（docs/ops/key-rotation.md + scripts/key-rotate.ps1）与 .dockerignore 密钥上下文隔离均已落地，见上文。唯一剩余生产化：编排的端到端部署实测（docker compose up 实际拉起三服务联调）——**本机无 Docker**，完整验收步骤已固化为可执行手册 docs/ops/deploy-e2e.md，在有 Docker 的机器上按 §1–§6 即可逐步核验（探活/鉴权 401·403/Redis 持久化跨重启不丢/多实例共享限流 429）；无 Docker 的原生运行时联结证据见本文件「阶段 4 · 服务编排」一节（真实 Redis + 后端 + 前端本地三服务拉起，infra.backend=redis）。
 - 线上长期运行观测与规则持续优化流水线。
 
 ## 事实状态
