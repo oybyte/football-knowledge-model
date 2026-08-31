@@ -1,6 +1,6 @@
 # football-knowledge-model 1.0.0
 
-足球竞猜知识库检索与预测系统。当前版本以交互原型验证盘口特征、确定性规则和分析流程，架构设计同步作为后续工程实现基线。
+足球竞猜知识库检索与预测系统。当前版本包含可运行的前端原型、Node.js 后端、SQLite 持久化、Redis 接线、规则/DSL/回测/预测链和生产形态网关；架构与子系统设计文档作为持续演进的 1.0.0 基线。
 
 ## 入口
 
@@ -8,6 +8,8 @@
 - 总体架构：`docs/architecture/architecture-1.0.0.html`
 - 检索引擎：`docs/architecture/retrieval-engine-1.0.0.html`
 - 架构评审：`docs/architecture/architecture-review-1.0.0.html`
+- 子系统设计：`docs/design/`
+- 运维文档：`docs/ops/`
 - 项目索引：`docs/index.md`
 
 ## 本地运行
@@ -160,7 +162,7 @@ node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
 
 ## 当前状态
 
-原型使用本地模拟赛事和盘口数据，数据层、特征层、规则层已经解耦。真实竞彩接口、后端服务、SQLite 数据库、正式 DSL、时间泄漏校验、回测和 ROI 置信度已实现，详见 `docs/current-status.md`。
+前端仍保留明确标记的模拟/降级模式，但后端已接入真实竞彩赛程与赔率适配器、人工盘赔源、SQLite、Redis、DSL、回测、预测发布、鉴权、限流和 TLS。当前状态与未完成项详见 `docs/current-status.md`。
 
 ## 版本约定
 
