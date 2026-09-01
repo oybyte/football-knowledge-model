@@ -207,14 +207,22 @@ function renderLotteryList() {
   const datebar = `<div class="lottery-datebar"><span class="chip ${active === "all" ? "active" : ""}" onclick="setLotteryGroup('all')">全部</span>${LOTTERY_GROUPS.map(g => `<span class="chip ${active === g.id ? "active" : ""}" onclick="setLotteryGroup('${g.id}')">${g.label}</span>`).join("")}</div>`;
   const rows = matches.map(m => renderMatchRow(m)).join("");
   const total = allMatches.length;
+  const manualOnly = (typeof isManualOnlyMode === "function") && isManualOnlyMode();
+  const manualNote = manualOnly ? " · 数据源：本地人工盘赔池（非官方在售）" : "";
+  const emptyTitle = manualOnly
+    ? "本地人工盘赔池 · 该分类暂无赛事"
+    : (active === "today" ? "今日可买暂无赛事" : "该分类暂无赛事");
+  const emptySub = manualOnly
+    ? `当前为「本地人工盘赔池」模式（未接入官方在售端点），共 ${total} 场历史盘赔已入池，点「全部」或「往期」即可查看全部；按真实开赛时间归类，不伪造在售状态。`
+    : "可点右上角「手动刷新」拉取最新数据；若已连接后端数据源且当天无在售赛事，则为正常空态。";
   const emptyBlock = matches.length ? "" : (
-    `<div class="home-empty">${ICON.chart}<div class="he-t">${active === "today" ? "今日可买暂无赛事" : "该分类暂无赛事"}</div>` +
-    `<div class="he-s">可点右上角「手动刷新」拉取最新数据；若已连接后端数据源且当天无在售赛事，则为正常空态。</div>` +
+    `<div class="home-empty">${ICON.chart}<div class="he-t">${emptyTitle}</div>` +
+    `<div class="he-s">${emptySub}</div>` +
     `</div>`
   );
   return `<div class="home-list">
     <div class="home-banner">
-      <div class="hb-left"><div class="hb-title">中国体育彩票 · 竞彩足球</div><div class="hb-sub">共 ${total || 0} 场 · 已开启分析 ${onCount} 场 · 当天数据已缓存（公益网站减负，仅手动刷新会直连官方）</div></div>
+      <div class="hb-left"><div class="hb-title">中国体育彩票 · 竞彩足球</div><div class="hb-sub">共 ${total || 0} 场 · 已开启分析 ${onCount} 场 · 当天数据已缓存（公益网站减负，仅手动刷新会直连官方）${manualNote}</div></div>
       <div class="hb-right"><button class="btn sm" onclick="refreshLottery()">${ICON.replay}手动刷新</button></div>
     </div>
     ${datebar}
@@ -238,7 +246,7 @@ function renderMatchRow(m) {
   const right = on ? renderSummary(m) : renderAnalysisOff(m);
   return `<div class="match-row ${on ? "on" : ""}">
     <div class="mr-card">
-      <div class="mc-top"><span class="mc-league">${m.league}</span><span class="mc-serial">${m.serial}</span><span class="badge real">真实</span>${od ? `<span class="badge provisional" title="本地人工盘赔已关联 · ${od.snapshots} 条盘口快照 · provisional 信任级">盘赔明细 · ${od.snapshots}条</span>` : ""}</div>
+      <div class="mc-top"><span class="mc-league">${m.league}</span>${m.serial ? `<span class="mc-serial">${m.serial}</span>` : ""}<span class="badge real">${m.manualPool ? "人工盘赔" : "真实"}</span>${od ? `<span class="badge provisional" title="本地人工盘赔已关联 · ${od.snapshots} 条盘口快照 · provisional 信任级">盘赔明细 · ${od.snapshots}条</span>` : ""}</div>
       <div class="mc-teams">
         <div class="mc-team"><span class="mc-tn">${m.home}</span><span class="mc-pos">主</span></div>
         <div class="mc-vs">VS</div>
@@ -1048,5 +1056,11 @@ render();
 if (window.__ApiClient) window.__ApiClient.init();
 // 自动获取当天竞彩数据（当天缓存命中则零请求；公益网站每天最多自动直连一次）
 if (typeof fetchLotteryMatches === "function") {
-  fetchLotteryMatches(false).then(function() { render(); });
+  fetchLotteryMatches(false).then(function() {
+    // 人工盘赔回退模式（官方在售为空）→ 默认展示「全部」，单一入口即可看到本地 149 场盘赔
+    if (typeof isManualOnlyMode === "function" && isManualOnlyMode() && state.lotteryGroup === "today") {
+      state.lotteryGroup = "all";
+    }
+    render();
+  });
 }

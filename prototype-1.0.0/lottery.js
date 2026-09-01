@@ -132,6 +132,10 @@ const LOTTERY_GROUPS = [
 var _cachedRealMatches = null;
 /** 合并池盘赔明细索引：合并键 → { mergedMatchId, snapshots, merged, provisional } */
 var _cachedMergedMap = null;
+/** 最近一次构建好的 lottery 列表（官方在售 或 人工盘赔回退），供同步渲染读取 */
+var _cachedLottery = null;
+/** 最近一次拉取是否为「人工盘赔回退模式」（官方在售为空 → 本地合并池诚实降级） */
+var _manualOnly = false;
 
 // ── 语义键（与后端 normalizeTeamName 对齐：折叠全角/不换行空格/多余空白）─────
 function normName(s) {
@@ -248,7 +252,59 @@ function fetchOfficialOdds(force, api) {
 }
 
 /**
+ * 把「双源合并池」单场（本地人工盘赔扫描 md 所得）映射为内部 lottery 场次格式。
+ * 诚实降级：这些是本地人工盘赔池的历史/静态赛事，绝非官方在售，故
+ *   - provisional=true（信任级 provisional，不冒充官方 trusted）
+ *   - salesOpen=false（非官方在售，诚实标记停售）
+ *   - dateGroup 按真实开赛时间归类（多为历史 → 往期），绝不伪造进「今日可买」
+ * enrichWithOdds 会依据语义键自动挂上其盘赔明细（snapshots）。
+ */
+function mergedToLottery(raw) {
+  if (!raw || !raw.league || !raw.match_time) return null;
+  var group = computeDateGroup(raw.match_time); // 按真实开赛时间诚实分组
+  var betTypes = [
+    { key: "hafu", label: "半全场", data: false },
+    { key: "score", label: "比分", data: false },
+    { key: "ttg", label: "进球数", data: false },
+  ];
+  return {
+    id: raw.match_id,
+    real: true,
+    provisional: true, // 本地人工盘赔，非官方在售
+    manualPool: true,   // 首页可据以标注「人工盘赔池」
+    league: raw.league || "",
+    home: raw.home_team || "",
+    away: raw.away_team || "",
+    neutral: false,
+    kickoff: fmtKickoff(raw.match_time),
+    deadline: deadlineOf(raw.match_time),
+    dateGroup: group,
+    serial: "",          // 人工盘赔池无竞彩序号，留空避免伪造
+    betTypes: betTypes,
+    salesOpen: false,    // 非官方在售，诚实标记停售
+  };
+}
+
+/**
+ * 回退：当官方在售列表为空（未配置官方端点）→ 用本地合并池构建 lottery 场次。
+ * 返回 Promise<Array>，映射失败时返回空数组（绝不编造官方在售数据）。
+ */
+function buildFromMergedPool(api) {
+  if (!api || typeof api.getMergedPool !== "function") return Promise.resolve([]);
+  return Promise.resolve(api.getMergedPool()).then(function (r) {
+    if (r && r.ok && r.data && Array.isArray(r.data.pool) && r.data.pool.length) {
+      return r.data.pool.map(mergedToLottery).filter(Boolean);
+    }
+    return [];
+  })["catch"](function () { return []; });
+}
+
+/** 是否处于「人工盘赔回退模式」（官方在售为空，首页展示本地合并池）。 */
+function isManualOnlyMode() { return _manualOnly; }
+
+/**
  * 从后端 API 拉取真实竞彩数据（官方在售列表 + 合并池盘赔明细双源）。
+ * 诚实降级：官方在售为空时回退到本地人工盘赔合并池，单一入口即可看到全部本地盘赔场次。
  * @param {boolean} force true=手动刷新（?refresh=1 直连官方）；false=自动（当天缓存，公益网站减负）
  */
 function fetchRealMatches(force) {
@@ -260,7 +316,21 @@ function fetchRealMatches(force) {
     var detail = api && typeof api.getMergedPool === "function"
       ? fetchMergedDetail(api)
       : Promise.resolve({});
-    return detail.then(function () { return enrichWithOdds(lotteryMatches); });
+    return detail.then(function () {
+      // 官方在售列表为空（未配置官方端点）→ 诚实回退到本地人工盘赔合并池
+      if (lotteryMatches && lotteryMatches.length) {
+        _manualOnly = false;
+        var official = enrichWithOdds(lotteryMatches);
+        _cachedLottery = official;
+        return official;
+      }
+      _manualOnly = true;
+      return buildFromMergedPool(api).then(function (manual) {
+        var built = enrichWithOdds(manual);
+        _cachedLottery = built;
+        return built;
+      });
+    });
   });
 }
 
@@ -274,6 +344,7 @@ function fetchLotteryMatches(force) {
 
 // 同步获取当前缓存的真实比赛列表（用于渲染兜底，避免异步闪烁）
 function getCachedLotteryMatches() {
+  if (_cachedLottery && _cachedLottery.length) return _cachedLottery;
   if (_cachedRealMatches && _cachedRealMatches.length) {
     return enrichWithOdds(_cachedRealMatches.map(sportteryToLottery));
   }
@@ -290,5 +361,5 @@ function getOddsDetail(id) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { getCachedLotteryMatches, fetchLotteryMatches, getOddsDetail, LOTTERY_API, LOTTERY_GROUPS, sportteryToLottery };
+  module.exports = { getCachedLotteryMatches, fetchLotteryMatches, getOddsDetail, isManualOnlyMode, LOTTERY_API, LOTTERY_GROUPS, sportteryToLottery, mergedToLottery };
 }
