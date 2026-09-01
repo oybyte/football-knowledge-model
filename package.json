@@ -7,6 +7,7 @@
     "run": "node run.js",
     "server": "node server/bin/start.js",
     "web": "node prototype-1.0.0/serve.js",
+    "backfill:manual": "node server/scripts/backfill-manual-history.js",
     "test": "node --test \"server/test/*.test.js\""
   }
 }

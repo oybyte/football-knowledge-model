@@ -8,6 +8,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createDb } = require('./db');
+const { reconcileManualOddsToDb } = require('./db/g12/manualReconcile');
 const { createRuleService } = require('./rules');
 const { createHttpServer } = require('./http');
 const { createCacheLayer } = require('./cache');
@@ -94,6 +95,19 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
 
   const rules = createRuleService({ store: persistence.ruleStore, lockManager });
   if (doSeed) rules.seed();
+
+  // 启动期 reconciled：把磁盘人工盘赔落库为整场版本（派生层，扫盘即写入）。
+  // 失败不阻断启动；失败时合并池端点会回退磁盘扫描，功能不丢。
+  try {
+    const rec = reconcileManualOddsToDb({
+      db: persistence.db, qd: persistence.qd, env: process.env,
+      actor: { id: 'boot:reconcile', role: 'ingest' },
+      year: new Date().getFullYear(), logger,
+    });
+    logger.info('manual_odds_reconciled_on_boot', rec);
+  } catch (e) {
+    logger.warn('manual_odds_reconcile_failed', { error: e.message });
+  }
 
   // 限流存储后端（函数体作用域，getStatus 可观测；http 分支内再按环境变量定值）
   let rateLimitStore = 'memory';

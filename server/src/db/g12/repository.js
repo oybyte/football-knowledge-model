@@ -86,6 +86,28 @@ const ENTITIES = Object.freeze({
     required: ['field_id', 'field_name', 'data_type', 'family', 'description', 'version'],
     json: [],
   },
+  // ── 002 派生版：本地人工盘赔「整场版本化」物化层（磁盘为真相源，DB 为派生）──
+  qd_hist_match_version: {
+    pk: 'version_id',
+    columns: ['version_id', 'match_id', 'content_hash', 'md_path', 'league', 'home_team', 'away_team', 'neutral', 'match_time', 'match_status', 'actual_result', 'home_score', 'away_score', 'observed_at', 'received_at', 'snapshot_count', 'status_flag', 'prev_version_id', 'superseded_by', 'match_payload', 'created_at'],
+    required: ['version_id', 'match_id', 'content_hash', 'league', 'home_team', 'away_team', 'match_time', 'match_payload', 'created_at'],
+    json: ['match_payload'],
+    defaults: { neutral: 0, match_status: 'scheduled', snapshot_count: 0, status_flag: 'active' },
+  },
+  qd_hist_match_snapshot: {
+    pk: 'snapshot_id',
+    columns: ['snapshot_id', 'version_id', 'institution', 'market', 'observed_at', 'received_at', 'data', 'trust_level', 'source_id'],
+    required: ['snapshot_id', 'version_id', 'institution', 'market', 'observed_at', 'received_at', 'data', 'trust_level', 'source_id'],
+    json: ['data'],
+    defaults: { trust_level: 'provisional', source_id: 'src_manual_odds' },
+  },
+  qd_hist_scan_runs: {
+    pk: 'run_id',
+    columns: ['run_id', 'started_at', 'finished_at', 'status', 'files_seen', 'files_ok', 'files_rejected', 'imported', 'skipped', 'superseded', 'note', 'created_at'],
+    required: ['run_id', 'started_at', 'finished_at', 'status', 'created_at'],
+    json: [],
+    defaults: { files_seen: 0, files_ok: 0, files_rejected: 0, imported: 0, skipped: 0, superseded: 0 },
+  },
 });
 
 /** 不可变违规（应用层守卫；DB 触发器兜底）。 */

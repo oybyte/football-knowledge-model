@@ -10,6 +10,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const { getSource } = require('../sources/registry');
 const { CredentialVault } = require('../../vault/credentialVault');
@@ -80,10 +81,15 @@ function scanManualOddsRoot({ env = process.env, actor = ACTOR_DEFAULT, year } =
   for (const md of mdFiles) {
     let text;
     try { text = fs.readFileSync(md, 'utf8'); } catch (e) { rejected.push({ md, errors: ['read_failed'] }); continue; }
+    // 真相源指纹：整份盘口数据.md 的 sha256（供派生层整场版本化 + 幂等重扫）。
+    const contentHash = crypto.createHash('sha256').update(text, 'utf8').digest('hex');
     const parsed = parseOddsMd(text, { year, source: { source_id: SOURCE_ID, trust_level: source.trust_level } });
     if (!parsed.ok) { rejected.push({ md, errors: parsed.errors }); continue; }
     const { errors } = validateMatch(parsed.match);
     if (errors.length) { rejected.push({ md, errors }); continue; }
+    // 把真相源指纹与来源路径带回 match，供派生层整场版本化（不污染业务字段）。
+    parsed.match.content_hash = contentHash;
+    parsed.match.md_path = md;
     matches.push(parsed.match);
   }
 

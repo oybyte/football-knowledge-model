@@ -7,6 +7,7 @@
 
 const { loadMockMatches, getMockMatch } = require('../data/mock');
 const { loadManualOdds, syncSportterySchedule, syncSportteryOdds, mergeMatchSources, querySources } = require('../data');
+const { loadManualOddsFromDb } = require('../db/g12/manualReconcile');
 const { computeMatchFeatures } = require('../features');
 const { predict } = require('../engine');
 const { runBacktest, THRESHOLDS } = require('../backtest');
@@ -346,7 +347,9 @@ function getManualOddsStatus() {
 async function getMergedPool(service, params) {
   try {
     const { value: schedule } = await syncScheduleCached(service, wantRefresh(params));
-    const manual = loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+    // 合并池优先读 DB（派生层，扫盘即写入）；DB 为空时回退磁盘扫描（兼容首次启动/重置）。
+    const manual = loadManualOddsFromDb(service.qd)
+      || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
     const merged = mergeMatchSources({ schedule, manual });
     return ok({
       status: merged.ok ? 'ok' : 'degraded',
@@ -376,7 +379,8 @@ async function getMergedPool(service, params) {
 async function getMergedAnalysis(service, params) {
   try {
     const { value: schedule } = await syncScheduleCached(service, false);
-    const manual = loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+    const manual = loadManualOddsFromDb(service.qd)
+      || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
     const merged = mergeMatchSources({ schedule, manual });
     const id = decodeURIComponent(params.id || '');
     const match = (merged.pool || []).find((m) => m.match_id === id);
