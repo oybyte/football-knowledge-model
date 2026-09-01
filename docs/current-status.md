@@ -6,6 +6,8 @@
 
 当前验收产品由两部分组成：`prototype-1.0.0/` 前端验证客户端和 `server/` 后端服务。架构文档是实现基线，不等同于所有能力已经达到生产级别。官方数据、人工盘赔、模拟数据和 AI 输出必须按各自信任等级使用；置信度只用于当前分析链的相对表达，不代表生产准确率或 ROI。
 
+当前正式规则源为外部 V9.7 registry，共 88 条 R/E/S 规则。服务启动会校验 registry 和 gate index 的版本；规则源不在本仓库内，通过 `OE_V97_REGISTRY_DIR` 覆盖默认位置。旧的手写文字规则 catalog 已清空，仅保留兼容接口，不应再作为现役规则来源。
+
 ## 最终验收范围
 
 ### 1. 启动与基础运行
@@ -30,7 +32,7 @@
 
 ### 4. 规则与回测治理
 
-- 文字规则可转换为 DSL，并经过字段和语法校验后以 `draft`、`untrusted` 状态入库。
+- 历史文字规则转换接口保留为兼容壳并已清空 Mock catalog；当前 88 条 V9.7 规则由 registry loader 载入，完整原生对象以 `provisional` 进入规则存储，后续引擎阶段再消费其 atoms/effects。
 - 规则按状态机流转，正式生效前需要回测证据和审核，不允许直接覆盖历史版本。
 - 回测包含时间完整性、结果可用性、快照完整性、规则生效时间等准入检查，并输出可追溯报告。
 - SQLite 和 G12 `qd_*` 表支持幂等迁移、不可变约束、事务回滚和跨重启读取。
@@ -66,7 +68,7 @@
 - 预测发布 / 结果回填层：不可变预测记录、幂等防重、赛果回填判定、证据锁定、审计追踪。
 
 ### 阶段 2 · 后端线
-- 2.1 文字规则 → DSL 转换：catalog（15 条）+ DSL 映射 + 入库脚本（draft + untrusted，编译门控）。
+- 2.1 文字规则 → DSL 的历史兼容链：原 catalog Mock 已清空，转换入口保留为 no-op；当前现役规则由 V9.7 registry 直接载入并经过启动门禁。
 - 2.2 回测转正：promote 模块沿状态机推进达标规则至 active，不达标产出失败报告。
 - 2.3 预测链接入：engine 模块（检索引擎 + 冲突仲裁 + 预测输出 + 证据快照）。
 - 2.4 AI 引擎：多模型 provider 适配 + 规则挖掘 + 单场解读 + 审核转正 + 信任边界。
@@ -76,7 +78,7 @@
 - server/src/db/：SQLite 落库（node:sqlite 内置，无外部依赖），规则 / 预测 / 回填结果 / 证据 / 审计跨重启持久化。
 - 不可变性在 DB 层强制（触发器拒绝 UPDATE/DELETE）+ 应用层护栏双保险；幂等（INSERT OR IGNORE）、回填 once-only、事务回滚。
 - rules/index.js 新增 createRuleService({store}) 工厂，可注入 SqliteRuleStore 驱动状态机全生命周期。
-- server/src/index.js 服务启动入口：createService 工厂（SQLite 落库 + createRuleService 注入 + seed 幂等 + 优雅关闭），bin/start.js CLI（npm start，OE_DB_PATH 指定路径）。
+- server/src/index.js 服务启动入口：createService 工厂（SQLite 落库 + createRuleService 注入 + V9.7 seed 幂等 + 优雅关闭），bin/start.js CLI（`npm run server`，OE_DB_PATH 指定路径）。
 - Redis 生产接线（server/src/index.js connectRedis + createService 装配）：设置 OE_REDIS_URL（或注入 redis 实例）即自动接线三类基础设施——缓存层（RedisCacheAdapter）、分析任务队列（RedisAnalysisQueue）、规则级排他锁（RedisLockManager 注入 createRuleService）。共享单个 ioredis 客户端（lazyConnect），关闭时 clear 锁心跳并强制 disconnect；连接失败或未配置时优雅降级内存实现并记日志，不抛致命错误。getStatus().infra 上报各 backend 类型（cache/queue/lock/backend），启动与运维可观测。测试：server/test/redis-service-bootstrap.test.js（5 用例，用假 redis 实例验证 Redis backend 装配 + 无 Redis 内存回退 + 失效 url 降级）。
 - 真实 Redis 协议端到端验收（server/test/redis-resp-integration.test.js，5 用例）：用最小 RESP 协议替身（server/test/helpers/resp-server.js，纯 Node / 真实 TCP+RESP 编解码）连真实协议链路，验证 OE_REDIS_URL 下 backend=redis、缓存写/读/删、Redis 排他锁 acquire→isLocked→release（含并发被拒）、分析队列入/出、以及同一 RESP 服务器上两次独立 createService「重启后缓存 KEY 仍在 / 锁仍持 / 队列任务仍在」（缓存不丢验收）。
 - 真实 Redis 服务端端到端验收（server/test/real-redis-e2e.test.js，5 用例）：连「真实 Redis 服务端」（本机 redis-server.exe 或 docker compose 的 redis 服务）验证同一套接线在真实服务端上生效；先探测 OE_REDIS_URL 可达性，不可达自动跳过（不失败），可安全纳入全量回归。本机已用 Redis-for-Windows（tporadowski/redis v5.0.14.1，免安装单文件）实测 5/5 绿。
@@ -107,13 +109,13 @@
 - 测试：gateway.test.js（多 Key / 撤销 403 / 缺少 401 / sha256 哈希 / 常量时间 / 审计回调）+ rate-limit.test.js（未超限 + 头 / 429 + Retry-After / 不同 IP 独立计数 / 禁用 / 窗口重置 / clientIp + x-forwarded-for）+ rate-limit-redis.test.js（真实 RESP 协议走 Redis 共享计数 / 跨两个中间件对象计数合并 / 窗口 EXPIRE 过期重置 / Redis 不可用回退内存，4 用例）+ gateway-tls.test.js（自签证书生成器合法 X.509 v3 且自签校验通过 / createHttpServer 配证书即 HTTPS 往返 / createService 装配后 getStatus().scheme=https / 只配一项快速失败抛 tls_misconfigured，4 用例）+ http-server.test.js（http 层鉴权集成 Header/Query 通过、错误 401、撤销 403、health/metrics 跳过、鉴权审计落库、内存 OE_RATE_LIMIT_MAX 超限 429、OE_RATE_LIMIT_STORE=redis 走真实 RESP 共享计数 429 与 infra 上报）。
 
 ### 阶段 4 · G12 数据模型（SQLite 迁移落地）
-- server/migrations/001_init.sql：架构评审 P0 缺口的 12 张 qd_* 表（qd_rule_versions / qd_evidence_snapshots / qd_matches / qd_odds_snapshots / qd_match_features / qd_predictions / qd_analysis_commands / qd_audit_log / qd_data_sources / qd_backtest_jobs / qd_ai_candidates / qd_field_registry）全部落地，字段与设计文档（docs/design/data-model-1.0.0/data-model-1.0.0.html）逐列对齐。
-- 不可变性在 DB 层强制：6 个 qd_* 不可变触发器（禁 UPDATE/DELETE）+ 12 个查询索引 + 外键约束（如 qd_odds_snapshots → qd_matches / qd_data_sources）。复杂嵌套字段 payload_json 整存，标量列用于索引与查询。
+- server/migrations/001_init.sql：架构评审 P0 缺口的 12 张核心 qd_* 表（qd_rule_versions / qd_evidence_snapshots / qd_matches / qd_odds_snapshots / qd_match_features / qd_predictions / qd_analysis_commands / qd_audit_log / qd_data_sources / qd_backtest_jobs / qd_ai_candidates / qd_field_registry）全部落地，字段与设计文档（docs/design/data-model-1.0.0/data-model-1.0.0.html）逐列对齐；002 另增加 3 张人工盘赔历史派生表。
+- 不可变性在 DB 层强制：核心 qd_* 表 6 个不可变触发器（禁 UPDATE/DELETE）+ 核心 12 个查询索引，历史派生层另有 5 个索引 + 外键约束。复杂嵌套字段 payload_json 整存，标量列用于索引与查询。
 - server/src/db/migrate.js 迁移执行器：按版本号顺序执行 migrations/*.sql（幂等，IF NOT EXISTS 可重复执行），schema.js migrate() 在建表 + 不可变触发器后自动应用迁移。
 - server/src/db/g12/repository.js 数据访问层 createG12Repository(db)：12 张 qd_* 表的类型化写读（insert/get/count/all/listBy），列名收缩 + 必填校验（诚实失败，绝不捏造缺值）+ JSON 字段序列化 + 不可变护栏（不可变表应用层 update/delete/patch 抛 G12ImmutableError，DB 触发器兜底）。每个实体既有短别名（qd.data_sources…）也有全表名（qd.qd_data_sources…），entity 元信息可自省。
 - server/src/db/g12/backfill.js 迁移回填 backfillG12：把运行时持久化层（rule_store / prediction_store / audit_store 及外部 match/data_source/field 源）存量批量幂等回填到 G12 qd_* 表。全程事务内执行（任一步失败整体回滚）、INSERT OR IGNORE 按 PK 幂等、严格 FK 依赖序（data_sources → matches → audit_log → rule_versions → predictions）；规则/比赛/数据源缺失值不捏造，缺 match 的预测跳过并计数（predictions_skipped_no_match），审计锚点缺失补占位、已存在则优先复用。
 - 接线：ruleStore / auditStore 新增只读 listAll() 支持批量回填；createDb 装配 qd 仓库 + backfillG12。
-- 测试：migrations.test.js（12 表齐全 / 触发器生效 / 12 索引 / 幂等 / 外键 / 关键表字段对齐）+ db-persistence.test.js 更新为 17 张表 + 16 触发器断言 + g12-repository.test.js（8 用例：类型化插入读取计数 / 幂等 INSERT OR IGNORE / 缺必要列 G12ValidationError / 不可变表 update/delete/patch 抛 G12ImmutableError + DB 触发器兜底 / 外键拒绝悬空 / listBy）+ g12-backfill.test.js（3 用例：FK 序迁移到 qd_* 表且缺赛果不捏造 / 幂等重复执行增量归零 / 事务原子性中途抛错整体回滚）。
+- 测试：migrations.test.js（核心表与历史派生表 / 触发器 / 索引 / 幂等 / 外键 / 关键字段对齐）+ db-persistence.test.js（运行时表、G12 表和历史派生表持久化）+ g12-repository.test.js（类型化读写、幂等、校验、不可变和外键）+ g12-backfill.test.js（FK 序迁移、幂等和事务原子性）。
 
 ### 阶段 2 · 前端原型（prototype-1.0.0）
 - 预测链流水线、规则治理、回测结果、数据接入监控、特征引擎、DSL 引擎、AI 引擎、规则库（增强 DSL 索引 + 检索命中预览）。
@@ -122,12 +124,12 @@
 - 公益网站减负（前端）：本地 localStorage 当天缓存 + 后端当天缓存双层，自动获取每日一次，右上角「手动刷新」按钮带 refresh=1 强制直连。
 
 ## 验证
-- 后端全量回归 383 用例绿（`npm test` = `node --test "test/*.test.js"`，干净退出无残留句柄）。
+- 后端全量回归 380 用例：378 通过、0 失败、2 个外部服务用例可跳过（`npm test` = `node --test "server/test/*.test.js"`，干净退出无残留句柄）。
 - 真实 Redis 运行时验收（real-redis-e2e.test.js 2 用例，可跳过式）：对**真实 Redis daemon**（OE_TEST_REDIS_URL 或本地 127.0.0.1:16379，无则 t.skip）一验证 createService({redisUrl}) 接线 backend=redis（cache/queue/lock 均为 Redis 适配器）且「重启后缓存不丢」在真实 Redis 上成立；二验证生产形态 HTTP 运行时（http.apiKey + OE_RATE_LIMIT_STORE=redis）在真实守护进程上 infra.backend=redis、infra.rateLimit=redis，health 免鉴权 200 → 缺 Key 401 → 带 Key 200——补齐 RESP 内存替身之外的守护进程级运行时证据（补上 deploy-smoke 用 mock、real-redis 只看 infra 层之间的夹缝），CI 无外部依赖不因缺 Redis 失败。
 - 测试覆盖：数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（5 用例，连本机真实 redis-server 实测）+ G12 数据模型迁移（migrations.test.js 6 用例：12 表齐全 / 触发器生效 / 12 索引 / 幂等 / 外键 / 关键表字段对齐）+ 网关鉴权（gateway.test.js 多 Key / 撤销 403 / 缺少 401 / sha256 哈希 / 常量时间 / 审计回调）+ 限流（rate-limit.test.js 6 用例：未超限 / 429 / 独立计数 / 禁用 / 窗口重置 / clientIp + rate-limit-redis.test.js 4 用例：Redis 共享计数 / 跨实例合并 / EXPIRE 窗口重置 / Redis 宕机回退内存）+ http 层鉴权集成（Header/Query 通过、错误 401、撤销 403、health/metrics 跳过、鉴权审计落库、OE_RATE_LIMIT_MAX 超限 429、OE_RATE_LIMIT_STORE=redis 走真实 RESP 共享计数 429 + infra 上报）+ 密钥轮换生命周期（rotate-key.test.js 2 用例：加入新 Key → 宽限期双 Key 并存 → 撤销回收旧 Key，含撤销优先恒 403 断言与审计落库区 auth_ok/auth_rejected）。
 - 端口解析纯函数（resolveHttpPort）用例：不绑定真实 3000，验证显式端口 > OE_PORT > 默认 3000 优先级。
 - 本地人工盘赔源实测：目录注入后扫描 75 场比赛；单场（韩K联 金泉尚武 vs 全北现代，001 场）解析 37 份盘口快照入合并池，信任分级 provisional、0 时间泄漏、0 冲突剔除。
-- 双源合并实测（HTTP 集成）：配置本地盘赔目录 + 官方赛程端点后，联赛别名收敛使 001 场语义键对齐 → merged:true（官方数字 match_id / 队名 / 开赛时间覆盖，快照 match_id 跟随）；未命中赛程的人工场次 manual_only 保留；时间防线剔除生效；/api/merged/analysis 打通 盘口→特征→推理链（命中 R007/R008/R013，方向 favor_upper，置信度 0.5）。
+- 双源合并实测（HTTP 集成）：配置本地盘赔目录 + 官方赛程端点后，联赛别名收敛使场次语义键对齐 → merged:true（官方数字 match_id / 队名 / 开赛时间覆盖，快照 match_id 跟随）；未命中赛程的人工场次 manual_only 保留；时间防线剔除生效；/api/merged/analysis 打通盘口→特征→推理链。V9.7 真规则已完成入库和启动门禁，atoms/effects 到正式引擎求值仍属于后续阶段。
 - 原型 api-client 冒烟（mock/http 契约一致，含 merged 池与合并分析）+ 真实后端联调通过；浏览器实测「后端接入」视图从本地服务加载。
 - 生产部署形态合并冒烟（deploy-smoke.test.js 1 用例）：单进程同时启用 HTTPS（自签）+ 鉴权（API Key）+ Redis 共享限流（真实 RESP），跨真实 TLS 套接字依次断言 /api/health 200（免鉴权）→ /api/matches 缺 Key 401 → 带 Key 200 → 超限 429（rate_limited），且 getStatus() scheme=https / infra.backend=redis / infra.rateLimit=redis 三者并存——证明网关鉴权、限流、TLS、Redis 接线在生产配置下同进程协同生效。
 - 前端端到端实测（浏览器）：首页「今日可买」16 场在售赛事渲染；001 场「开启分析预测」→ 推理链加载 → 「关闭」收起 → 「详细分析」进入分析面板 → 「返回列表」退出，全按钮矩阵操作 window error / unhandledrejection 双通道捕获为零错误。

@@ -48,7 +48,10 @@ npm run        # 等价于 node run.js
 $env:OE_WEB_PORT=8080        # 前端端口，默认 8080
 $env:OE_PORT=3000            # 后端端口，默认 3000
 $env:OE_REDIS_URL="redis://localhost:6379"   # 启用真实 Redis 缓存/队列/锁（可选）
+$env:OE_V97_REGISTRY_DIR="D:\\path\\to\\v97"  # V9.7 真规则目录（默认位置不可用时配置）
 ```
+
+后端启动时会校验外部 V9.7 规则 registry 与 gate index，当前规则集为 88 条；规则文件不在本仓库内，缺失或版本不符会阻断规则 seed，避免误用旧规则或假数据。
 
 ### 网关鉴权 / 限流（可选）
 
@@ -92,6 +95,12 @@ $env:OE_TLS_KEY="C:\certs\server.key"    # 私钥文件路径
 ```powershell
 npm run server   # 仅后端 API
 npm run web      # 仅前端静态服务器
+```
+
+人工盘赔历史数据需要手动补灌时，可执行：
+
+```powershell
+npm run backfill:manual
 ```
 
 ### 仅托管原型
@@ -171,7 +180,7 @@ node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
 
 ## 数据模型（G12）
 
-架构评审 P0 缺口的 12 张 `qd_*` 表已按设计文档（`docs/design/data-model-1.0.0/data-model-1.0.0.html`）落地为 SQLite 迁移（`server/migrations/001_init.sql`）：规则版本 / 证据快照 / 比赛 / 盘口快照 / 比赛特征 / 预测 / 分析命令 / 审计 / 数据源 / 回测作业 / AI 候选 / 字段注册表。不可变性在 DB 层强制（6 个触发器禁 UPDATE/DELETE）+ 12 个查询索引 + 外键约束。服务启动时自动应用迁移（幂等，可重复执行）。
+架构评审 P0 缺口的 12 张核心 `qd_*` 表已按设计文档（`docs/design/data-model-1.0.0/data-model-1.0.0.html`）落地为 SQLite 迁移（`server/migrations/001_init.sql`）：规则版本 / 证据快照 / 比赛 / 盘口快照 / 比赛特征 / 预测 / 分析命令 / 审计 / 数据源 / 回测作业 / AI 候选 / 字段注册表。另有 `002_manual_odds_history.sql` 增加 3 张人工盘赔历史派生表，用于整场版本、盘口快照和扫盘运行记录。不可变性在 DB 层强制（核心表 6 个触发器禁 UPDATE/DELETE）+ 共 17 个查询索引 + 外键约束。服务启动时自动应用迁移（幂等，可重复执行）。
 
 配套提供 G12 数据访问层与迁移回填：
 - `server/src/db/g12/repository.js` —— `createG12Repository(db)` 为 12 张 `qd_*` 表提供类型化写读（insert/get/count/all/listBy），列名收缩 + 必填校验（诚实失败，绝不捏造缺值）+ JSON 字段序列化 + 不可变护栏（不可变表应用层 update/delete/patch 抛错，DB 触发器兜底）。

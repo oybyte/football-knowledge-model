@@ -66,7 +66,7 @@ async function connectRedis({ redisUrl, redis, logger = defaultLogger } = {}) {
  * 创建服务上下文。
  * @param {Object} [opts]
  * @param {string} [opts.dbPath] SQLite 文件路径；默认 server/data/odds-edge.db
- * @param {boolean} [opts.seed] 是否迁移原型规则（默认 true；幂等，重启安全）
+ * @param {boolean} [opts.seed] 是否载入 V9.7 真规则（默认 true；幂等，重启安全）
  * @param {boolean|number|{port:number}} [opts.http] 是否启动 HTTP 层（默认 false）
  * @param {string} [opts.redisUrl] Redis 连接串（设置后启用 Redis 缓存/队列/锁；失败回退内存）
  * @param {object} [opts.redis] 注入的 ioredis 实例（测试用，优先于 redisUrl）

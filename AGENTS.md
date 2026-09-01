@@ -3,6 +3,7 @@
 - Project version: 1.0.0.
 - The active implementation spans `prototype-1.0.0/` and `server/`.
 - Architecture and subsystem design references are under `docs/`.
+- The active rule source is the external V9.7 registry; configure `OE_V97_REGISTRY_DIR` when the default registry location is unavailable.
 - Use `npm test` for backend regression; external-service cases may skip when the service is unavailable.
 - Use `npm run server` for the API, `npm run web` for the frontend, and `npm run` for the combined launcher.
 - `docker-compose.yml` is the production-shaped local deployment contract; deployment evidence is documented under `docs/ops/`.

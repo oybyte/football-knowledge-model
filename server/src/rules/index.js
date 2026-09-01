@@ -25,7 +25,7 @@ const stateMachine = new StateMachine({ store, lockManager });
 
 let _seeded = false;
 
-/** 初始化：迁移原型 16 条规则到存储 */
+/** 初始化：将外部 V9.7 registry 真规则载入存储 */
 function seed() {
   if (_seeded) return;
   _seeded = true;
