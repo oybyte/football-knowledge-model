@@ -262,11 +262,11 @@ test('验收⑤ mask 函数递归脱敏', () => {
   assert.equal(masked.list[0].token, '***');
 });
 
-// ───────────────────────── 验收⑥ 原型 16 条规则迁移 ─────────────────────────
+// ───────────────────────── 验收⑥ V9.7 真规则迁移（Phase 1）─────────────────────────
 
-test('验收⑥ 迁移 16 条规则全部有效', () => {
+test('验收⑥ 迁移 V9.7 真规则全部有效（88 条）', () => {
   const rules = loadPrototypeRules();
-  assert.equal(rules.length, 16);
+  assert.equal(rules.length, 88);
   for (const v of rules) {
     const { ok, errors } = validateRuleVersion(v);
     assert.ok(ok, `${v.rule_id} 校验失败: ${errors.join(', ')}`);
@@ -280,46 +280,22 @@ test('验收⑥ 迁移后全部 status=active', () => {
   }
 });
 
-test('验收⑥ 占位规则 R006/R010 标记 untrusted + base_confidence=0', () => {
+test('验收⑥ 完整 V9.7 对象存入 payload.v97（含 atoms）', () => {
   const rules = loadPrototypeRules();
-  const r006 = rules.find((r) => r.rule_id === 'R006');
-  const r010 = rules.find((r) => r.rule_id === 'R010');
-  assert.equal(r006.trust_level, 'untrusted');
-  assert.equal(r006.base_confidence, 0);
-  assert.equal(r010.trust_level, 'untrusted');
-  assert.equal(r010.base_confidence, 0);
+  const r01 = rules.find((r) => r.rule_id === 'R01');
+  assert.ok(r01, 'R01 应存在');
+  assert.ok(r01.v97 && Array.isArray(r01.v97.atoms) && r01.v97.atoms.length > 0, 'payload.v97.atoms 缺失');
+  assert.equal(r01.category, '盘性');
+  assert.equal(r01.registry_version, 'V9.7');
 });
 
-test('验收⑥ R001 ConditionDSL 正确', () => {
+test('验收⑥ 规则类型覆盖 R/E/S', () => {
   const rules = loadPrototypeRules();
-  const r001 = rules.find((r) => r.rule_id === 'R001');
-  assert.equal(r001.condition.type, 'ATOMIC');
-  assert.equal(r001.condition.field, 'move_pattern');
-  assert.equal(r001.condition.op, 'EQ');
-  assert.equal(r001.condition.value, '升盘降水');
-});
-
-test('验收⑥ R009 OR 条件正确', () => {
-  const rules = loadPrototypeRules();
-  const r009 = rules.find((r) => r.rule_id === 'R009');
-  assert.equal(r009.condition.type, 'OR');
-  assert.equal(r009.condition.conditions.length, 2);
-  assert.equal(r009.condition.conditions[0].field, 'kelly_index.max');
-  assert.equal(r009.condition.conditions[1].field, 'kelly_index.min');
-});
-
-test('验收⑥ R013 AND 条件正确', () => {
-  const rules = loadPrototypeRules();
-  const r013 = rules.find((r) => r.rule_id === 'R013');
-  assert.equal(r013.condition.type, 'AND');
-  assert.equal(r013.condition.conditions[0].field, 'stability_flag');
-  assert.equal(r013.condition.conditions[1].field, 'water.upper.drop_count');
-});
-
-test('验收⑥ R004 direction=follow（动态方向）', () => {
-  const rules = loadPrototypeRules();
-  const r004 = rules.find((r) => r.rule_id === 'R004');
-  assert.equal(r004.direction, 'follow');
+  const types = {};
+  for (const v of rules) types[v.rule_type] = (types[v.rule_type] || 0) + 1;
+  assert.ok(types.R > 0, '应包含 R 类规则');
+  assert.ok(types.E > 0, '应包含 E 类规则');
+  assert.ok(types.S > 0, '应包含 S 类规则');
 });
 
 test('验收⑥ 迁移规则可全部插入 store', () => {
@@ -328,8 +304,8 @@ test('验收⑥ 迁移规则可全部插入 store', () => {
     const r = store.insert(v);
     assert.ok(r.ok, `${v.rule_id} 插入失败: ${r.errors.join(', ')}`);
   }
-  assert.equal(store.size(), 16);
-  assert.equal(store.getActive().length, 16);
+  assert.equal(store.size(), 88);
+  assert.equal(store.getActive().length, 88);
 });
 
 // ───────────────────────── 附加：前置条件 ─────────────────────────

@@ -258,8 +258,14 @@ class MinimalRedisServer {
 module.exports = { MinimalRedisServer };
 
 if (require.main === module) {
-  const srv = new MinimalRedisServer({ port: Number(process.env.PORT) || 6379 });
-  srv.listen().then((port) => {
-    console.log(`[resp-server] listening on 127.0.0.1:${port}`);
-  });
+  // 该文件既被各测试文件 `require('./helpers/resp-server')` 复用，也可被 `node resp-server.js` 直接当成「伪 Redis」启动。
+  // 但 node --test 会把 test/ 目录下所有 .js 当成测试文件加载并执行；若此处无脑起服务，该进程永不退出 → 全量 `node --test` 卡死。
+  // 故改为显式 opt-in：仅在 --serve 或 OE_RESP_SERVER=1 时启动服务（测试加载时静默退出，不影响发现）。
+  const serve = process.argv.includes('--serve') || process.env.OE_RESP_SERVER === '1';
+  if (serve) {
+    const srv = new MinimalRedisServer({ port: Number(process.env.PORT) || 6379 });
+    srv.listen().then((port) => {
+      console.log(`[resp-server] listening on 127.0.0.1:${port}`);
+    });
+  }
 }

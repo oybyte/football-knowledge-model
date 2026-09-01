@@ -12,7 +12,6 @@ const assert = require('node:assert/strict');
 
 const { compile, evaluate, weightedJaccard, MAX_DEPTH, MAX_CONDITIONS } = require('../src/dsl');
 const { applyOperator } = require('../src/dsl/operators');
-const { loadPrototypeRules } = require('../src/rules/migrate');
 const { getMockMatch } = require('../src/data/mock');
 const { computeMatchFeatures } = require('../src/features');
 const { FIELD_REGISTRY, TYPES } = require('../src/dsl/registry');
@@ -31,8 +30,35 @@ const DATA = (() => {
   };
 })();
 
+// DSL 条件构造器（与 DSL 语法一致；本测试自包含，不依赖生产 seed 数据）
+function a(field, op, value, extra = {}) { return { type: 'ATOMIC', field, op, value, ...extra }; }
+function and(...conditions) { return { type: 'AND', conditions }; }
+function or(...conditions) { return { type: 'OR', conditions }; }
+const NEVER = a('time_to_match', 'GT', 999999);
+
+// 内联 DSL 规则夹具：复刻原 16 条原型规则（R006/R010 为占位 NEVER）。
+// 注意：DSL 引擎验收用自包含夹具，避免与 V9.7 seed（88 条真规则）耦合。
+const FIXTURE = [
+  { rule_id: 'R001', version_id: 'R001#1', direction: 'favor_upper', valid_from: '2026-08-14T00:00:00+08:00', condition: a('move_pattern', 'EQ', '升盘降水') },
+  { rule_id: 'R002', version_id: 'R002#1', direction: 'favor_lower', valid_from: '2026-08-14T00:00:00+08:00', condition: a('move_pattern', 'EQ', '降盘升水') },
+  { rule_id: 'R003', version_id: 'R003#1', direction: 'favor_lower', valid_from: '2026-08-14T00:00:00+08:00', condition: a('$match.handicap.macau.initial.line - $match.handicap.avg_others.initial.line', 'LTE', -0.25) },
+  { rule_id: 'R004', version_id: 'R004#1', direction: 'follow', valid_from: '2026-08-14T00:00:00+08:00', condition: a('institution.sync_count', 'GTE', 3) },
+  { rule_id: 'R005', version_id: 'R005#1', direction: 'warning', valid_from: '2026-08-14T00:00:00+08:00', condition: a('volume.ratio', 'GTE', 2.5) },
+  { rule_id: 'R006', version_id: 'R006#1', direction: 'warning', valid_from: '2026-08-14T00:00:00+08:00', condition: NEVER },
+  { rule_id: 'R007', version_id: 'R007#1', direction: 'favor_upper', valid_from: '2026-08-14T00:00:00+08:00', condition: and(a('stability_flag', 'EQ', true), a('move_pattern', 'EQ', '稳定')) },
+  { rule_id: 'R008', version_id: 'R008#1', direction: 'warning', valid_from: '2026-08-14T00:00:00+08:00', condition: a('water.upper.dispersion', 'GTE', 0.15) },
+  { rule_id: 'R009', version_id: 'R009#1', direction: 'warning', valid_from: '2026-08-14T00:00:00+08:00', condition: or(a('kelly_index.max', 'GTE', 1.05), a('kelly_index.min', 'LTE', 0.90)) },
+  { rule_id: 'R010', version_id: 'R010#1', direction: 'warning', valid_from: '2026-08-14T00:00:00+08:00', condition: NEVER },
+  { rule_id: 'R011', version_id: 'R011#1', direction: 'favor_lower', valid_from: '2026-08-14T00:00:00+08:00', condition: a('move_pattern', 'EQ', '升盘不降水') },
+  { rule_id: 'R012', version_id: 'R012#1', direction: 'warning', valid_from: '2026-08-14T00:00:00+08:00', condition: a('volume.ratio', 'GTE', 2.5) },
+  { rule_id: 'R013', version_id: 'R013#1', direction: 'favor_upper', valid_from: '2026-08-14T00:00:00+08:00', condition: and(a('stability_flag', 'EQ', true), a('water.upper.drop_count', 'GTE', 2)) },
+  { rule_id: 'R014', version_id: 'R014#1', direction: 'favor_lower', valid_from: '2026-08-14T00:00:00+08:00', condition: and(a('stability_flag', 'EQ', true), a('water.upper.rise_count', 'GTE', 2)) },
+  { rule_id: 'R015', version_id: 'R015#1', direction: 'warning', valid_from: '2026-08-14T00:00:00+08:00', condition: and(a('betfair.dominant_ratio', 'GT', 0.45), a('betfair.heat', 'ABS_GT', 50)) },
+  { rule_id: 'R016', version_id: 'R016#1', direction: 'warning', valid_from: '2026-08-14T00:00:00+08:00', condition: a('kelly_index.home_max', 'GTE', 0.98) },
+];
+
 // 14 条真实规则（排除占位 R006/R010）
-const REAL_RULES = loadPrototypeRules().filter((r) => !['R006', 'R010'].includes(r.rule_id));
+const REAL_RULES = FIXTURE.filter((r) => !['R006', 'R010'].includes(r.rule_id));
 
 /** make a lightweight valid rule for time-leak tests */
 function mkRule(overrides = {}) {
@@ -314,7 +340,7 @@ test('模糊匹配·权重 0 不影响分数与命中', () => {
 // ───────────────────────── 外部引用 ─────────────────────────
 
 test('外部引用·单路径解析', () => {
-  const rule = loadPrototypeRules().find((x) => x.rule_id === 'R003');
+  const rule = FIXTURE.find((x) => x.rule_id === 'R003');
   const rm = evaluate(rule, DATA, { evaluated_at: T });
   // -0.5 - (-0.5) = 0；0 LTE -0.25 → false
   assert.equal(rm.hit, false);

@@ -29,10 +29,10 @@ test('启动 · 默认路径创建文件 DB + 种子规则落库', async () => {
   const svc = await createService({ dbPath: tmpDbPath() });
   const dbPath = svc.getStatus().dbPath;
   assert.ok(fs.existsSync(dbPath), 'DB 文件应存在');
-  assert.equal(svc.ruleStore.size(), PROTOTYPE_COUNT, '原型规则全部落库');
+  assert.equal(svc.ruleStore.size(), PROTOTYPE_COUNT, 'V9.7 真规则全部落库');
   assert.equal(svc.rules.getActiveRules().length, PROTOTYPE_COUNT);
-  assert.ok(svc.rules.getActiveRules().some((r) => r.rule_id === 'R001'));
-  assert.equal(svc.auditStore.size(), 0);
+  assert.ok(svc.rules.getActiveRules().some((r) => r.rule_id === 'R01'), 'V9.7 规则 R01 应存在（原型 R001 已废弃）');
+  assert.equal(svc.auditStore.size(), 0, '清空仅在检测到旧 Mock 残留时触发，全新库不写审计');
   svc.close();
   rmDir(dbPath);
 });

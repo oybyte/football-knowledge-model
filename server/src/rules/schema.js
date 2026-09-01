@@ -9,8 +9,16 @@ const RULE_STATUSES = Object.freeze([
   'draft', 'proposed', 'experiment', 'validated', 'approved', 'active', 'superseded', 'deprecated',
 ]);
 
-const CATEGORIES = Object.freeze(['odds_change', 'institution_diff', 'sensitivity', 'league_feature']);
-const DIRECTIONS = Object.freeze(['favor_upper', 'favor_lower', 'reversal', 'warning', 'follow', 'favor_home']);
+// 原型 4 类（英文，向后兼容）；V9.7 registry 中文分类作为派生索引列（完整内容在 payload.v97）。
+const CATEGORIES = Object.freeze([
+  'odds_change', 'institution_diff', 'sensitivity', 'league_feature',
+  '盘性', '让球盘', '总进球', '联赛专属', '平局冷门', '执行复盘', '执行规范', '杯赛专项', '杯赛专项（总进球）',
+]);
+// 原型 6 方向（英文）；V9.7 无单一方向语义，标量列仅作粗粒度角色标签（真实方向在 payload.v97.effects，Phase 2 引擎消费）。
+const DIRECTIONS = Object.freeze([
+  'favor_upper', 'favor_lower', 'reversal', 'warning', 'follow', 'favor_home',
+  'rule', 'execution', 'signal',
+]);
 const TRUST_LEVELS = Object.freeze(['trusted', 'provisional', 'untrusted']);
 
 /**

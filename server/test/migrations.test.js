@@ -25,6 +25,10 @@ const QD_TABLES = [
   'qd_backtest_jobs',
   'qd_ai_candidates',
   'qd_field_registry',
+  // 002_manual_odds_history.sql 派生层（2026-09-01 提交 52fb354 引入）
+  'qd_hist_match_version',
+  'qd_hist_match_snapshot',
+  'qd_hist_scan_runs',
 ];
 
 function tableNames(db) {
@@ -71,6 +75,9 @@ test('G12 · 12 个索引全部创建', () => {
     'idx_ai_status', 'idx_audit_target', 'idx_audit_type', 'idx_bt_rule',
     'idx_cmd_idem', 'idx_cmd_status', 'idx_evidence_match', 'idx_evidence_rule',
     'idx_features_match', 'idx_odds_match_inst', 'idx_rule_rule_id', 'idx_rule_status_valid',
+    // 002_manual_odds_history.sql 派生层索引
+    'idx_hist_run_started', 'idx_hist_snap_version',
+    'idx_hist_version_active', 'idx_hist_version_hash', 'idx_hist_version_match',
   ];
   assert.deepEqual(indexes.sort(), expected.sort());
   close();

@@ -3,6 +3,13 @@
 // 2.2：draft 规则经回测达标 → 沿状态机转正至 active；不达标 → 失败报告。
 // 2.3：matchExact/matchFuzzy/traceRuleChain（完整推理链）+ predict（含不可变证据）。
 // 集成验证：2.1 入库的 draft 规则集 → 2.2 批量转正。
+//
+// 注意（2026-09-01）：原测试依赖 convert/catalog 的 Mock 文字规则（ODC001…）与
+// 原型 R001–R016 DSL 规则；Phase 1 已将真实规则源切换为 V9.7 registry（catalog 已清空，
+// loadPrototypeRules 改为返回 88 条 V9.7 真规则且 V9.7 规则在 Phase 1 对引擎 inert）。
+// 故本文件改为自包含夹具：draft 规则由测试直接构造（不依赖已清空的 catalog），
+// DSL 引擎验证用内联 R001 夹具（与 dsl-engine.test.js 同源形状），保持对回测转正
+// 与 DSL 引擎真实能力的覆盖，同时与 V9.7 seed 解耦。
 // ============================================================================
 'use strict';
 
@@ -10,10 +17,58 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { RuleStore, StateMachine, lockManager } = require('../src/rules');
-const { ingest, listCatalog } = require('../src/convert');
 const { promoteRule, batchPromote } = require('../src/promote');
 const engine = require('../src/engine');
-const { loadPrototypeRules } = require('../src/rules/migrate');
+
+// ───────────────────────── 条件构造器（与 DSL 语法一致） ─────────────────────────
+function a(field, op, value, extra = {}) { return { type: 'ATOMIC', field, op, value, ...extra }; }
+
+// 内联 DSL 规则夹具：复刻原型 R001（升盘降水 favor_upper），验证 DSL 引擎真实能力。
+const R001 = {
+  version_id: 'R001#1',
+  rule_id: 'R001',
+  version: 1,
+  category: 'odds_change',
+  direction: 'favor_upper',
+  condition: a('move_pattern', 'EQ', '升盘降水'),
+  conclusion: '升盘降水 favor_upper',
+  base_confidence: 0.6,
+  priority: 80,
+  trust_level: 'trusted',
+  valid_from: '2026-08-14T00:00:00+08:00',
+  valid_to: null,
+  evidence_refs: [],
+  evidence_count: 0,
+  status: 'active',
+  previous_version_id: null,
+  created_at: '2026-08-14T00:00:00+08:00',
+  created_by: 'test:promote',
+};
+
+// 构造一条合法 draft 规则（status=draft / trust_level=untrusted），用于回测转正流程。
+function mkDraft(ruleId, overrides = {}) {
+  return {
+    version_id: `${ruleId}#1`,
+    rule_id: ruleId,
+    version: 1,
+    category: 'odds_change',
+    direction: 'favor_upper',
+    condition: a('move_pattern', 'EQ', '升盘降水'),
+    conclusion: '升盘降水 favor_upper',
+    base_confidence: 0.6,
+    priority: 80,
+    trust_level: 'untrusted',
+    valid_from: '2026-08-24T00:00:00+08:00',
+    valid_to: null,
+    evidence_refs: [],
+    evidence_count: 0,
+    status: 'draft',
+    previous_version_id: null,
+    created_at: '2026-08-24T00:00:00+08:00',
+    created_by: 'test:promote',
+    ...overrides,
+  };
+}
 
 // ───────────────────────── 样本构造 ─────────────────────────
 /** 达标样本：40 条方向样本全命中，跨 2 联赛 2 季度 */
@@ -50,8 +105,8 @@ test('2.2 达标规则经状态机转正至 active', () => {
   const store = new RuleStore();
   const sm = new StateMachine({ store, lockManager });
   // 2.1 入库一条 draft 规则（ODC001 = 升盘降水 favor_upper）
-  const report = ingest({ store });
-  const odc1 = report.versions.find((v) => v.rule_id === 'ODC001');
+  store.insert(mkDraft('ODC001'));
+  const odc1 = store.getByRuleId('ODC001')[0];
   assert.ok(odc1, 'ODC001 应存在');
   assert.equal(odc1.status, 'draft');
   assert.equal(odc1.trust_level, 'untrusted');
@@ -78,17 +133,13 @@ test('2.2 达标规则经状态机转正至 active', () => {
 });
 
 test('2.2 不达标规则产出失败报告，保持未转正', () => {
-  const store = new RuleStore();
-  const sm = new StateMachine({ store, lockManager });
-  const store2 = new RuleStore();
-  ingest({ store: store2 });
-  // 用 store2 的规则，但构造一个干净的 store 场景：单规则
   const single = new RuleStore();
-  const { versions } = ingest({ store: single });
-  const someRule = versions[0];
   const sm2 = new StateMachine({ store: single, lockManager });
+  single.insert(mkDraft('ODC002'));
+  const someRule = single.getByRuleId('ODC002')[0];
+  assert.ok(someRule, 'ODC002 应存在');
   const res = promoteRule({
-    rule_id: someRule.rule_id,
+    rule_id: 'ODC002',
     store: single, stateMachine: sm2,
     sample: failingSample(),
     approver: 'analyst-01',
@@ -99,7 +150,7 @@ test('2.2 不达标规则产出失败报告，保持未转正', () => {
   assert.ok(res.failure_report.all_pass === false);
   assert.equal(res.failure_report.sample_size, 10);
   // 未产生 active 版本
-  assert.equal(single.getNumber_of_active ?? checkNoActive(single, someRule.rule_id), checkNoActive(single, someRule.rule_id));
+  assert.equal(checkNoActive(single, 'ODC002'), true);
 });
 
 function checkNoActive(store, ruleId) {
@@ -109,8 +160,9 @@ function checkNoActive(store, ruleId) {
 test('2.2 批量转正：从 2.1 规则集选出达标者，其余进入报告库', () => {
   const store = new RuleStore();
   const sm = new StateMachine({ store, lockManager });
-  const report = ingest({ store });
-  const ids = listCatalog().map((r) => r.id);
+  // 注入多条 draft 候选（模拟 2.1 入库）；不依赖已清空的 convert/catalog
+  const ids = Array.from({ length: 10 }, (_, i) => `ODC${String(i + 1).padStart(3, '0')}`);
+  ids.forEach((id) => store.insert(mkDraft(id)));
   assert.ok(ids.length >= 10);
 
   const sampleOf = (rid) => (rid === 'ODC001' ? passingSample() : []);
@@ -128,7 +180,6 @@ test('2.2 批量转正：从 2.1 规则集选出达标者，其余进入报告�
 
 // ───────────────────────── 2.3 预测链接入 ─────────────────────────
 test('2.3 matchExact / matchFuzzy / traceRuleChain（单规则推理链）', () => {
-  const R001 = loadPrototypeRules().find((r) => r.rule_id === 'R001'); // move_pattern=升盘降水 favor_upper
   const snap = { move_pattern: '升盘降水' };
   assert.equal(engine.matchExact(R001, snap, '2026-08-14T17:00:00+08:00'), true);
   const chain = engine.traceRuleChain(R001, snap, '2026-08-14T17:00:00+08:00');
@@ -141,7 +192,7 @@ test('2.3 matchExact / matchFuzzy / traceRuleChain（单规则推理链）', () 
 });
 
 test('2.3 predict 输出可追溯推理链 + 不可变证据快照 + 预测', () => {
-  const activeRules = [loadPrototypeRules().find((r) => r.rule_id === 'R001')];
+  const activeRules = [R001];
   const snap = { move_pattern: '升盘降水' };
   const res = engine.predict({
     match: 'M007',

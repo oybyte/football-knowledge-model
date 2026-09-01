@@ -10,6 +10,7 @@ const path = require('node:path');
 const { createDb } = require('./db');
 const { reconcileManualOddsToDb } = require('./db/g12/manualReconcile');
 const { createRuleService } = require('./rules');
+const { loadV97Rules } = require('./rules/v97loader');
 const { createHttpServer } = require('./http');
 const { createCacheLayer } = require('./cache');
 const { createAnalysisQueue } = require('./queue/analysisQueue');
@@ -94,7 +95,30 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
   const lockManager = redisClient ? new RedisLockManager(redisClient, { logger }) : undefined;
 
   const rules = createRuleService({ store: persistence.ruleStore, lockManager });
-  if (doSeed) rules.seed();
+  if (doSeed) {
+    // 受保护的一次性清空：仅当检测到「旧原型 Mock 残留且尚无 V9.7 规则」时清空，
+    // 以保证用户自定义规则跨重启存活（对齐「重启不丢」原则）。返回 true 表示确实发生了清空。
+    const cleared = clearLegacyMockRules(persistence.db);
+    rules.seed();
+    // 迁移标记：仅在实际发生清空时写入（替代原 Mock 残留），避免每次启动都追加审计行。
+    if (cleared) {
+      try {
+        const v97 = loadV97Rules();
+        persistence.auditStore.append({
+          timestamp: new Date().toISOString(),
+          level: 'INFO',
+          service: 'rules:seed',
+          message: 'v97_rules_seeded',
+          registry_version: v97.registry_version,
+          generated: v97.generated,
+          rule_versions: persistence.ruleStore.size(),
+          note: 'mock_cleared_by_migration_003',
+        });
+      } catch (e) {
+        logger.warn('v97_seed_marker_failed', { error: e.message });
+      }
+    }
+  }
 
   // 启动期 reconciled：把磁盘人工盘赔落库为整场版本（派生层，扫盘即写入）。
   // 失败不阻断启动；失败时合并池端点会回退磁盘扫描，功能不丢。
@@ -187,6 +211,39 @@ async function createService({ dbPath = process.env.OE_DB_PATH || DEFAULT_DB_PAT
   }
 
   return svc;
+}
+
+/**
+ * 受保护的一次性清空：清除旧原型 Mock rule_versions 残留，仅保留 V9.7 真规则。
+ *
+ * 设计要点：
+ *   - rule_versions 有不可变触发器，运行时无法直接 DELETE；故临时 DROP 两条触发器 → DELETE → 重建。
+ *   - 仅当「存在非 V9.7 残留行」且「尚无 V9.7 规则」时才清空，保护用户自定义规则跨重启存活。
+ *   - 空表（首次启动）或已迁移表（含 V9.7 标记）：跳过，不清空。
+ *
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @returns {boolean} 是否确实发生了清空
+ */
+function clearLegacyMockRules(db) {
+  // V9.7 规则在 payload_json 中带 "registry_version":"V9.7" 标记；已迁移表直接跳过。
+  const hasV97 = db.prepare(
+    "SELECT 1 FROM rule_versions WHERE payload_json LIKE '%\"registry_version\":\"V9.7\"%' LIMIT 1",
+  ).get();
+  if (hasV97) return false;
+
+  const hasRows = db.prepare('SELECT 1 FROM rule_versions LIMIT 1').get();
+  if (!hasRows) return false; // 空表：seed 会直接灌入 V9.7，无需清空
+
+  // 旧 Mock 残留（如 R001–R016）：临时禁用不可变触发器后整表清空，再重建触发器。
+  db.exec('DROP TRIGGER IF EXISTS trg_rule_versions_no_update; DROP TRIGGER IF EXISTS trg_rule_versions_no_delete;');
+  db.exec('DELETE FROM rule_versions;');
+  db.exec(`
+    CREATE TRIGGER trg_rule_versions_no_update BEFORE UPDATE ON rule_versions
+    BEGIN SELECT RAISE(ABORT, 'immutable_violation: UPDATE not allowed on rule_versions'); END;
+    CREATE TRIGGER trg_rule_versions_no_delete BEFORE DELETE ON rule_versions
+    BEGIN SELECT RAISE(ABORT, 'immutable_violation: DELETE not allowed on rule_versions'); END;
+  `);
+  return true;
 }
 
 /** 解析 HTTP 监听端口（纯函数，便于测试，不触碰真实绑定）。 */
