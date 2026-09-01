@@ -30,6 +30,7 @@ const NAV = [
   { id: "governance",label: "规则治理", icon: "book" },
   { id: "backtest", label: "回测",     icon: "trending" },
   { id: "ingest",   label: "数据接入", icon: "layers" },
+  { id: "historical", label: "历史赛事", icon: "ball" },
   { id: "feature",  label: "特征引擎", icon: "chart" },
   { id: "dsl",      label: "DSL 引擎", icon: "filter" },
   { id: "api",      label: "后端接入", icon: "plus" },
@@ -44,6 +45,7 @@ const PAGE_TITLES = {
   governance:["规则治理", "规则生命周期 · 回测监督"],
   backtest:["回测",   "回测报告 · 指标监督"],
   ingest:["数据接入", "数据源 · 信任分级 · 三时间戳"],
+  historical:["历史赛事", "历史比赛处理状态总览"],
   feature:["特征引擎", "四族 + 欧指 + 必发 · point-in-time"],
   dsl:["DSL 引擎", "条件求值 · 算子 · 推理链"],
   api:["后端接入", "原型 ↔ 后端契约 · mock/真实切换"],
@@ -187,6 +189,7 @@ function render() {
   else if (state.page === "governance") main.innerHTML = (window.renderGovernance ? window.renderGovernance() : `<div class="page">规则治理模块未加载。</div>`);
   else if (state.page === "backtest") main.innerHTML = (window.renderBacktest ? window.renderBacktest() : `<div class="page">回测模块未加载。</div>`);
   else if (state.page === "ingest") main.innerHTML = (window.renderIngest ? window.renderIngest() : `<div class="page">数据接入模块未加载。</div>`);
+  else if (state.page === "historical") main.innerHTML = (window.renderHistorical ? window.renderHistorical() : `<div class="page">历史赛事模块未加载。</div>`);
   else if (state.page === "feature") main.innerHTML = (window.renderFeature ? window.renderFeature() : `<div class="page">特征引擎模块未加载。</div>`);
   else if (state.page === "dsl") main.innerHTML = (window.renderDsl ? window.renderDsl() : `<div class="page">DSL 引擎模块未加载。</div>`);
   else if (state.page === "api") { main.innerHTML = (window.renderApiView ? window.renderApiView() : `<div class="page">后端接入模块未加载。</div>`); window.__apiBoot ? window.__apiBoot() : 0; window.__ApiClient ? window.__ApiClient.init() : 0; }

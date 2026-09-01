@@ -176,6 +176,16 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
     }
     const s = manualState;
     const meta = s.meta || { total: 0, admitted: 0, rejected: 0 };
+    // 锚定状态：以合并池「已对齐官方赛程」标记（merged）按 match_id 交叉判定
+    const anchoredIds = (mergedState && Array.isArray(mergedState.pool))
+      ? new Set(mergedState.pool.filter(p => p.merged).map(p => p.match_id))
+      : null;
+    const anchorBadge = (id) => {
+      if (anchoredIds === null) return '<span class="badge muted">—</span>';
+      return anchoredIds.has(id)
+        ? '<span class="badge up">已锚定</span>'
+        : '<span class="badge info">未锚定</span>';
+    };
     const matches = (s.matches || []).map((m, i) => {
       const trust = s.trust_level === 'provisional' ? '<span class="badge warn">provisional</span>' : `<span class="badge info">${s.trust_level || '-'}</span>`;
       return `<tr>
@@ -186,9 +196,10 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
         <td class="mono">${m.snapshots}</td>
         <td>${m.actual_result || '<span class="muted">待赛果</span>'}</td>
         ${trust}
+        <td>${anchorBadge(m.match_id)}</td>
         <td><button class="btn sm" onclick="window.__ingAnalyzeManual(${i})">推理链</button></td>
       </tr>`;
-    }).join("") || '<tr><td colspan="8" class="empty">当前无已接入场次</td></tr>';
+    }).join("") || '<tr><td colspan="9" class="empty">当前无已接入场次</td></tr>';
 
     return `<div class="card-mb">
       <div class="manual-src-head">
@@ -206,9 +217,10 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
         <div class="bt-chip"><b>连线</b><span class="brand">盘口 → 特征 → 推理链</span></div>
       </div>
       <div class="ing-table-wrap manual-table-wrap"><table class="ing-table">
-        <thead><tr><th>match_id</th><th>联赛</th><th>对阵</th><th>开赛</th><th>快照</th><th>赛果</th><th>信任</th><th>操作</th></tr></thead>
+        <thead><tr><th>match_id</th><th>联赛</th><th>对阵</th><th>开赛</th><th>快照</th><th>赛果</th><th>信任</th><th>锚定</th><th>操作</th></tr></thead>
         <tbody>${matches}</tbody>
       </table></div>
+      <div class="muted tts" style="font-size:12px">「锚定」= 该场人工盘赔是否已对齐**当天**体彩在售截止锚点（trusted 基础数据；周一~周五 22:00 / 周六~周日 23:00 截止）；未锚定即 manual_only（截止日非当天或仅本地盘赔）。历史比赛不锚定。锚定状态取自双源合并池。</div>
       ${renderManualAnalysis()}
     </div>`;
   }
