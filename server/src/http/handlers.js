@@ -10,6 +10,8 @@ const { loadManualOdds, syncSportterySchedule, syncSportteryOdds, mergeMatchSour
 const { loadManualOddsFromDb } = require('../db/g12/manual_reconcile');
 const { computeMatchFeatures } = require('../features');
 const { predict } = require('../engine');
+const { evaluateMatch } = require('../engine/v97/run');
+const { listFields, getField } = require('../engine/v97/fields');
 const { runBacktest, THRESHOLDS } = require('../backtest');
 const { mineCandidates, escalateToProposed } = require('../ai');
 const { buildSamples, buildEvidence } = require('./samples');
@@ -409,6 +411,23 @@ async function getMergedAnalysis(service, params) {
     if (!match) return fail(404, 'match_not_found_in_merged_pool');
     const analysis = buildAnalysis(service, match);
     const mergedFlag = !!(match.meta && match.meta.merged);
+
+    // V9.7 真规则求值（与旧 DSL 推理链并存；响应新增 v97 块供前端消费）。
+    const v97res = evaluateMatch(match, service.rules.getActiveRules(), match.match_time);
+    const v97 = {
+      rule_count: v97res.results.length,
+      filtered_out: v97res.filtered_out,
+      rules: v97res.results.map((r) => ({
+        rule_id: r.rule_id,
+        status: r.status,
+        dimensions: r.dimensions,
+        effects: r.effects,
+        missing: r.missing,
+        no_atoms: r.no_atoms,
+      })),
+      fields: listFields().map((f) => ({ field: f, status: getField(f, v97res.ctx).status })),
+    };
+
     return ok({
       ...analysis,
       source: 'src_merged_pool',
@@ -417,6 +436,7 @@ async function getMergedAnalysis(service, params) {
       schedule_match_id: (match.meta && match.meta.schedule_match_id) || null,
       snapshots: (match.snapshots || []).length,
       trust_level: (match.snapshots[0] && match.snapshots[0].trust_level) || 'provisional',
+      v97,
     });
   } catch (e) {
     return fail(500, 'merged_analysis_error');

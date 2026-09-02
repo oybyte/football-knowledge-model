@@ -261,3 +261,75 @@ test('⑳ 凯利派生：多家机构分歧 → 极差 > 0；单机构 → insuf
   const kr = getField('kelly_range', ctx);
   assert.strictEqual(kr.status, STATUS.INSUFFICIENT, '机构不足 2 家应无结论，不得猜 0');
 });
+
+// ---------- 第二批字段（线/水位变动、比赛类型、机构共振）----------
+
+test('㉓ initial_line：初盘深度（参考机构，数值可参与 gte/lte）', () => {
+  const ctx = {
+    match: { league: '英超' },
+    markets: { handicap: { macau: { initial: { line: '0.5', home_water: 1.0, away_water: 0.84 }, current: { line: '0.5', home_water: 1.0, away_water: 0.84 } } } },
+  };
+  const f = getField('initial_line', ctx);
+  assert.strictEqual(f.status, STATUS.OK);
+  assert.strictEqual(f.value, 0.5);
+  assert.match(f.method, /初盘/);
+  // 与中文盘口名可比：gte '半一' 应为 false（0.5 < 0.75）
+  assert.strictEqual(evalOp('gte', f.value, '半一'), false);
+});
+
+test('㉔ line_change：初盘0.5 → 即盘0.25 → 退盘；幅度 0.25', () => {
+  const ctx = {
+    match: { league: '英超' },
+    markets: { handicap: { macau: { initial: { line: '0.5', home_water: 1.0, away_water: 0.84 }, current: { line: '0.25', home_water: 1.0, away_water: 0.84 } } } },
+  };
+  const f = getField('line_change', ctx);
+  assert.strictEqual(f.status, STATUS.OK);
+  assert.strictEqual(f.value, '退盘');
+  const mag = getField('line_change_magnitude', ctx);
+  assert.strictEqual(mag.value, 0.25);
+});
+
+test('㉕ line_change：缺初盘 → insufficient（不得假横盘）', () => {
+  const ctx = {
+    match: { league: '英超' },
+    markets: { handicap: { macau: { current: { line: '0.5', home_water: 1.0, away_water: 0.84 } } } },
+  };
+  assert.strictEqual(getField('line_change', ctx).status, STATUS.INSUFFICIENT);
+});
+
+test('㉖ total_goals_line_move + over_water_move：2/2.5→2.5 升盘 + 大球水位升水', () => {
+  const ctx = {
+    match: { league: '英超' },
+    markets: { over_under: { macau: { initial: { line: '2/2.5', over_odds: 0.9, under_odds: 0.9 }, current: { line: '2.5', over_odds: 1.0, under_odds: 0.8 } } } },
+  };
+  assert.strictEqual(getField('total_goals_line_move', ctx).value, '升盘');
+  assert.strictEqual(getField('over_water_move', ctx).value, '升水');
+});
+
+test('㉗ competition_type：联赛名粗粒度分类', () => {
+  const mk = (league) => getField('competition_type', { match: { league }, markets: {} });
+  assert.strictEqual(mk('英联杯').value, '杯赛');
+  assert.strictEqual(mk('日职联').value, '联赛');
+  assert.strictEqual(mk('友谊赛').value, '友谊赛');
+  assert.strictEqual(mk('欧冠杯').value, '杯赛');
+  assert.strictEqual(mk('未知赛制').status, STATUS.INSUFFICIENT, '无法判定不得瞎猜');
+});
+
+test('㉘ bookmakers_resonant_count：同深度机构数（静态共识近似）', () => {
+  const ctx = {
+    match: { league: '英超' },
+    markets: { handicap: {
+      macau: { current: { line: '1', home_water: 1.0, away_water: 0.84 } },
+      ct366: { current: { line: '1', home_water: 0.98, away_water: 0.83 } },
+      william: { current: { line: '0.5', home_water: 0.95, away_water: 0.85 } },
+    } },
+  };
+  const f = getField('bookmakers_resonant_count', ctx);
+  assert.strictEqual(f.status, STATUS.ESTIMATED);
+  assert.strictEqual(f.value, 2, '参考机构 macau depth=1，同深度 ct366 共 2 家');
+});
+
+test('㉙ toOrdinal 兼容「盘」后缀：平半盘 → 0.25（R24 none_of 比较可用）', () => {
+  assert.strictEqual(evalOp('eq', 0.25, '平半盘'), true, '数值 0.25 应等值于「平半盘」');
+  assert.strictEqual(evalOp('eq', 0.5, '半球盘'), true);
+});

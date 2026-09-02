@@ -65,6 +65,8 @@ function toOrdinal(x) {
   let s = String(x).trim();
   // 去掉「主让/客让」等让球方前缀（让球方由 line 符号单独判定，不在此处理）
   s = s.replace(/^(主让|客让)/, '');
+  // 「平半盘/半球盘」等带「盘」后缀的写法与「平半/半球」同义（R24 none_of eq '平半盘' 需要）
+  s = s.replace(/盘$/, '');
   if (s in HANDICAP_ORDINAL) return HANDICAP_ORDINAL[s];
   const v = Number(s);
   return Number.isFinite(v) ? Math.abs(v) : null;
