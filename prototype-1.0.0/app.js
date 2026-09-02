@@ -464,6 +464,41 @@ function renderAnalysisShell() {
 }
 
 // 合并盘赔场次的后端推理分析页（真实盘赔经后端规则融合，避免无 MATCHES 快照崩溃）
+// V9.7 效果维度 → 中文标签（dimensions 键名；值为规则作者中文语义，原样展示）。
+const V97_DIM_ZH = {
+  gate: "门禁", weight: "权重", signal: "信号", direction: "方向", signal_direction: "信号方向",
+  signal_level: "信号级别", classification: "分型", output: "输出", guard: "护栏", priority: "优先级",
+  process: "流程", interval: "区间", consistency: "一致性", score_coverage: "比分覆盖",
+  score_ladder: "比分阶梯", total_goals_baseline: "总进球基线", total_goals_range: "总进球区间",
+  total_goals_signal: "总进球信号", total_goals_tolerance: "总进球容差", over_ball_weight: "大球权重",
+  draw_weight: "平局权重", risk: "风险", action: "动作", phase: "阶段",
+};
+function v97DimZh(d) { return V97_DIM_ZH[d] || d; }
+
+/** v97 求值小结 HTML：命中规则（dimensions 四维口径）+ 状态分布 + 字段覆盖。 */
+function renderV97Section(v97) {
+  if (!v97 || !Array.isArray(v97.rules)) return "";
+  const tally = { hit: 0, miss: 0, insuff: 0 };
+  v97.rules.forEach((r) => {
+    if (r.status === "hit") tally.hit++;
+    else if (r.status === "miss") tally.miss++;
+    else tally.insuff++;
+  });
+  const fields = v97.fields || [];
+  const usable = fields.filter((f) => f.status !== "insufficient_data").length;
+  const hits = v97.rules.filter((r) => r.status === "hit" && r.rule_id);
+  const hitRows = hits.map((r) => {
+    const dims = Object.keys(r.dimensions || {}).map((d) =>
+      `<span class="badge dim">${v97DimZh(d)}：${(r.dimensions[d] || []).join("、")}</span>`,
+    ).join(" ");
+    return `<tr><td class="l"><span class="badge up">${r.rule_id}</span></td><td>${dims || '<span class="muted">命中（无维度输出）</span>'}</td></tr>`;
+  }).join("");
+  return `<div class="page-section" style="margin-top:14px">
+    <div class="section-title">V9.7 真规则求值 <span class="muted" style="font-weight:400">— ${tally.hit} 命中 / ${tally.miss} 未中 / ${tally.insuff} 无结论 · 字段 ${usable}/${fields.length}</span></div>
+    <table class="tbl"><tbody>${hitRows || '<tr><td class="muted">无规则命中（多数规则仍待字段覆盖，详见字段清单）</td></tr>'}</tbody></table>
+  </div>`;
+}
+
 function renderMergedAnalysisShell(ml) {
   ensureMergedAnalysis(ml);
   const od = ml.oddsDetail;
@@ -471,11 +506,14 @@ function renderMergedAnalysisShell(ml) {
   let body;
   if (!mr || mr.loading) {
     body = `<div class="page-head"><div class="ph-title">载入中</div></div><div class="off-msg">${ICON.chart}<span>载入合并池盘赔推理链路 …</span></div>`;
-  } else if (!mr.data || !mr.data.arbitration) {
-    body = `<div class="page-head"><div class="ph-title">无可用推理结果</div></div><div class="off-msg">${ICON.chart}<span>未检索到可执行规则，方向未定</span></div>`;
+  } else if (!mr.data) {
+    body = `<div class="page-head"><div class="ph-title">无可用推理结果</div></div><div class="off-msg">${ICON.chart}<span>后端未返回分析数据（可能未运行/未配置真实源）</span></div>`;
   } else {
     const d = mr.data;
     const arb = d.arbitration;
+    const pillHtml = (arb && arb.direction)
+      ? `<div class="ph-actions"><span class="vc-pill ${mergedDirCls(arb)}">${mergedDirText(arb)} · ${arb.confidence != null ? Math.round(arb.confidence * 100) : 0}%</span></div>`
+      : "";
     const hitsRows = (d.hits || []).map(function (h) {
       return `<tr><td class="l"><span class="badge ${dirCls(h.direction)}">${h.rule_id}</span></td><td>${dirLabel(h.direction)}</td><td class="num">${h.confidence}</td><td>${h.exact ? "精确" : "条件"}</td></tr>`;
     }).join("");
@@ -483,15 +521,17 @@ function renderMergedAnalysisShell(ml) {
       const v = d.features[k];
       return `<tr><td class="l">${k}</td><td class="num">${typeof v === "number" ? v.toFixed(3) : String(v == null ? "" : v)}</td></tr>`;
     }).join("");
+    const v97Html = renderV97Section(d.v97);
     body = `<div class="page-head">
         <div><div class="ph-title">${ml.home} <span class="muted">vs</span> ${ml.away}</div>
-        <div class="ph-sub">${ml.league} · ${ml.kickoff} · 序号 ${ml.serial} · 后端合并池 · 人工盘赔 ${od.snapshots} 条 (provisional)</div></div>
-        <div class="ph-actions"><span class="vc-pill ${mergedDirCls(arb)}">${mergedDirText(arb)} · ${arb.confidence != null ? Math.round(arb.confidence * 100) : 0}%</span></div>
+        <div class="ph-sub">${ml.league} · ${ml.kickoff} · 序号 ${ml.serial} · 后端合并池 · 人工盘赔 ${od.snapshots} 条 (provisional)${d.anchor_source ? " · 锚源 " + d.anchor_source : ""}</div></div>
+        ${pillHtml}
       </div>
-      <div class="page-section" style="margin-top:14px">
-        <div class="section-title">规则命中</div>
-        <table class="tbl"><tbody>${hitsRows || '<tr><td class="muted">未命中规则</td></tr>'}</tbody></table>
-      </div>
+      ${(d.hits && d.hits.length) ? `<div class="page-section" style="margin-top:14px">
+        <div class="section-title">规则命中（融合链）</div>
+        <table class="tbl"><tbody>${hitsRows}</tbody></table>
+      </div>` : ""}
+      ${v97Html}
       <div class="page-section" style="margin-top:14px">
         <div class="section-title">特征快照（真实盘赔）</div>
         <table class="tbl"><tbody>${featsHtml}</tbody></table>

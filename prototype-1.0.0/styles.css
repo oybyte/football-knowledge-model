@@ -181,6 +181,7 @@ body {
 .badge.risk { color: var(--risk); background: var(--risk-soft); }
 .badge.brand { color: var(--brand); background: var(--brand-soft); }
 .badge.info { color: var(--info); background: rgba(56,189,248,.14); }
+.badge.dim { color: var(--info); background: rgba(56,189,248,.1); border: 1px solid rgba(56,189,248,.25); }
 .badge.ok { color: var(--up); background: var(--up-soft); }
 .badge.muted { color: var(--t-3); background: var(--bg-3); }
 .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }

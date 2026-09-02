@@ -23,7 +23,7 @@ function fakeStorage(init) {
 }
 
 (async () => {
-  const service = createService({ dbPath: ':memory:', http: { port: 0 } });
+  const service = await createService({ dbPath: ':memory:', http: { port: 0 } });
   await new Promise((r) => service.server.once('listening', r));
   const port = service.server.address().port;
   const base = `http://127.0.0.1:${port}`;
@@ -47,10 +47,12 @@ function fakeStorage(init) {
   assert.ok(matches.data.some((m) => m.match_id === 'M001'), '应含 M001');
 
   // ② 分析推理链（归一化后含 hit/dir/note）
+  // 注：V9.7 接入后 mock M001 场次的旧 DSL 推理链为空属预期（现役规则 atoms 不喂 DSL）；
+  // 真规则求值经合并池 /api/merged/analysis 的 v97 块验证（见 frontend-v97.test.js）。
   const analysis = await a.getAnalysis('M001');
   assert.equal(analysis.ok, true, 'getAnalysis 应成功');
-  assert.ok(analysis.data.reasoning.length > 0, 'M001 应有命中推理链');
-  assert.ok('hit' in analysis.data.reasoning[0], '推理链应含 hit');
+  assert.ok(Array.isArray(analysis.data.reasoning), '推理链应为数组');
+  assert.ok('arbitration' in analysis.data, '应含仲裁结果');
 
   // ③ 规则库（rule_id → id 归一化）
   const rules = await a.listRules();
@@ -59,14 +61,14 @@ function fakeStorage(init) {
   assert.ok('id' in rules.data[0], 'http 规则应归一化为 id');
   assert.equal(rules.data[0].status, 'active');
 
-  // ④ 规则版本链
-  const versions = await a.getRuleVersions('R001');
+  // ④ 规则版本链（V9.7 真规则 id 为 R01/R13…，非旧原型 R001）
+  const versions = await a.getRuleVersions('R01');
   assert.equal(versions.ok, true);
   assert.ok(versions.data.length >= 1);
-  assert.equal(versions.data[0].rule_id, 'R001');
+  assert.equal(versions.data[0].rule_id, 'R01');
 
   // ⑤ 回测（sample_size → admitted 归一化）
-  const bt = await a.getBacktest('R001');
+  const bt = await a.getBacktest('R01');
   assert.equal(bt.ok, true);
   assert.ok(typeof bt.data.admitted === 'number', '回测应归一化为 admitted');
   assert.ok(bt.data.thresholds && typeof bt.data.thresholds.hit_rate === 'number');
