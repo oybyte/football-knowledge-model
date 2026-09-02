@@ -9,6 +9,7 @@
 - `architecture/retrieval-engine-1.0.0.html`：检索引擎、DSL、数据模型、API、回测和生产设计。
 - `architecture/architecture-review-1.0.0.html`：架构缺口和实施优先级评审。
 - `architecture/data-source-layering.md`：数据来源分层原则（体彩仅作基础锚定 + 本地人工盘赔作明细，先锚后明细）。
+- `../server/scripts/v97-slice-run.js`：V9.7 引擎垂直切片的真实数据验证脚本。
 
 ## 子系统设计
 

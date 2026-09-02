@@ -74,6 +74,12 @@
 - 2.4 AI 引擎：多模型 provider 适配 + 规则挖掘 + 单场解读 + 审核转正 + 信任边界。
 - 2.5 原型-后端集成：API 客户端层（mock / http 双适配 + localStorage 切换）+ 后端接入视图。http 适配已对齐本地服务联调：默认端点 http://localhost:3000（对齐 OE_PORT），后端字段归一化为视图契约（rule_id→id、candidates 数组、sample_size→admitted、推理链 {rule_id,hit,dir,note}），mock 与真实模式不改视图代码。
 
+### V9.7 引擎垂直切片
+- `server/src/engine/v97/` 已打通「盘口快照 → 字段信封 → atom 三态求值 → effects → 维度」链路；当前覆盖 5 个字段和 8 个基础算子。
+- R13 已可完整求值；R01 的 `kelly_range` 已实现让球盘派生估算路径，但仍需更多真实字段和规则覆盖。
+- 未覆盖的 203 个字段统一返回 `insufficient_data`，规则在信息不足时不出结论，禁止静默跳过或误判。
+- `server/scripts/v97-slice-run.js` 使用 DB 派生的人工盘赔历史数据做字段覆盖率和规则切片验证；该脚本是架构验证工具，不代表 88 条规则已经全部具备业务求值能力。
+
 ### 阶段 4 · 持久化存储层
 - server/src/db/：SQLite 落库（node:sqlite 内置，无外部依赖），规则 / 预测 / 回填结果 / 证据 / 审计跨重启持久化。
 - 不可变性在 DB 层强制（触发器拒绝 UPDATE/DELETE）+ 应用层护栏双保险；幂等（INSERT OR IGNORE）、回填 once-only、事务回滚。
@@ -124,9 +130,9 @@
 - 公益网站减负（前端）：本地 localStorage 当天缓存 + 后端当天缓存双层，自动获取每日一次，右上角「手动刷新」按钮带 refresh=1 强制直连。
 
 ## 验证
-- 后端全量回归 380 用例：378 通过、0 失败、2 个外部服务用例可跳过（`npm test` = `node --test "server/test/*.test.js"`，干净退出无残留句柄）。
+- 后端全量回归 403 用例：401 通过、0 失败、2 个外部服务用例可跳过（`npm test` = `node --test "server/test/*.test.js"`，干净退出无残留句柄）。
 - 真实 Redis 运行时验收（real-redis-e2e.test.js 2 用例，可跳过式）：对**真实 Redis daemon**（OE_TEST_REDIS_URL 或本地 127.0.0.1:16379，无则 t.skip）一验证 createService({redisUrl}) 接线 backend=redis（cache/queue/lock 均为 Redis 适配器）且「重启后缓存不丢」在真实 Redis 上成立；二验证生产形态 HTTP 运行时（http.apiKey + OE_RATE_LIMIT_STORE=redis）在真实守护进程上 infra.backend=redis、infra.rateLimit=redis，health 免鉴权 200 → 缺 Key 401 → 带 Key 200——补齐 RESP 内存替身之外的守护进程级运行时证据（补上 deploy-smoke 用 mock、real-redis 只看 infra 层之间的夹缝），CI 无外部依赖不因缺 Redis 失败。
-- 测试覆盖：数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（5 用例，连本机真实 redis-server 实测）+ G12 数据模型迁移（migrations.test.js 6 用例：12 表齐全 / 触发器生效 / 12 索引 / 幂等 / 外键 / 关键表字段对齐）+ 网关鉴权（gateway.test.js 多 Key / 撤销 403 / 缺少 401 / sha256 哈希 / 常量时间 / 审计回调）+ 限流（rate-limit.test.js 6 用例：未超限 / 429 / 独立计数 / 禁用 / 窗口重置 / clientIp + rate-limit-redis.test.js 4 用例：Redis 共享计数 / 跨实例合并 / EXPIRE 窗口重置 / Redis 宕机回退内存）+ http 层鉴权集成（Header/Query 通过、错误 401、撤销 403、health/metrics 跳过、鉴权审计落库、OE_RATE_LIMIT_MAX 超限 429、OE_RATE_LIMIT_STORE=redis 走真实 RESP 共享计数 429 + infra 上报）+ 密钥轮换生命周期（rotate-key.test.js 2 用例：加入新 Key → 宽限期双 Key 并存 → 撤销回收旧 Key，含撤销优先恒 403 断言与审计落库区 auth_ok/auth_rejected）。
+- 测试覆盖：数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / V9.7 字段信封与 atom 三态求值 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（外部服务不可用时跳过）+ G12 数据模型迁移 + 网关鉴权 + 内存/Redis 限流 + HTTP 鉴权集成 + 密钥轮换生命周期。
 - 端口解析纯函数（resolveHttpPort）用例：不绑定真实 3000，验证显式端口 > OE_PORT > 默认 3000 优先级。
 - 本地人工盘赔源实测：目录注入后扫描 75 场比赛；单场（韩K联 金泉尚武 vs 全北现代，001 场）解析 37 份盘口快照入合并池，信任分级 provisional、0 时间泄漏、0 冲突剔除。
 - 双源合并实测（HTTP 集成）：配置本地盘赔目录 + 官方赛程端点后，联赛别名收敛使场次语义键对齐 → merged:true（官方数字 match_id / 队名 / 开赛时间覆盖，快照 match_id 跟随）；未命中赛程的人工场次 manual_only 保留；时间防线剔除生效；/api/merged/analysis 打通盘口→特征→推理链。V9.7 真规则已完成入库和启动门禁，atoms/effects 到正式引擎求值仍属于后续阶段。
@@ -137,6 +143,7 @@
 ## 未实现 / 待后续
 - 生产环境长期运行观测、告警、容量压测和真实线上部署闭环。
 - 规则持续优化流水线，以及基于真实长期样本的 edge/ROI 校准。
+- V9.7 引擎继续补齐剩余字段、算子和规则的真实数据求值，并将切片结果接入正式检索/融合链。
 - 前端从当前后端接入视图继续演进为完整生产客户端。
 
 ## 事实状态

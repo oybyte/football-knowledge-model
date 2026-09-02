@@ -42,6 +42,8 @@ npm run        # 等价于 node run.js
 
 `run.js` 会同时拉起后端 API（`server/bin/start.js`，端口 `OE_PORT`/3000）与前端静态服务器（`prototype-1.0.0/serve.js`，端口 `OE_WEB_PORT`/8080），待前端就绪后自动打开浏览器访问 `http://localhost:8080`。按 `Ctrl+C` 会一并关闭两个子进程。
 
+Windows 下也可使用便利脚本：`python run.py` 会读取根目录 `.env` 后启动前后端并打开浏览器，`python stop.py` 用于停止本项目相关的 Node 进程；规范化的跨环境入口仍是上面的 `npm run`、`npm run server` 和 `npm run web`。
+
 常用环境变量：
 
 ```powershell
@@ -186,6 +188,18 @@ node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
 - `server/src/db/g12/repository.js` —— `createG12Repository(db)` 为 12 张 `qd_*` 表提供类型化写读（insert/get/count/all/listBy），列名收缩 + 必填校验（诚实失败，绝不捏造缺值）+ JSON 字段序列化 + 不可变护栏（不可变表应用层 update/delete/patch 抛错，DB 触发器兜底）。
 - `server/src/db/g12/backfill.js` —— `backfillG12` 把运行时持久化层存量按 FK 依赖序、事务内幂等回填到 G12 表（data_sources → matches → audit_log → rule_versions → predictions），缺 match 的预测跳过并计数、缺值不捏造。
 - `createDb`（`server/src/db`）已装配 `qd` 仓库与 `backfillG12`。测试：`test/g12-repository.test.js`（8 用例）＋ `test/g12-backfill.test.js`（3 用例）。
+
+## V9.7 引擎垂直切片
+
+`server/src/engine/v97/` 已打通一条真实数据验证链：盘口快照 → 字段信封 → atom 三态求值 → effects → 维度输出。当前切片覆盖 5 个字段、8 个基础算子，并针对 R13、R01 做真实数据验证；未覆盖字段统一返回 `insufficient_data`，不把缺失数据当成条件不满足。
+
+切片验证脚本：
+
+```powershell
+node server/scripts/v97-slice-run.js
+```
+
+该脚本用于验证字段覆盖率和引擎架构，不代表 88 条规则已经全部可求值，也不直接产出可执行的投注结论。完整规则仍以外部 V9.7 registry 为准。
 
 ## 当前状态
 
