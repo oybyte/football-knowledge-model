@@ -94,11 +94,28 @@ if (typeof window !== "undefined" && !window.__governanceLoaded) {
   }
 
   // ---- 交互：演示状态推进 + append-only 审计 ----
+  // 治理门禁（与后端 promote 对齐，收紧 AI 采纳/上线路径）：
+  //   · 进入「validated（回测达标）」与「active（在线激活）」必须当前回测全项达标；
+  //   · 未达标 → 拦截 + 审计留痕（append-only），绝不静默放行。
+  function _gatePass(id) {
+    const m = metrics(id);
+    return m ? evalBt(m).pass : false;
+  }
+  function _toast(msg) {
+    if (typeof window !== "undefined" && window.toast) window.toast(msg);
+  }
   function advance(id) {
     const cur = stateOf(id);
     const nexts = NEXT[cur] || [];
     if (!nexts.length) return;
     const to = nexts[0];
+    if ((to === "validated" || to === "active") && !_gatePass(id)) {
+      const checks = (metrics(id) ? evalBt(metrics(id)).checks : []).filter((c) => !c[1]).map((c) => c[0]).join("、");
+      Demo.audit.push({ t: nowHMS(), id, from: cur, to, note: `拦截：回测未达标（${checks || "指标缺失"}），不得进入「${LIFE[to].label}」` });
+      _toast(`回测未达标（${checks || "指标缺失"}），不能推进至「${LIFE[to].label}」`);
+      if (window.render) window.render();
+      return;
+    }
     Demo.override[id] = to;
     Demo.audit.push({ t: nowHMS(), id, from: cur, to, note: VIEW_NOTE[to] || "状态转换" });
     if (window.render) window.render();

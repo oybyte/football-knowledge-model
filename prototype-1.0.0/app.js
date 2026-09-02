@@ -934,11 +934,25 @@ function editRule(id) {
     { label: "取消", cls: "", onClick: () => true },
     { label: "保存", cls: "primary", onClick: (ov) => {
       const name = ov.querySelector("#er-name").value.trim();
-      if (name) r.name = name;
+      // 不可变版本化：每次保存记录为新版本（append-only），历史版本保留可追溯；
+      // 不静默覆盖规则定义——当前显示值 = 最新版本，旧版本进入版本历史。
+      if (name && name !== r.name) {
+        state.ruleEditHistory = state.ruleEditHistory || {};
+        const hist = (state.ruleEditHistory[id] = state.ruleEditHistory[id] || []);
+        hist.push({
+          version: hist.length + 1,
+          name,
+          prev_name: r.name,
+          edited_at: new Date().toISOString(),
+          superseded_version: hist.length, // 旧版本标记被替代（指针语义，版本内容不变）
+        });
+        r.name = name;
+        toast(`已保存 v${hist.length}（不可变版本化：历史版本保留在台账）`);
+      }
       state.enabled[id] = ov.querySelector("#er-en").value === "1";
       const thrRaw = ov.querySelector("#er-thr").value.trim();
       if (r.hasThreshold) state.thresholds[id] = thrRaw !== "" ? parseFloat(thrRaw) : (r.threshold || 0);
-      toast("规则已更新：" + id);
+      if (!name || name === r.name) toast("规则已更新（仅运行时设置）");
       return true;
     } }
   ]);
