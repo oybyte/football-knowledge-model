@@ -68,7 +68,7 @@
 | 概念 | 代码落点 |
 |------|----------|
 | 体彩锚定（基础数据） | 前端 `prototype-1.0.0/lottery.js` 的 `sportteryToLottery()`：把体彩基础字段映射为内部场次（含 `business_date`/`serial` 用于锚定与归类），**不期待其携带详细盘赔** |
-| 人工盘赔明细 | 后端 `server/src/data/manual/oddsParser.js` 解析 `盘口数据.md`；扫描契约见 `server/src/data/manual/index.js`（`OE_MANUAL_ODDS_ROOT` 下 `<子目录>/盘口数据.md`） |
+| 人工盘赔明细 | 后端 `server/src/data/manual/odds_parser.js` 解析 `盘口数据.md`；扫描契约见 `server/src/data/manual/index.js`（`OE_MANUAL_ODDS_ROOT` 下 `<子目录>/盘口数据.md`） |
 | 先锚后明细 | 前端 `enrichWithOdds()`：按 `[联赛|主|客]` 语义键去合并池（`_cachedMergedMap`）挂载人工盘赔明细 |
 | 锚定状态列 | 前端 `prototype-1.0.0/ingest.js` 的 `renderManualSource()`：交叉合并池 `merged` 标记生成「锚定」列 |
 | 诚实降级 | 前端 `lottery.js` 的 `fetchRealMatches()`：官方在售为空 → 回退本地合并池，`_manualOnly=true`，首页默认切「全部」展示，横幅标注"本地人工盘赔池（非官方在售）" |

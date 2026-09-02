@@ -54,7 +54,7 @@
 - 数据接入层：MatchSchema 三时间戳校验（observed_at / received_at / match_time）、数据源信任分级、CredentialVault 凭证隔离、mock 数据源迁移。
 - 赛事元信息归一化：队名统一（全角/不换行空格折叠）、竞彩开赛时间（YYYYMMDD + HHmm/HH）→ 北京时间 ISO 8601，主客倒置（default_home）按竞彩口径翻正。
 - 真实源适配器骨架：data/adapters/ 注册 + 竞彩官方赛程适配器。真实端点经 CredentialVault（data_source 域，ingest 角色）注入并审计；端点未配置 → 诚实返回 not_configured（零假数据），拉取失败 → degraded；basic 赛程源（无盘口快照）元信息入列。
-- 竞彩官方赔率适配器（adapters/sportteryOdds.js）：直连官方在售赔率接口，拉取当日竞彩场次（胜平负/让球胜平负/比分/总进球/半全场共 5 个奖池），请求头与移动端站点一致；已实测拉取 16 场在售赛事。
+- 竞彩官方赔率适配器（adapters/sporttery_odds.js）：直连官方在售赔率接口，拉取当日竞彩场次（胜平负/让球胜平负/比分/总进球/半全场共 5 个奖池），请求头与移动端站点一致；已实测拉取 16 场在售赛事。
 - 联赛别名收敛（data/normalize.js）：LEAGUE_ALIAS 将竞彩官方联赛全称（如「韩国职业联赛」）与人工盘赔简称（如「韩K联」）统一映射到规范名，normalizeLeague 先折叠空白再收敛；语义键对齐依赖此表（前端 lottery.js 维护同一份语义映射，前后端各自实现、语义一致）。
 - 公益网站减负缓存（HTTP 层）：官方赔率/赛程端点按「北京时间当天」缓存（日期后缀缓存键，当日 24:00 自动过期）；自动获取每日最多直连一次，后续请求命中缓存零直连；更新仅经手动刷新（?refresh=1 参数强制直连并回写缓存）。合并池端点同样命中当天缓存，直连次数不随请求增长（official-day-cache.test.js 3 用例覆盖）。
 - 本地人工盘赔源（data/manual/）：解析用户整理的「盘口数据.md」为 MatchSchema 多份盘口快照（让球 / 欧赔 / 大小球 handicap, european, over_under + bf + 澳门分时时序 + 凯利 + 赛果）。根目录经 env:OE_MANUAL_ODDS_ROOT 动态配置（迁移目录不改代码）；全部快照标记 src_manual_odds / provisional（人工数据，不冒充官方）；初/即盘无显示时间的时点按开赛前相对偏移估算并打 timing_estimate 标记，澳门分时时序用真实显示时间；所有时点严格早于开赛（防泄漏）。
@@ -100,7 +100,7 @@
 - server/src/gateway/auth.js 生产级鉴权：支持多 Key（OE_API_KEYS 逗号分隔，兼容单 Key OE_API_KEY）+ 撤销 Key（OE_API_KEY_REVOKED 逗号分隔）→ 401/403 语义。401 = 未认证（缺少或无效 Key）；403 = 已认证但无权限（Key 有效但被撤销）。有效 Key 集合 = 全部配置 Key − 撤销 Key；全部被撤销时视为未配置跳过鉴权（开发模式）。
 - 生产级密钥校验：常量时间比较（crypto.timingSafeEqual）防时序侧信道；支持 sha256 哈希密钥配置（前缀 `sha256:<hex>`，明文与哈希可混用），配置/日志不落明文密钥；撤销列表同样支持明文或哈希形式。
 - 鉴权审计落库：鉴权事件（auth_ok INFO / auth_rejected WARN）经审计回调写入 audit_logs（append-only），含 status / reason（missing_key / revoked_key / invalid_key）/ path / method，可追溯每一次认证成败。
-- 限流中间件（server/src/gateway/rateLimit.js）：按客户端 IP 限流，超限返回 429 + Retry-After，并带 X-RateLimit-Limit / X-RateLimit-Remaining 头；max<=0 禁用。所有已匹配路由（含 health/metrics）先限流后鉴权，防单客户端打爆。可经环境变量 OE_RATE_LIMIT_MAX / OE_RATE_LIMIT_WINDOW_MS 配置（默认 300 次 / 60s）。两种存储后端：
+- 限流中间件（server/src/gateway/rate_limit.js）：按客户端 IP 限流，超限返回 429 + Retry-After，并带 X-RateLimit-Limit / X-RateLimit-Remaining 头；max<=0 禁用。所有已匹配路由（含 health/metrics）先限流后鉴权，防单客户端打爆。可经环境变量 OE_RATE_LIMIT_MAX / OE_RATE_LIMIT_WINDOW_MS 配置（默认 300 次 / 60s）。两种存储后端：
   - memory（默认）：单实例内存固定窗口，满足单后端部署。
   - redis（OE_RATE_LIMIT_STORE=redis，需 OE_REDIS_URL 已接线）：多实例共享计数——键 `rl:<ip>`，INCR + EXPIRE 固定窗口（窗口锚定在首次请求的 EXPIRE），多个后端实例计数合并，实现多实例共享限流存储；Redis 不可用时回退内存限流（不熔断开放，记日志可观测）。getStatus().infra.rateLimit 上报实际后端（memory/redis）。docker-compose.yml 已透传 OE_RATE_LIMIT_STORE。
 - 鉴权范围：所有受保护 API（/api/* 业务端点）需携带 X-Api-Key 头或 ?api_key= 参数；/api/health 与 /api/metrics 跳过鉴权（供探活与监控）。未配置任何有效 Key 时跳过鉴权（auth_disabled 开发模式）。

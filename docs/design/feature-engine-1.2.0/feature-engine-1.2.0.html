@@ -213,7 +213,7 @@
 
   <div class="grid">
     <div class="card"><div class="t">本任务范围</div><div class="d">特征字段注册表映射、四族特征计算（横截面/时序/共振/异常 + 欧指 + 必发）、point-in-time 校验、特征缓存、与原型一致性测试。</div></div>
-    <div class="card"><div class="t">交付物</div><div class="d"><code>server/src/features/*</code>（adapt + compute + pointInTime + cache）。</div></div>
+    <div class="card"><div class="t">交付物</div><div class="d"><code>server/src/features/*</code>（adapt + compute + point_in_time + cache）。</div></div>
     <div class="card"><div class="t">明确不做</div><div class="d">DSL 求值（1.4）、规则存储（1.3）、回测（1.5）。特征层只产出特征值，不解释。</div></div>
     <div class="card"><div class="t">下游解锁</div><div class="d">1.4 DSL 求值器直接引用字段注册表字段；1.5 回测的 point-in-time 特征由本层保证无未来数据。</div></div>
   </div>
@@ -433,7 +433,7 @@ flowchart LR
   <ol>
     <li><code>server/src/features/adapt.js</code> —— MatchSchema 快照重组为机构 × initial/current。</li>
     <li><code>server/src/features/compute.js</code> —— 四族 + 欧指 + 必发计算（复用原型算法，输出注册表字段）。</li>
-    <li><code>server/src/features/pointInTime.js</code> —— observed_at ≤ T 过滤 + 防御性校验。</li>
+    <li><code>server/src/features/point_in_time.js</code> —— observed_at ≤ T 过滤 + 防御性校验。</li>
     <li><code>server/src/features/cache.js</code> —— 内存缓存（TTL 30min，键 <code>feat:{match_id}:{computed_at}</code>）。</li>
     <li><code>server/src/features/index.js</code> —— 入口：缓存优先 → 未命中计算。</li>
     <li><code>server/test/feature-engine.test.js</code> —— 一致性 + point-in-time + 字段名 + 缓存测试。</li>

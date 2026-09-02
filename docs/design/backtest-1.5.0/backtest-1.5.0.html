@@ -310,7 +310,7 @@ Confer: ConfidenceGate（§9 G19 时序）</code></pre>
     <li><code>server/src/backtest/metrics.js</code> —— 6 项指标 + 阈值判定。</li>
     <li><code>server/src/backtest/scheduler.js</code> —— 回测调度（时间排序 + 准入 + 指标 + 判定）。</li>
     <li><code>server/src/backtest/report.js</code> —— 可追溯回测报告。</li>
-    <li><code>server/src/backtest/confidenceGate.js</code> —— G19 跨域时序。</li>
+    <li><code>server/src/backtest/confidence_gate.js</code> —— G19 跨域时序。</li>
     <li><code>server/src/backtest/index.js</code> —— 入口。</li>
     <li><code>server/test/backtest.test.js</code> —— 6 指标 + 5 准入 + 时间泄漏阻断 + 报告可追溯 + 时序无竞态。</li>
     <li>验收：<code>node --check</code> + <code>node --test</code> 全绿。<span class="badge pass">已实现 · 22 条测试通过</span></li>

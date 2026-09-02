@@ -10,7 +10,7 @@
 if (typeof window !== "undefined" && !window.__governanceLoaded) {
   window.__governanceLoaded = true;
 
-  // ---- 8 态生命周期（复刻 server rules/stateMachine —— 示意） ----
+  // ---- 8 态生命周期（复刻 server rules/state_machine —— 示意） ----
   const LIFE = {
     draft: { label: "待草案",  tone: "mock" },
     proposed: { label: "提案评审", tone: "brand" },

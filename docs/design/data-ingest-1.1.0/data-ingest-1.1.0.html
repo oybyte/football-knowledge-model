@@ -405,7 +405,7 @@ interface MatchSchema {
   <div class="callout danger"><strong>边界铁律：</strong> AI 引擎模块可读 <code>aimodel</code> 域，<strong>但绝不可读 <code>data_source</code> 域</strong>。所有凭证读取写入审计事件 <code>credential_accessed</code>。这一约束在下一层的 AI 接入（阶段 2.4）会以权限矩阵强制复核。</div>
 
   <h3>5.2 接口契约</h3>
-  <pre><code><span class="cm">// server/src/vault/credentialVault.ts（契约）</span>
+  <pre><code><span class="cm">// server/src/vault/credential_vault.ts（契约）</span>
 interface CredentialVault {
   <span class="cm">// 仅当 principal 拥有该域权限时才返回明文，否则抛 UnauthorizedVaultError</span>
   get(principal: Actor, ref: CredentialRef): Secret;
