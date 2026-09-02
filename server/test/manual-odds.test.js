@@ -198,3 +198,29 @@ test.after(() => {
 });
 
 function MD_NAME() { return '盘口数据.md'; }
+test('①b 基础信息含「体彩期号：周三001」→ meta.match_num_str 落库（期号锚定输入）', () => {
+  const md = `# 盘口截图数据
+
+## 比赛基础信息
+
+- 赛事：日联杯
+- 比赛：八户云罗里 vs 杨木市FC（用户修正）
+- 开赛时间：09-02 17:30
+- 体彩期号：周三001
+- 数据来源：用户提供截图
+
+## 让球盘数据
+
+（主水 / 盘口 / 客水）
+| 机构 | 初盘 | 即盘 |
+|---|---|---|
+| 澳* | 0.77 / -0/0.5 / 1.01 | 0.75 / -0/0.5 / 1.03 |
+`;
+  const r = parseOddsMd(md, { year: 2026 });
+  assert.equal(r.ok, true);
+  assert.equal(r.match.meta.match_num_str, '周三001');
+  assert.equal(r.match.meta.source_kind, 'manual_md');
+  // 无期号行 → null（不臆造）
+  const r2 = parseOddsMd(md.replace('- 体彩期号：周三001\n', ''), { year: 2026 });
+  assert.equal(r2.match.meta.match_num_str, null);
+});

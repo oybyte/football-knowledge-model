@@ -146,3 +146,44 @@ test('⑥b normalizeLeague 别名表：全称→简称，简称幂等，未知�
   assert.equal(normalizeLeague(normalizeTeamName('西班牙甲级联赛')), '西甲');
   assert.equal(normalizeLeague('自定义联赛'), '自定义联赛');     // 未知原样
 });
+// ───────────────────────── ⑦ 期号锚定（确定性对齐，绕过队名 OCR 变体）─────────────────────────
+test('⑦ 官方期号一致 → 队名 OCR 变体也对齐（align_via=match_num）', () => {
+  // 真实场景：官方 2041244「日本联赛杯 八户南源 vs 枥木城」；人工 md 队名 OCR 为
+  // 「日联杯 八户云罗里 vs 杨木市FC」，但录入流程显式标注同一官方期号「周三001」。
+  const sched = scheduleMatch({
+    match_id: '2041244', league: '日本联赛杯', home_team: '八户南源', away_team: '枥木城',
+    match_time: '2026-09-02T17:30:00+08:00',
+    meta: { match_num_str: '周三001' },
+  });
+  const manual = manualMatch({
+    match_id: '日联杯_八户云罗里_vs_杨木市FC', league: '日联杯', home_team: '八户云罗里', away_team: '杨木市FC',
+    match_time: '2026-09-02T17:30:00+08:00',
+    observed_at: '2026-09-02T13:56:00+08:00', received_at: '2026-09-02T13:56:00+08:00',
+    meta: { match_num_str: '周三001' },
+  });
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
+  assert.equal(res.meta.aligned, 1, '期号一致应确定性对齐');
+  assert.equal(res.meta.conflicts, 0);
+  assert.equal(res.pool[0].meta.merged, true);
+  assert.equal(res.pool[0].meta.align_via, 'match_num');
+  assert.equal(res.pool[0].meta.schedule_match_id, '2041244');
+  assert.equal(res.pool[0].match_id, '2041244', '官方数字 ID 接管');
+  assert.equal(res.pool[0].home_team, '八户南源', '官方队名覆盖 OCR 变体');
+});
+
+test('⑦b 期号不一致 → 回退语义键；语义键也不中 → manual_only（诚实不硬配）', () => {
+  const sched = scheduleMatch({ match_id: 'A1', league: '英超', home_team: '曼城', away_team: '狼队', meta: { match_num_str: '周三002' } });
+  const manual = manualMatch({ league: '英超', home_team: '曼城', away_team: '狼队', meta: { match_num_str: '周三003' } });
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
+  assert.equal(res.pool[0].meta.merged, true, '期号不中但语义键中 → 语义键对齐');
+  assert.equal(res.pool[0].meta.align_via, 'semantic_key');
+
+  const res2 = mergeMatchSources({ schedule: { matches: [] }, manual: { matches: [manualMatch({ meta: { match_num_str: '周三003' } })] } });
+  assert.equal(res2.meta.manual_only, 1, '无官方源 → 诚实 manual_only');
+});
+
+test('⑦c normalizeLeague 日联杯系别名收敛（日本联赛杯/日联赛杯 → 日联杯）', () => {
+  assert.equal(normalizeLeague('日本联赛杯'), '日联杯');
+  assert.equal(normalizeLeague('日联赛杯'), '日联杯');
+  assert.equal(normalizeLeague('日联杯'), '日联杯');
+});

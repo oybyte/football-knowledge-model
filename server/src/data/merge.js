@@ -44,10 +44,15 @@ function mergeMatchSources({ schedule = {}, manual = {} } = {}) {
 
   // 索引赛程（同一语义键可能命中多场——取最近一场，防御噪声）
   const byKey = new Map();
+  // 期号锚定索引：官方赔率源带 meta.match_num_str（如「周三001」）；人工 md 录入流程
+  // 显式标注同一官方期号时，可跳过队名 OCR 变体差异做确定性对齐（meta.align_via='match_num'）。
+  const byMatchNum = new Map();
   for (const s of scheduleMatches) {
     const key = matchKey(s);
     const cur = byKey.get(key);
     if (!cur || Date.parse(s.match_time || 0) > Date.parse(cur.match_time || 0)) byKey.set(key, s);
+    const mn = s.meta && s.meta.match_num_str;
+    if (mn) byMatchNum.set(String(mn).trim(), s);
   }
 
   const pool = [];
@@ -56,7 +61,17 @@ function mergeMatchSources({ schedule = {}, manual = {} } = {}) {
   let manualOnly = 0;
 
   for (const m of manualMatches) {
-    const sched = byKey.get(matchKey(m));
+    // 锚定优先级：期号（确定性）> 语义键（联赛+队名收敛）
+    const manualNum = m.meta && m.meta.match_num_str;
+    let sched = null;
+    let alignVia = null;
+    if (manualNum && byMatchNum.has(String(manualNum).trim())) {
+      sched = byMatchNum.get(String(manualNum).trim());
+      alignVia = 'match_num';
+    } else {
+      sched = byKey.get(matchKey(m));
+      alignVia = sched ? 'semantic_key' : null;
+    }
 
     // 合并：以人工快照为底，官方元信息覆盖同名顶层（保留人工快照与其 trust）
     let merged;
@@ -73,7 +88,7 @@ function mergeMatchSources({ schedule = {}, manual = {} } = {}) {
         status: sched.status,
         observed_at: m.observed_at,   // 真实盘口观察时点（早于开赛），不取赛程 now
         received_at: m.received_at,
-        meta: { ...(m.meta || {}), merged: true, schedule_match_id: sched.match_id },
+        meta: { ...(m.meta || {}), merged: true, schedule_match_id: sched.match_id, align_via: alignVia },
       };
       // 同步更新每份快照的 match_id，保持 快照.match_id === 顶层.match_id
       merged.snapshots = (m.snapshots || []).map((s) => ({ ...s, match_id: merged.match_id }));

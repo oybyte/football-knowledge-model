@@ -87,6 +87,7 @@ function parseOddsMd(mdText, opts = {}) {
 
   // ── 比赛元信息 ──
   let league = '', home = '', away = '', kickoffStr = '', neutral = false;
+  let matchNumStr = null; // 官方竞彩期号（如「周三001」，供确定性锚定）
   // ── 赛果 ──
   let half = null, full = null, total = null;
   const snapshots = [];
@@ -112,6 +113,11 @@ function parseOddsMd(mdText, opts = {}) {
       home = home.replace(/[（(]中[）)]/g, '').trim();
     }
     if (/^- 开赛时间：/.test(line)) kickoffStr = line.slice(line.indexOf('：') + 1).trim();
+    // 官方竞彩期号（如「周三001」）：录入流程显式标注时，作为确定性锚定键（对齐官方 match_id）
+    if (/^- (体彩|竞彩)期号：/.test(line)) {
+      const v = line.slice(line.indexOf('：') + 1).trim();
+      if (v && v !== '无' && v !== '未知') matchNumStr = v;
+    }
     if (/^- 半场比分：/.test(line)) {
       const mm = line.match(/(\d+)\s*[-—]\s*(\d+)/); if (mm) half = { h: Number(mm[1]), a: Number(mm[2]) };
     }
@@ -268,6 +274,7 @@ function parseOddsMd(mdText, opts = {}) {
     meta: {
       source_kind: 'manual_md',
       kickoff_display: kickoffStr,
+      match_num_str: matchNumStr || null, // 官方期号（录入流程标注时存在）→ merge 期号锚定
       total_goals: total,
       half_score: half ? `${half.h}:${half.a}` : null,
     },
