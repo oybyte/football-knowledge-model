@@ -76,6 +76,27 @@ function syncScheduleCached(service, force) {
   return cachedOfficialSync(service, 'sporttery_schedule:' + bjDay(), () => syncSportterySchedule({ env: process.env }), force);
 }
 
+// ───────────────────────── 官方锚源选择（赛程 或 赔率） ─────────────────────────
+// 数据分层原则：体彩官方数据仅作「锚」定位场次（联赛/主客队/开赛时间/业务日），
+// 详细盘赔来自本地人工目录（provisional）。默认锚源 = 官方赛程
+// （env:ODDS_SPORTTERY_SCHEDULE_BASE，basic 无盘口快照）。
+// 官方赛程接口不可达/未配置时，可设 OE_SPORTTERY_ANCHOR=odds 改用官方赔率端点
+// （webapi.sporttery.cn getMatchCalculatorV1，自带赛程骨架 + businessDate，trusted）作锚源。
+// 两者均为官方 trusted 数据；锚源经响应 meta.anchor_source 诚实上报，绝不伪造。
+const ANCHOR_SCHEDULE = 'schedule';
+const ANCHOR_ODDS = 'odds';
+
+function anchorSource() {
+  return process.env.OE_SPORTTERY_ANCHOR === ANCHOR_ODDS ? ANCHOR_ODDS : ANCHOR_SCHEDULE;
+}
+
+/** 官方锚数据当天缓存同步：按锚源走对应端点（赔率源自带赛程骨架，可作锚）。 */
+function syncAnchorCached(service, force) {
+  return anchorSource() === ANCHOR_ODDS
+    ? cachedOfficialSync(service, 'sporttery_odds:' + bjDay(), () => syncSportteryOdds(), force)
+    : syncScheduleCached(service, force);
+}
+
 // ───────────────────────── GET /api/matches ─────────────────────────
 function listMatches() {
   const matches = loadMockMatches().map((m) => ({
@@ -346,13 +367,14 @@ function getManualOddsStatus() {
 // 官方赛程走当天缓存（公益网站减负）；?refresh=1 手动强制刷新赛程。
 async function getMergedPool(service, params) {
   try {
-    const { value: schedule } = await syncScheduleCached(service, wantRefresh(params));
+    const { value: schedule } = await syncAnchorCached(service, wantRefresh(params));
     // 合并池优先读 DB（派生层，扫盘即写入）；DB 为空时回退磁盘扫描（兼容首次启动/重置）。
     const manual = loadManualOddsFromDb(service.qd)
       || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
     const merged = mergeMatchSources({ schedule, manual });
     return ok({
       status: merged.ok ? 'ok' : 'degraded',
+      anchor_source: anchorSource(),
       meta: merged.meta,
       pool: merged.pool.map((m) => ({
         match_id: m.match_id,
@@ -378,7 +400,7 @@ async function getMergedPool(service, params) {
 // 官方赛程走当天缓存（公益网站减负）。
 async function getMergedAnalysis(service, params) {
   try {
-    const { value: schedule } = await syncScheduleCached(service, false);
+    const { value: schedule } = await syncAnchorCached(service, false);
     const manual = loadManualOddsFromDb(service.qd)
       || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
     const merged = mergeMatchSources({ schedule, manual });
@@ -390,6 +412,7 @@ async function getMergedAnalysis(service, params) {
     return ok({
       ...analysis,
       source: 'src_merged_pool',
+      anchor_source: anchorSource(),
       merged: mergedFlag,
       schedule_match_id: (match.meta && match.meta.schedule_match_id) || null,
       snapshots: (match.snapshots || []).length,
