@@ -6,8 +6,8 @@
 // ============================================================================
 'use strict';
 
-const sporttery = require('./sportterySchedule');
-const sportteryOdds = require('./sportteryOdds');
+const sporttery = require('./sporttery_schedule');
+const sportteryOdds = require('./sporttery_odds');
 
 /** 已注册的适配器构造器：source_id → factory */
 const ADAPTERS = Object.freeze({

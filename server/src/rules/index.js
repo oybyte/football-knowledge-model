@@ -5,8 +5,8 @@
 'use strict';
 
 const { RuleStore, ImmutableError } = require('./store');
-const { StateMachine, IllegalTransitionError, PreconditionError } = require('./stateMachine');
-const { LockManager, DEFAULT_TIMEOUT_MS, DEFAULT_HEARTBEAT_MS } = require('./lockManager');
+const { StateMachine, IllegalTransitionError, PreconditionError } = require('./state_machine');
+const { LockManager, DEFAULT_TIMEOUT_MS, DEFAULT_HEARTBEAT_MS } = require('./lock_manager');
 const { loadPrototypeRules } = require('./migrate');
 const {
   RULE_STATUSES,

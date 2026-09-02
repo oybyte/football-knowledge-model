@@ -90,7 +90,7 @@ function createRemoteAdapter(sourceId, opts) {
  * @returns {Promise<Object>} sync 结果（status: not_configured | degraded | ok）
  */
 function syncSportterySchedule(opts) {
-  const { create } = require('./adapters/sportterySchedule');
+  const { create } = require('./adapters/sporttery_schedule');
   return create(opts || {}).sync();
 }
 
@@ -101,7 +101,7 @@ function syncSportterySchedule(opts) {
  * @returns {Promise<Object>} sync 结果（status: ok | degraded）
  */
 function syncSportteryOdds(opts) {
-  const { create } = require('./adapters/sportteryOdds');
+  const { create } = require('./adapters/sporttery_odds');
   return create(opts || {}).sync();
 }
 

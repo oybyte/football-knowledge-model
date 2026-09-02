@@ -8,7 +8,7 @@
 /**
  * G19 置信度解析器。
  * @param {Object} [opts]
- * @param {import('../backtest/confidenceGate').ConfidenceGate|null} [opts.gate]
+ * @param {import('../backtest/confidence_gate').ConfidenceGate|null} [opts.gate]
  * @param {import('../lib/logger').Logger} [opts.logger]
  */
 class ConfidenceProvider {

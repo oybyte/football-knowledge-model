@@ -11,7 +11,7 @@ const assert = require('node:assert/strict');
 
 const { validateMatch, ERROR_CODES } = require('../src/data/schema');
 const { ingestMatch, ingestMockAll, ingestMockMatch, querySources } = require('../src/data');
-const { CredentialVault, UnauthorizedVaultError } = require('../src/vault/credentialVault');
+const { CredentialVault, UnauthorizedVaultError } = require('../src/vault/credential_vault');
 const { filterAudit } = require('../src/vault/audit');
 const { normalizeInstitution, normalizeLine, normalizeWater, normalizeResult } = require('../src/data/normalize');
 

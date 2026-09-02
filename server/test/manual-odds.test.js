@@ -14,7 +14,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { parseOddsMd } = require('../src/data/manual/oddsParser');
+const { parseOddsMd } = require('../src/data/manual/odds_parser');
 const { scanManualOddsRoot } = require('../src/data/manual');
 const { loadManualOdds, querySources } = require('../src/data');
 const { validateMatch } = require('../src/data/schema');

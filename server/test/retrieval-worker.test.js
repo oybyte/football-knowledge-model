@@ -18,7 +18,7 @@ const {
   computeScore,
   REVIEW_DIFF,
 } = require('../src/worker');
-const { ConfidenceGate } = require('../src/backtest/confidenceGate');
+const { ConfidenceGate } = require('../src/backtest/confidence_gate');
 const { ConfidenceProvider } = require('../src/fusion/confidence');
 
 // ───────────────────────── 测试辅助 ─────────────────────────

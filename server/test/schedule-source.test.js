@@ -19,7 +19,7 @@ const {
   createRemoteAdapter,
   querySources,
 } = require('../src/data');
-const { mapFixture, mapStatus, SOURCE_ID } = require('../src/data/adapters/sportterySchedule');
+const { mapFixture, mapStatus, SOURCE_ID } = require('../src/data/adapters/sporttery_schedule');
 const { filterAudit } = require('../src/vault/audit');
 
 /** 竞彩官方赛程报文（占位契约字段）。 */

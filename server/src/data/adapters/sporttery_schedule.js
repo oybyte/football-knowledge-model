@@ -13,7 +13,7 @@
 'use strict';
 
 const { getSource } = require('../sources/registry');
-const { CredentialVault } = require('../../vault/credentialVault');
+const { CredentialVault } = require('../../vault/credential_vault');
 const { recordAudit } = require('../../vault/audit');
 const { validateMatch, ERROR_CODES } = require('../schema');
 const { normalizeTeamName, parseMatchTime } = require('../normalize');

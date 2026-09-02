@@ -1,7 +1,7 @@
 // ============================================================================
 // Redis 并发锁管理器 — SETNX 语义，30s 超时 / 10s 心跳续期
 // 对齐实施计划 1.3：规则级排他锁，Redis 实现。
-// 保持与 LockManager（server/src/rules/lockManager.js）相同的接口签名。
+// 保持与 LockManager（server/src/rules/lock_manager.js）相同的接口签名。
 // ============================================================================
 'use strict';
 
@@ -13,7 +13,7 @@ const LOCK_PREFIX = 'oe:lock:';
 
 /**
  * Redis 规则级排他锁管理器
- * 接口兼容 LockManager（server/src/rules/lockManager.js）
+ * 接口兼容 LockManager（server/src/rules/lock_manager.js）
  */
 class RedisLockManager {
   /**

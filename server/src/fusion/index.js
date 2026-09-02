@@ -9,7 +9,7 @@ const { resolveTrust, gateCheck, isValidDirection, isValidConfidence } = require
 const { ConfidenceProvider } = require('./confidence');
 const { fuse } = require('./fuse');
 const { buildFusionDecision } = require('./decision');
-const { ConfidenceGate } = require('../backtest/confidenceGate');
+const { ConfidenceGate } = require('../backtest/confidence_gate');
 const { defaultLogger } = require('../lib/logger');
 
 // 默认单例：共享回测置信度门（G19）

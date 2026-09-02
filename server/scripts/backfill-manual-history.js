@@ -8,7 +8,7 @@
 
 const path = require('node:path');
 const { createDb } = require('../src/db');
-const { reconcileManualOddsToDb } = require('../src/db/g12/manualReconcile');
+const { reconcileManualOddsToDb } = require('../src/db/g12/manual_reconcile');
 const { defaultLogger } = require('../src/lib/logger');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'odds-edge.db');

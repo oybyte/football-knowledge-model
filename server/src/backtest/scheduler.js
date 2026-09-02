@@ -26,7 +26,7 @@ class BacktestScheduler {
   /**
    * @param {Object} [opts]
    * @param {import('../lib/logger').Logger} [opts.logger]
-   * @param {import('./confidenceGate').ConfidenceGate} [opts.confidenceGate]
+   * @param {import('./confidence_gate').ConfidenceGate} [opts.confidenceGate]
    */
   constructor(opts = {}) {
     this.logger = opts.logger || defaultLogger;

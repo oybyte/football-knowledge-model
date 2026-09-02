@@ -6,7 +6,7 @@
 
 const { adaptMatch } = require('./adapt');
 const { computeFeatures } = require('./compute');
-const { assertNoFutureData } = require('./pointInTime');
+const { assertNoFutureData } = require('./point_in_time');
 const { FeatureCache } = require('./cache');
 
 const FEATURE_VERSION = '1.0.0';

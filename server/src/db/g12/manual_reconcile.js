@@ -1,5 +1,5 @@
 // ============================================================================
-// G12 派生层 · manualReconcile —— 扫盘即写入 DB（磁盘 盘口数据.md 为真相源）
+// G12 派生层 · manual_reconcile —— 扫盘即写入 DB（磁盘 盘口数据.md 为真相源）
 // 职责：
 //   1. reconcileManualOddsToDb：把磁盘扫描得到的 parsed match 落库为「整场版本」。
 //      · 版本粒度 = 整份盘口数据.md 的 sha256（match.content_hash 已带）。

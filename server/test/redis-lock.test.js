@@ -7,7 +7,7 @@ const { describe, it, before } = require('node:test');
 const assert = require('node:assert');
 
 // 无 Redis 时使用内存锁管理器测试相同接口语义
-const { LockManager, DEFAULT_TIMEOUT_MS, DEFAULT_HEARTBEAT_MS } = require('../src/rules/lockManager');
+const { LockManager, DEFAULT_TIMEOUT_MS, DEFAULT_HEARTBEAT_MS } = require('../src/rules/lock_manager');
 
 describe('RedisLockManager 接口兼容性（通过 LockManager 验证）', () => {
   let lm;
@@ -61,7 +61,7 @@ describe('RedisLockManager 接口兼容性（通过 LockManager 验证）', () =
 
 describe('RedisLockManager 模块导出', () => {
   it('RedisLockManager 类存在', () => {
-    const mod = require('../src/lock/redisLockManager');
+    const mod = require('../src/lock/redis_lock_manager');
     assert.ok(typeof mod.RedisLockManager === 'function');
     assert.ok(typeof mod.DEFAULT_TIMEOUT_MS === 'number');
     assert.ok(typeof mod.DEFAULT_HEARTBEAT_MS === 'number');

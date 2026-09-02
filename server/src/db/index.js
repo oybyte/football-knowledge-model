@@ -7,9 +7,9 @@
 
 const { openDb, withTransaction } = require('./connection');
 const { migrate } = require('./schema');
-const { SqliteRuleStore } = require('./ruleStore');
-const { SqlitePredictionStore } = require('./predictionStore');
-const { SqliteAuditStore } = require('./auditStore');
+const { SqliteRuleStore } = require('./rule_store');
+const { SqlitePredictionStore } = require('./prediction_store');
+const { SqliteAuditStore } = require('./audit_store');
 const { createG12Repository } = require('./g12/repository');
 const { backfillG12 } = require('./g12/backfill');
 

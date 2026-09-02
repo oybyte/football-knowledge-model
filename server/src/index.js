@@ -8,13 +8,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createDb } = require('./db');
-const { reconcileManualOddsToDb } = require('./db/g12/manualReconcile');
+const { reconcileManualOddsToDb } = require('./db/g12/manual_reconcile');
 const { createRuleService } = require('./rules');
 const { loadV97Rules } = require('./rules/v97loader');
 const { createHttpServer } = require('./http');
 const { createCacheLayer } = require('./cache');
-const { createAnalysisQueue } = require('./queue/analysisQueue');
-const { RedisLockManager } = require('./lock/redisLockManager');
+const { createAnalysisQueue } = require('./queue/analysis_queue');
+const { RedisLockManager } = require('./lock/redis_lock_manager');
 const { defaultLogger } = require('./lib/logger');
 
 /** 默认 SQLite 文件路径（可用环境变量 OE_DB_PATH 覆盖） */
@@ -73,9 +73,9 @@ async function connectRedis({ redisUrl, redis, logger = defaultLogger } = {}) {
  * @param {import('./lib/logger').Logger} [opts.logger]
  * @returns {Promise<{
  *   db: import('node:sqlite').DatabaseSync,
- *   ruleStore: import('./db/ruleStore').SqliteRuleStore,
- *   predictionStore: import('./db/predictionStore').SqlitePredictionStore,
- *   auditStore: import('./db/auditStore').SqliteAuditStore,
+ *   ruleStore: import('./db/rule_store').SqliteRuleStore,
+ *   predictionStore: import('./db/prediction_store').SqlitePredictionStore,
+ *   auditStore: import('./db/audit_store').SqliteAuditStore,
  *   rules: { store, lockManager, stateMachine, seed, getActiveRules, getRuleVersions },
  *   cache?: import('./cache').RuleCache,
  *   server?: import('node:http').Server,

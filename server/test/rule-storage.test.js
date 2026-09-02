@@ -11,8 +11,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { RuleStore, ImmutableError } = require('../src/rules/store');
-const { StateMachine } = require('../src/rules/stateMachine');
-const { LockManager } = require('../src/rules/lockManager');
+const { StateMachine } = require('../src/rules/state_machine');
+const { LockManager } = require('../src/rules/lock_manager');
 const { Logger, LEVELS, mask } = require('../src/lib/logger');
 const { loadPrototypeRules } = require('../src/rules/migrate');
 const {

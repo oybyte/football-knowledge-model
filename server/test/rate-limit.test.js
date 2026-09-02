@@ -8,7 +8,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createRateLimitMiddleware, clientIp } = require('../src/gateway/rateLimit');
+const { createRateLimitMiddleware, clientIp } = require('../src/gateway/rate_limit');
 
 function mkRes() {
   const headers = {};

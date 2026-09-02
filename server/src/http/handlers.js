@@ -7,7 +7,7 @@
 
 const { loadMockMatches, getMockMatch } = require('../data/mock');
 const { loadManualOdds, syncSportterySchedule, syncSportteryOdds, mergeMatchSources, querySources } = require('../data');
-const { loadManualOddsFromDb } = require('../db/g12/manualReconcile');
+const { loadManualOddsFromDb } = require('../db/g12/manual_reconcile');
 const { computeMatchFeatures } = require('../features');
 const { predict } = require('../engine');
 const { runBacktest, THRESHOLDS } = require('../backtest');

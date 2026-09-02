@@ -6,7 +6,7 @@
 
 const { createAuthMiddleware } = require('./auth');
 const { createHealthHandler, createMetricsHandler } = require('./health');
-const { createRateLimitMiddleware, createRateLimitRedisMiddleware } = require('./rateLimit');
+const { createRateLimitMiddleware, createRateLimitRedisMiddleware } = require('./rate_limit');
 
 /**
  * 创建网关中间件集

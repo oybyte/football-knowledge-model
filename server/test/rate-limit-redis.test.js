@@ -9,7 +9,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { MinimalRedisServer } = require('./helpers/resp-server');
-const { createRateLimitRedisMiddleware, createRateLimitMiddleware } = require('../src/gateway/rateLimit');
+const { createRateLimitRedisMiddleware, createRateLimitMiddleware } = require('../src/gateway/rate_limit');
 const Redis = require('ioredis');
 
 function mkReq(ip) {

@@ -12,7 +12,7 @@
 
 const path = require('node:path');
 const { createDb } = require('../src/db');
-const { loadManualOddsFromDb } = require('../src/db/g12/manualReconcile');
+const { loadManualOddsFromDb } = require('../src/db/g12/manual_reconcile');
 const { loadV97Rules } = require('../src/rules/v97loader');
 const { adaptMatch } = require('../src/features/adapt');
 const { runRule } = require('../src/engine/v97/run');

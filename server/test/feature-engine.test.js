@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
 const { getMockMatch } = require('../src/data/mock');
 const { computeMatchFeatures, cacheHitRate, FeatureCache, FEATURE_VERSION } = require('../src/features');
 const { adaptMatch } = require('../src/features/adapt');
-const { assertNoFutureData } = require('../src/features/pointInTime');
+const { assertNoFutureData } = require('../src/features/point_in_time');
 
 // 设计文档 §3 输出字段全集（23 个）
 const OUTPUT_FIELDS = [

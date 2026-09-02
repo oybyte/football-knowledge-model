@@ -4,7 +4,7 @@
 'use strict';
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
-const { MemoryAnalysisQueue, createAnalysisQueue } = require('../src/queue/analysisQueue');
+const { MemoryAnalysisQueue, createAnalysisQueue } = require('../src/queue/analysis_queue');
 
 describe('MemoryAnalysisQueue', () => {
   let q;

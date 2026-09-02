@@ -9,7 +9,7 @@ const { createEvidenceSnapshot } = require('./evidence');
 const { computeMetrics, THRESHOLDS } = require('./metrics');
 const { BacktestScheduler, passRatio } = require('./scheduler');
 const { buildReport } = require('./report');
-const { ConfidenceGate } = require('./confidenceGate');
+const { ConfidenceGate } = require('./confidence_gate');
 
 const scheduler = new BacktestScheduler();
 const confidenceGate = new ConfidenceGate();

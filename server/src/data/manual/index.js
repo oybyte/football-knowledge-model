@@ -13,10 +13,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const { getSource } = require('../sources/registry');
-const { CredentialVault } = require('../../vault/credentialVault');
+const { CredentialVault } = require('../../vault/credential_vault');
 const { recordAudit } = require('../../vault/audit');
 const { validateMatch } = require('../schema');
-const { parseOddsMd } = require('./oddsParser');
+const { parseOddsMd } = require('./odds_parser');
 
 const SOURCE_ID = 'src_manual_odds';
 const MD_FILENAME = '盘口数据.md';
