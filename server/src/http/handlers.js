@@ -221,6 +221,35 @@ function getBacktest(service, params) {
     rule,
     actor: 'api:backtest',
   });
+  // V9.7 真实回测（DB 历史真实场次 × 真规则）：可求值覆盖 + 命中台账 + 探针（S25 大小球倾向）。
+  // 替代假数据门禁的第一步——真实数字，命中率仅在有语义探针时给出，绝不虚报。
+  let v97Real = null;
+  try {
+    const manual = loadManualOddsFromDb(service.qd);
+    if (manual && manual.matches && manual.matches.length && rule.v97) {
+      const { backtestRule } = require('../backtest/v97_real');
+      const real = backtestRule(rule, manual.matches);
+      v97Real = {
+        covered: real.tally.hit + real.tally.miss,
+        tally: real.tally,
+        ledger_count: real.ledger_count,
+        ledger_sample: real.ledger.slice(0, 10).map((e) => ({
+          match_id: e.match_id, league: e.league, home_team: e.home_team, away_team: e.away_team,
+          actual_result: e.actual_result, total_goals: e.total_goals, dimensions: e.dimensions,
+        })),
+        probe: real.probe
+          ? {
+              total: real.probe.total,
+              hits: real.probe.hits,
+              hit_rate: real.probe.hit_rate,
+              note: real.probe.note,
+            }
+          : null,
+      };
+    }
+  } catch (e) {
+    v97Real = { error: String((e && e.message) || e) };
+  }
   return ok({
     rule_id: params.id,
     job_id: job.job_id,
@@ -228,7 +257,8 @@ function getBacktest(service, params) {
     sample_size: job.metrics ? job.metrics.sample_size : 0,
     metrics: job.metrics,
     thresholds: THRESHOLDS,
-    synthetic: true,
+    synthetic: true, // 旧 DSL 合成门禁仍为占位；真实数字见 v97_real
+    v97_real: v97Real,
   });
 }
 
