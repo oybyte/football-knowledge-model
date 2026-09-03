@@ -16,6 +16,12 @@
 // ============================================================================
 'use strict';
 
+const { loadDotEnv } = require('../src/lib/load_env');
+const _loadedEnv = loadDotEnv();
+if (_loadedEnv && Object.keys(_loadedEnv).length) {
+  console.log('[odds-edge] loaded .env:', Object.keys(_loadedEnv).join(', '));
+}
+
 const { createService, resolveHttpPort } = require('../src');
 const { defaultLogger } = require('../src/lib/logger');
 

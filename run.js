@@ -16,6 +16,10 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
 
+// 本地一键启动时加载仓库 .env，使 OE_MANUAL_ODDS_ROOT / OE_SPORTTERY_ANCHOR 等
+// 配置对子进程（后端 start.js / 前端 serve.js）生效（子进程继承本进程 env）。
+require('./server/src/lib/load_env').loadDotEnv();
+
 const ROOT = __dirname;
 const WEB_PORT = Number(process.env.OE_WEB_PORT) || 8080;
 const FRONTEND_URL = `http://localhost:${WEB_PORT}`;

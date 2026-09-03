@@ -79,7 +79,7 @@
 ## 四、当前真正跑通的三条价值链
 
 1. **盘赔数据链**：OCR `盘口数据.md` → reconcile（幂等版本化）→ DB 161 场（全带赛果）→ 合并池 → 单场分析
-2. **官方锚定链**：`webapi.sporttery.cn` 赔率端点 200（当天 20 场）→ 锚源 `odds` → 期号确定性对齐（`merged=true`、官方 ID 接管）
+2. **官方锚定链**：`webapi.sporttery.cn` 赔率端点 200（当天 20 场）→ 锚源 `odds` → 期号确定性对齐（`merged=true`、官方 ID 接管）。**2026-09-03 修复**：后端此前从不加载 `.env`，本地启动恒默认坏掉的 `schedule` 锚源 → 全部场次降级 `manual_only`；新增 `server/src/lib/load_env.js` 并在 `run.js`/`server/bin/start.js` 调用，使 `.env` 中 `OE_SPORTTERY_ANCHOR=odds` 本地生效 → 「今日可买」场次正确锚定为在售态（`anchor-odds.test.js` 6 例全绿）。
 3. **真规则求值链**：88 条 V9.7 → 12 字段信封 → 3 条规则完全可求值 → 真实回测 161 场（S25 探针 59.8%）→ 前端"V9.7 真规则求值"区块渲染
 
 > 关键判断：**数据侧与规则求值侧已真实可用；"预测/发布/融合"这一段仍是空转的旧链**——因为 V9.7 结果没有接进 fusion，也没有落库/回填端点。

@@ -779,6 +779,7 @@ module.exports = {
   getManualOddsStatus,
   getMergedPool,
   getMergedAnalysis,
+  anchorSource, // 导出锚源选择函数，供测试与可观测审计
   // P0②：预测发布 / 幂等赛果回填
   savePrediction,
   listPredictions,
