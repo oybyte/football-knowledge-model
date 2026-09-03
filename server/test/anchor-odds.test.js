@@ -130,6 +130,9 @@ test('② 期号一致 → 确定性对齐：官方 match_id 接管，align_via=
   assert.equal(m.meta.align_via, 'match_num');
   assert.equal(m.meta.schedule_match_id, '2041049');
   assert.equal(m.status, 'scheduled', '在售态承接官方 Selling');
+  // 官方 meta（business_date 等）须透传，供「今日可买」批次分组与期号溯源
+  assert.equal(m.meta.business_date, '20260903', '官方业务日透传（合并曾丢失，导致首页分组失真）');
+  assert.equal(m.meta.match_num_str, '周三001', '官方期号透传');
   assert.equal(m.snapshots[0].match_id, '2041049', '快照 match_id 跟随顶层');
   assert.equal(m.snapshots[0].trust_level, 'provisional', '盘口快照信任不变');
 });

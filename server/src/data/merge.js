@@ -88,7 +88,9 @@ function mergeMatchSources({ schedule = {}, manual = {} } = {}) {
         status: sched.status,
         observed_at: m.observed_at,   // 真实盘口观察时点（早于开赛），不取赛程 now
         received_at: m.received_at,
-        meta: { ...(m.meta || {}), merged: true, schedule_match_id: sched.match_id, align_via: alignVia },
+        // 官方 meta 透传（business_date / match_num_str / 联赛代码 / 排名等），
+        // 使「今日可买」批次分组与官方期号在合并后仍可溯；人工 meta 优先保留非重叠键。
+        meta: { ...(m.meta || {}), ...(sched.meta || {}), merged: true, schedule_match_id: sched.match_id, align_via: alignVia },
       };
       // 同步更新每份快照的 match_id，保持 快照.match_id === 顶层.match_id
       merged.snapshots = (m.snapshots || []).map((s) => ({ ...s, match_id: merged.match_id }));
