@@ -5,12 +5,16 @@
 'use strict';
 
 const { promoteRule, batchPromote, LIFECYCLE } = require('./promote');
+const { promoteV97RuleToValidated, S25_GATE, S25_GATED_KEYS } = require('./v97');
 const { computeMetrics, THRESHOLDS } = require('../backtest/metrics');
 
 module.exports = {
   promoteRule,
   batchPromote,
   LIFECYCLE,
+  promoteV97RuleToValidated,
+  S25_GATE,
+  S25_GATED_KEYS,
   computeMetrics,
   THRESHOLDS,
 };

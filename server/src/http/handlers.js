@@ -21,6 +21,9 @@ const { fuseV97Decision } = require('../fusion/v97_input');
 // P0②：预测发布 / 幂等赛果回填（落库 + 审计）
 const { PredictionPublisher } = require('../publish');
 const { SqliteAuditAdapter } = require('../publish/db_audit_adapter');
+// P1：S25 转正试点（V9.7 规则回测认证 → trusted，规则自我生长第一个闭环）
+const { promoteV97RuleToValidated } = require('../promote');
+const { loadV97Rules } = require('../rules/v97loader');
 
 const BACKTEST_RANGE = { from: '2026-08-01T00:00:00+08:00', to: '2026-08-20T00:00:00+08:00' };
 
@@ -197,6 +200,7 @@ function buildAnalysis(service, match, v97 = null) {
         decision: fused.decision,
         note: fused.note,
         dimensions: fused.dimensions,
+        total_goals_direction: fused.total_goals_direction,
         rule_output: fused.rule_output,
       };
     } catch (e) {
@@ -548,6 +552,7 @@ function toPredView(p) {
     prediction_id: p.prediction_id,
     match_id: p.match_id,
     final_direction: p.final_direction,
+    total_goals_direction: p.total_goals_direction || null,
     final_confidence: p.final_confidence,
     created_at: p.created_at,
     audit_trail_id: p.audit_trail_id,
@@ -555,9 +560,12 @@ function toPredView(p) {
     result: r
       ? {
           match_result: r.match_result,
+          total_goals_result: r.total_goals_result || null,
           outcome: r.outcome,
           prediction_correct: r.prediction_correct,
+          total_goals_correct: r.total_goals_correct != null ? r.total_goals_correct : null,
           verifiable: r.verifiable,
+          total_goals_verifiable: r.total_goals_verifiable || false,
           known_at: r.known_at,
           backfilled_at: r.backfilled_at,
         }
@@ -565,7 +573,7 @@ function toPredView(p) {
   };
 }
 
-/** 从 DB 比赛实际比分 + 让球盘口自动推导让球盘赛果（upper/lower/draw）。 */
+/** 从 DB 比赛实际比分 + 让球盘口自动推导赛果（让球盘 upper/lower/draw + 总进球 over/under）。 */
 function deriveMatchResult(service, match_id) {
   try {
     const manual = loadManualOddsFromDb(service.qd);
@@ -576,13 +584,32 @@ function deriveMatchResult(service, match_id) {
     if (!m) return null;
     const home = Number(m[1]);
     const away = Number(m[2]);
+    const outcome = home > away ? 'home_win' : home < away ? 'away_win' : 'draw';
+
+    // 让球盘方向（upper/lower/draw）
     const hhad = (match.snapshots || []).find((s) => s.data && s.data.poolNameZh === '让球胜平负');
     if (!hhad || hhad.data.goalLine == null) return null; // 无让球盘口则无法判定让球方向
     const line = Number(hhad.data.goalLine);
     const adjusted = home - away + line; // 主队让球：line<0；受让：line>0
     const match_result = adjusted > 0 ? 'upper' : adjusted < 0 ? 'lower' : 'draw';
-    const outcome = home > away ? 'home_win' : home < away ? 'away_win' : 'draw';
-    return { match_result, outcome, observed_at: null, received_at: null };
+
+    // 总进球方向（over/under）：实际总进球 vs 大小球盘口中线
+    let total_goals_result = null;
+    const tg = match.meta && match.meta.total_goals != null ? Number(match.meta.total_goals) : (home + away);
+    if (tg != null && !Number.isNaN(tg)) {
+      const { adaptMatch } = require('../features/adapt');
+      const { collectOverUnderRows, pickAnyReference } = require('../engine/v97/fields');
+      const { parseDepth } = require('../engine/v97/handicap');
+      const { markets } = adaptMatch(match, match.match_time);
+      const rows = collectOverUnderRows(markets);
+      if (rows.length) {
+        const ref = pickAnyReference(rows, 'over_odds');
+        const mid = parseDepth(ref.line).depth;
+        if (mid != null) total_goals_result = tg > mid ? 'over' : tg < mid ? 'under' : null;
+      }
+    }
+
+    return { match_result, outcome, total_goals_result, observed_at: null, received_at: null };
   } catch (e) {
     return null;
   }
@@ -599,14 +626,17 @@ async function savePrediction(service, params, body) {
   const rules = service.rules.getActiveRules();
   const v97 = computeV97Block(match, rules);
   const fused = fuseV97Decision({ match_id, v97, rules });
-  if (!fused.rule_output || !fused.decision.final_direction) {
-    return fail(422, 'no_verifiable_direction'); // 融合层无方向型维度命中 → 不发布
+  const tgDir = fused.total_goals_direction || null;
+  // 双轴：让球方向 或 总进球方向 任一可判即允许发布；两者皆无可判方向则拒绝。
+  if (!fused.rule_output || (!fused.decision.final_direction && !tgDir)) {
+    return fail(422, 'no_verifiable_direction'); // 融合层无任一可判方向维度命中 → 不发布
   }
 
   const decision = {
     prediction_id: fused.decision.prediction_id,
     match_id,
     final_direction: fused.decision.final_direction,
+    total_goals_direction: tgDir,
     final_confidence: fused.decision.final_confidence,
     weights: fused.decision.weights,
     reasoning_chain: fused.decision.reasoning_chain,
@@ -627,6 +657,7 @@ async function savePrediction(service, params, body) {
     prediction_id: res.prediction.prediction_id,
     match_id,
     final_direction: res.prediction.final_direction,
+    total_goals_direction: res.prediction.total_goals_direction,
     final_confidence: res.prediction.final_confidence,
     audit_trail_id: res.prediction.audit_trail_id,
     duplicate: !!res.duplicate,
@@ -661,8 +692,14 @@ async function backfillPrediction(service, params, body) {
 
   const bodyResult = body && body.result;
   const known_at = (body && body.known_at) || new Date().toISOString();
-  let result = bodyResult && bodyResult.match_result ? bodyResult : deriveMatchResult(service, pred.match_id);
-  if (!result || !result.match_result) return fail(422, 'cannot_derive_result');
+  let derived = bodyResult && bodyResult.match_result ? bodyResult : deriveMatchResult(service, pred.match_id);
+  if (!derived || !derived.match_result) return fail(422, 'cannot_derive_result');
+  // 合并总进球结果：显式传入优先，否则用推导值
+  const result = {
+    match_result: derived.match_result,
+    outcome: derived.outcome || null,
+    total_goals_result: (bodyResult && bodyResult.total_goals_result) || derived.total_goals_result || null,
+  };
 
   try {
     const r = publisher.backfill({
@@ -680,6 +717,51 @@ async function backfillPrediction(service, params, body) {
     if (e && e.name === 'PublishError') return fail(422, e.code || 'publish_error');
     return fail(500, 'backfill_error');
   }
+}
+
+// ───────────────────────── POST /api/rules/:id/promote ─────────────────────────
+// P1：S25 转正试点端点。在真实历史（DB 派生层）上跑规则 → 构建 total_goals 轴 eligible
+// 证据 → computeMetrics 6 项门禁；达标则沿 active→validated→approved→active re-certify 为
+// trusted，终态仍是 active（仍在引擎内、信任升级）。门禁未过则诚实返回失败报告，不伪造。
+async function promoteRuleHandler(service, params, body) {
+  const rule_id = params.id;
+  const versions = service.rules.getRuleVersions(rule_id);
+  if (!versions.length) return fail(404, 'rule_not_found');
+
+  let rule = null;
+  try {
+    rule = loadV97Rules().rules.find((x) => (x.rule_id || x.id) === rule_id) || null;
+  } catch (e) { rule = null; }
+  const manual = loadManualOddsFromDb(service.qd);
+  const matches = manual ? manual.matches : [];
+  const approver = (body && body.approver) || 'http:promote';
+
+  const res = promoteV97RuleToValidated({
+    rule_id,
+    store: service.rules.store,
+    stateMachine: service.rules.stateMachine,
+    matches,
+    rule,
+    approver,
+    note: (body && body.note) || null,
+  });
+
+  if (res.pass === false) {
+    // 回测门禁未过（诚实，不伪造转正）
+    return ok({ promoted: false, gate_passed: false, report: res.report, failure_report: res.failure_report });
+  }
+  if (!res.ok) {
+    return fail(422, (res.errors && res.errors.join(',')) || 'promote_transition_failed');
+  }
+  return ok({
+    promoted: true,
+    gate_passed: true,
+    rule_id,
+    status: res.promoted.status,
+    trust_level: res.promoted.trust_level,
+    evidence_count: res.evidence_count,
+    report: res.report,
+  });
 }
 
 module.exports = {
@@ -702,5 +784,7 @@ module.exports = {
   listPredictions,
   getPrediction,
   backfillPrediction,
+  // P1：S25 转正试点端点
+  promoteRule: promoteRuleHandler,
   candidateRegistry,
 };

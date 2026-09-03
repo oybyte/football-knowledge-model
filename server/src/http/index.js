@@ -78,6 +78,8 @@ function matchRoute(method, parts) {
     if (parts.length === 2 && parts[0] === 'api' && parts[1] === 'predictions') return { handler: 'savePrediction', id: null };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'predictions') return { handler: 'savePrediction', id: parts[2] };
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'predictions' && parts[3] === 'result') return { handler: 'backfillPrediction', id: parts[2] };
+    // P1：规则转正试点（S25 等 V9.7 规则回测认证）
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'rules' && parts[3] === 'promote') return { handler: 'promoteRule', id: parts[2] };
   }
   return null;
 }

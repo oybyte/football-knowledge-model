@@ -510,6 +510,10 @@ function renderFusionPanel(fusion) {
   const dirText = dir === 'favor_upper' ? '上盘' : dir === 'favor_lower' ? '下盘' : '方向弃判（无方向型维度命中）';
   const dirCls = dir === 'favor_upper' ? 'up' : dir === 'favor_lower' ? 'down' : 'none';
   const conf = dec.final_confidence != null ? Math.round(dec.final_confidence * 100) : 0;
+  // P1：S25 转正试点 —— 总进球方向（over=大球 / under=小球）独立维度展示（双轴之第二轴）。
+  const tgDir = fusion.total_goals_direction;
+  const tgText = tgDir === 'over' ? '大球' : tgDir === 'under' ? '小球' : null;
+  const tgCls = tgDir === 'over' ? 'up' : tgDir === 'under' ? 'down' : 'none';
   const dims = fusion.dimensions || {};
   const dimRows = Object.keys(dims).map((d) =>
     `<span class="badge dim">${v97DimZh(d)}：${(dims[d] || []).join('、')}</span>`).join(' ');
@@ -517,6 +521,7 @@ function renderFusionPanel(fusion) {
     <div class="section-title">融合决策（V9.7 真规则 → 融合层）<span class="muted" style="font-weight:400"> · 可保存为预测台账</span></div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
       <span class="vc-pill ${dirCls}">${dirText} · ${conf}%</span>
+      ${tgText ? `<span class="vc-pill ${tgCls}">总进球：${tgText}</span>` : ''}
       ${fusion.note ? `<span class="muted">${fusion.note}</span>` : ''}
     </div>
     ${dimRows ? `<div style="margin-bottom:6px">${dimRows}</div>` : ''}
@@ -535,7 +540,8 @@ function saveMergedPrediction(matchId) {
       return;
     }
     const dir = r.data.final_direction === 'favor_upper' ? '上盘' : r.data.final_direction === 'favor_lower' ? '下盘' : r.data.final_direction;
-    toast('已保存预测：' + dir + ' · ' + Math.round(r.data.final_confidence * 100) + '%' + (r.data.duplicate ? '（已存在）' : ''));
+    const tg = r.data.total_goals_direction === 'over' ? '大球' : r.data.total_goals_direction === 'under' ? '小球' : null;
+    toast('已保存预测：' + dir + (tg ? ' · 总进球' + tg : '') + ' · ' + Math.round(r.data.final_confidence * 100) + '%' + (r.data.duplicate ? '（已存在）' : ''));
   })['catch'](function () { toast('保存失败：网络错误'); });
 }
 
@@ -1217,7 +1223,7 @@ if (window.__ApiClient) window.__ApiClient.init();
 // 自动获取当天竞彩数据（当天缓存命中则零请求；公益网站每天最多自动直连一次）
 if (typeof fetchLotteryMatches === "function") {
   fetchLotteryMatches(false).then(function() {
-    // 人工盘赔回退模式（官方在售为空）→ 默认展示「全部」，单一入口即可看到本地 149 场盘赔
+    // 人工盘赔回退模式（官方在售为空）→ 默认展示「全部」，单一入口即可看到本地 161 场盘赔
     if (typeof isManualOnlyMode === "function" && isManualOnlyMode() && state.lotteryGroup === "today") {
       state.lotteryGroup = "all";
     }

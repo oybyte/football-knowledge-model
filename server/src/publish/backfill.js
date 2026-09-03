@@ -5,7 +5,7 @@
 // ============================================================================
 'use strict';
 
-const { computeVerdict, normalizeResultInput, PublishError, AlreadyBackfilledError } = require('./schema');
+const { computeVerdictFor, normalizeResultInput, PublishError, AlreadyBackfilledError } = require('./schema');
 const { lockEvidence } = require('./evidence');
 
 /**
@@ -39,16 +39,28 @@ function backfillResult({ store, audit, prediction_id, result, known_at, actor =
     throw new PublishError('E6003', `result_earlier_than_prediction:known_at=${known_at}<created_at=${prediction.created_at}`);
   }
 
-  // 方向判定
+  // 方向判定（让球盘轴）
   const { verifiable, expected_outcome, prediction_correct } =
-    computeVerdict(prediction.final_direction, norm.match_result);
+    computeVerdictFor(prediction.final_direction, norm.match_result, 'handicap');
+
+  // 方向判定（总进球轴，若预测带 total_goals_direction 且结果含 total_goals_result）
+  const tgVerdict = prediction.total_goals_direction
+    ? computeVerdictFor(prediction.total_goals_direction, norm.total_goals_result, 'total_goals')
+    : null;
 
   // 审计：prediction_backfilled（先记账，拿到 event_id 供证据引用）
   const backfillEvent = audit.append({
     event_type: 'prediction_backfilled',
     actor,
     target_id: prediction_id,
-    details: { match_result: norm.match_result, prediction_correct, verifiable },
+    details: {
+      match_result: norm.match_result,
+      prediction_correct,
+      verifiable,
+      total_goals_result: norm.total_goals_result || null,
+      total_goals_correct: tgVerdict ? tgVerdict.prediction_correct : null,
+      total_goals_verifiable: tgVerdict ? tgVerdict.verifiable : false,
+    },
   });
 
   // 证据锁定（不可变）
@@ -56,9 +68,12 @@ function backfillResult({ store, audit, prediction_id, result, known_at, actor =
     prediction_id,
     match_id: prediction.match_id,
     predicted_direction: prediction.final_direction,
+    total_goals_direction: prediction.total_goals_direction || null,
     match_result: norm.match_result,
+    total_goals_result: norm.total_goals_result || null,
     outcome: norm.outcome,
     prediction_correct,
+    total_goals_correct: tgVerdict ? tgVerdict.prediction_correct : null,
     frozen_at: backfillEvent.timestamp,
     audit_event_id: backfillEvent.event_id,
   }, store);
@@ -76,11 +91,15 @@ function backfillResult({ store, audit, prediction_id, result, known_at, actor =
     prediction_id,
     match_id: prediction.match_id,
     match_result: norm.match_result,
+    total_goals_result: norm.total_goals_result || null,
     outcome: norm.outcome,
     predicted_direction: prediction.final_direction,
+    total_goals_direction: prediction.total_goals_direction || null,
     expected_outcome,
     verifiable,
     prediction_correct,
+    total_goals_verifiable: tgVerdict ? tgVerdict.verifiable : false,
+    total_goals_correct: tgVerdict ? tgVerdict.prediction_correct : null,
     backfilled_at: backfillEvent.timestamp,
     known_at,
     actor,

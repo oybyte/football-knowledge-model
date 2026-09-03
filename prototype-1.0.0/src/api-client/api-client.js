@@ -216,9 +216,9 @@
     savePrediction: function (matchId, opts) {
       var list = mockPredictionLedger();
       var id = 'pred_mock_' + matchId + '_' + Date.now();
-      list.push({ prediction_id: id, match_id: matchId, final_direction: 'favor_upper', final_confidence: 0.6, created_at: new Date().toISOString(), result: null, meta: null });
+      list.push({ prediction_id: id, match_id: matchId, final_direction: 'favor_upper', total_goals_direction: null, final_confidence: 0.6, created_at: new Date().toISOString(), result: null, meta: null });
       storageSet('oe_mock_predictions', JSON.stringify(list));
-      return okBody({ prediction_id: id, match_id: matchId, final_direction: 'favor_upper', final_confidence: 0.6, duplicate: false, note: 'mock' });
+      return okBody({ prediction_id: id, match_id: matchId, final_direction: 'favor_upper', total_goals_direction: null, final_confidence: 0.6, duplicate: false, note: 'mock' });
     },
     listPredictions: function () {
       return okBody(mockPredictionLedger());

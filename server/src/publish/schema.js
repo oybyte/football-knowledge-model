@@ -7,6 +7,9 @@
 /** 归一化让球方向（判定词汇，同 backtest match_result） */
 const MATCH_RESULTS = Object.freeze(['upper', 'lower', 'draw']);
 
+/** 总进球方向结果（对照大小球盘口中线） */
+const TOTAL_GOALS_RESULTS = Object.freeze(['over', 'under']);
+
 /** 实际赛果枚举（data-model actual_result） */
 const OUTCOMES = Object.freeze(['home_win', 'draw', 'away_win']);
 
@@ -16,19 +19,35 @@ const VERIFIABLE = Object.freeze({
   favor_lower: 'lower',
 });
 
+/** 可判定的总进球方向 → 期望总进球结果 */
+const TOTAL_GOALS_VERIFIABLE = Object.freeze({
+  over: 'over',
+  under: 'under',
+});
+
 const VALID_DIRECTIONS = Object.freeze(Object.keys(VERIFIABLE));
+const VALID_TOTAL_GOALS_DIRECTIONS = Object.freeze(Object.keys(TOTAL_GOALS_VERIFIABLE));
 
 /**
- * 方向判定。
- * @param {string} final_direction
- * @param {"upper"|"lower"|"draw"} match_result
+ * 方向判定（按轴）。
+ * @param {string} direction 让球方向或总进球方向
+ * @param {string} match_result 对应轴的结果（upper/lower/draw 或 over/under）
+ * @param {'handicap'|'total_goals'} [axis='handicap']
  * @returns {{ verifiable: boolean, expected_outcome: string|null, prediction_correct: boolean|null }}
  */
-function computeVerdict(final_direction, match_result) {
-  const expected = VERIFIABLE[final_direction];
+function computeVerdictFor(direction, match_result, axis = 'handicap') {
+  const map = axis === 'total_goals' ? TOTAL_GOALS_VERIFIABLE : VERIFIABLE;
+  const expected = map[direction];
   if (!expected) return { verifiable: false, expected_outcome: null, prediction_correct: null };
-  if (match_result === 'draw') return { verifiable: true, expected_outcome: expected, prediction_correct: false };
+  if (axis === 'handicap' && match_result === 'draw') {
+    return { verifiable: true, expected_outcome: expected, prediction_correct: false };
+  }
   return { verifiable: true, expected_outcome: expected, prediction_correct: match_result === expected };
+}
+
+/** 向后兼容：默认让球盘判定。 */
+function computeVerdict(final_direction, match_result) {
+  return computeVerdictFor(final_direction, match_result, 'handicap');
 }
 
 /** 领域错误基类 */
@@ -79,6 +98,7 @@ function normalizePredictionInput(d) {
     match_id: d.match_id,
     command_id: d.command_id || null,
     final_direction: d.final_direction,
+    total_goals_direction: d.total_goals_direction || null,
     final_confidence: d.final_confidence,
     weights: d.weights || {},
     reasoning_chain: d.reasoning_chain || [],
@@ -88,8 +108,18 @@ function normalizePredictionInput(d) {
   };
 
   if (!record.match_id) throw new PublishError('E2001', 'match_id required');
-  if (!VALID_DIRECTIONS.includes(record.final_direction)) {
-    throw new PublishError('E2002', `direction_not_verifiable:${record.final_direction}`);
+
+  // 双轴：让球方向（handicap）与总进球方向（total_goals）任一可判即可发布。
+  const hasHandicap = VALID_DIRECTIONS.includes(record.final_direction);
+  const hasTotalGoals = VALID_TOTAL_GOALS_DIRECTIONS.includes(record.total_goals_direction);
+  if (!hasHandicap && !hasTotalGoals) {
+    throw new PublishError('E2002', `direction_not_verifiable:handicap=${record.final_direction},total_goals=${record.total_goals_direction}`);
+  }
+  if (record.final_direction && !hasHandicap) {
+    throw new PublishError('E2002', `handicap_direction_invalid:${record.final_direction}`);
+  }
+  if (record.total_goals_direction && !hasTotalGoals) {
+    throw new PublishError('E2002', `total_goals_direction_invalid:${record.total_goals_direction}`);
   }
   const c = record.final_confidence;
   if (typeof c !== 'number' || !Number.isFinite(c) || c < 0 || c > 1) {
@@ -119,6 +149,7 @@ function normalizeResultInput(r) {
   return {
     match_result: r.match_result,
     outcome: r.outcome || null,
+    total_goals_result: r.total_goals_result || null,
     observed_at: r.observed_at || null,
     received_at: r.received_at || null,
   };
@@ -126,10 +157,14 @@ function normalizeResultInput(r) {
 
 module.exports = {
   MATCH_RESULTS,
+  TOTAL_GOALS_RESULTS,
   OUTCOMES,
   VERIFIABLE,
+  TOTAL_GOALS_VERIFIABLE,
   VALID_DIRECTIONS,
+  VALID_TOTAL_GOALS_DIRECTIONS,
   computeVerdict,
+  computeVerdictFor,
   PublishError,
   ImmutableError,
   AlreadyBackfilledError,

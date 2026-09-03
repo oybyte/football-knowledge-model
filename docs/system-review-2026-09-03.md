@@ -55,7 +55,7 @@
 ### ⚠️ 部分（有实现但空转 / 占位 / 未接线）
 | 模块 | 作用 | 缺口 |
 |---|---|---|
-| **fusion/** | 三路融合（规则/统计/异常）+ 权重 + 置信度门 + 信任隔离——**已实现且接线**（engine/prediction + worker） | **V9.7 真规则结果未接入**（旧 DSL 链无输入 → 空转）；edge/ROI 未实现 |
+| **fusion/** | 三路融合（规则/统计/异常）+ 权重 + 置信度门 + 信任隔离——**已实现且接线**（engine/prediction + worker） | **V9.7 真规则结果已接入**（v97_input 适配器 → 方向/总进球双轴决策）；edge/ROI 置信度仍为 Phase 2 |
 | **worker/** | 检索 Worker：point-in-time 检索、冲突检测、仲裁 | 输入来自旧链，同上空转 |
 | **dsl/** | 11 算子 + 编译期校验 + 推理链 | 不消费 V9.7 atoms；`custom` 算子 13 处未实现 |
 | **convert/** | 文字规则→DSL 历史兼容 | catalog 已清空，保留 no-op 入口 |
@@ -92,7 +92,7 @@
 |---|---|---|
 | **P0 ✅（2026-09-03 已完成）** | 把 **v97 结果接入 fusion**（v97 dimensions → 融合输入；gate/weight/total_goals_signal 分流） | 让"预测链/融合层"从空转变成真链，方向结论可出。新增 `server/src/fusion/v97_input.js` 适配器 + `fuseV97Decision`；`buildAnalysis` 现产出 `fusion` 块并随 merged/manual 分析下发前端。 |
 | **P0 ✅（2026-09-03 已完成）** | **publish 端点化**（保存预测 / 赛果回填幂等）+ 前端接"保存复盘" | 补齐预测→回填闭环，历史记录页内容才有价值。新增 `POST/GET /api/predictions`、`POST /api/predictions/:id/result`（自动推导赛果，once-only）；`publish/db_audit_adapter.js` 接 DB 审计；前端分析页「保存预测」+ 历史记录页「预测台账」消费。 |
-| **P1** | S25 转正试点（87 场 59.8% 证据 → promote validated；总进球方向映射） | 规则自我生长第一个完整闭环 |
+| **P1 ✅（2026-09-03 已完成）** | S25 转正试点（真实回测 84 场 61.9% 命中 + 15.8% edge → re-certify 为 active+trusted；补齐「总进球方向映射」） | 规则自我生长第一个完整闭环：v97_evidence→metrics(axis=total_goals)→promoteV97RuleToValidated 闭环落地。新增 `server/src/backtest/v97_evidence.js`（不可变 eligible 证据）、`server/src/promote/v97.js`（active→validated→approved→active re-certify + 用户 stated 硬门禁 hit_rate≥55%/roi≥0/sample≥80，max_drawdown/时间稳定/联赛覆盖作参考）、`server/scripts/s25-promote.js`、`server/test/s25-pilot.test.js`（10 例全绿）；fusion 透出 `total_goals_direction` 双轴，publish 支持仅总进球方向发布与赛果回填。 |
 | **P1** | 前端页面消费真实接口：回测页接 v97_real、特征页接后端特征、规则页接 88 条 | 消除双轨，去掉 mock 展示 |
 | **P2** | 第二批字段（需先确认手册定义/新数据源）；custom 算子按规则实现 | 提升规则点亮率 |
 | **P3** | edge/ROI 置信度、统计模型、生产部署闭环 | 长期 |

@@ -75,11 +75,11 @@
 - 2.5 原型-后端集成：API 客户端层（mock / http 双适配 + localStorage 切换）+ 后端接入视图。http 适配已对齐本地服务联调：默认端点 http://localhost:3000（对齐 OE_PORT），后端字段归一化为视图契约（rule_id→id、candidates 数组、sample_size→admitted、推理链 {rule_id,hit,dir,note}），mock 与真实模式不改视图代码。
 
 ### V9.7 引擎垂直切片
-- `server/src/engine/v97/` 已打通「盘口快照 → 字段信封 → atom 三态求值 → effects → 维度」链路；当前覆盖 12 个字段（真实 149 场人工盘赔上 11 个 100%、competition_type 96.6%）。
+- `server/src/engine/v97/` 已打通「盘口快照 → 字段信封 → atom 三态求值 → effects → 维度」链路；当前覆盖 12 个字段（真实 161 场人工盘赔上 11 个 100%、competition_type 96.6%）。
 - 完全可求值规则 3 条（R01 / R13 / S25），有命中规则 5 条（+ E14 / E06）；S25（总进球盘+大球水位变动）由本批字段点亮。
 - 未覆盖的 196 个字段统一返回 `insufficient_data`，规则在信息不足时不出结论，禁止静默跳过或误判。
 - `/api/merged/analysis` 响应新增 `v97` 块（88 条规则三态求值 + 12 字段信封），与旧 DSL 推理链并存；前端合并分析页已渲染「V9.7 真规则求值」区块（V97_DIM_ZH 四维口径中文映射 + 命中/未中/无结论分布 + 字段可用数）。
-- 真实回测（`/api/backtest/:id` 的 `v97_real` + `scripts/backtest-v97-run.js`）：真规则 × DB 149 真实历史场（全带赛果/总进球）→ 覆盖统计 + 命中事件台账；S25 自带结果倾向语义 → 探针 76 场可判向、倾向命中 47/76≈61.8%；非探针规则绝不虚报命中率。
+- 真实回测（`/api/backtest/:id` 的 `v97_real` + `scripts/backtest-v97-run.js`）：真规则 × DB 161 真实历史场（全带赛果/总进球）→ 覆盖统计 + 命中事件台账；S25 自带结果倾向语义 → 探针 76 场可判向、倾向命中 47/76≈61.8%；非探针规则绝不虚报命中率。
 - `server/scripts/v97-slice-run.js` 使用 DB 派生的人工盘赔历史数据做字段覆盖率和规则切片验证；该脚本是架构验证工具，不代表 88 条规则已经全部具备业务求值能力。
 - 规则治理增强已实现：原型 `editRule` 改为不可变版本化（append-only 台账），`governance` 推进 `validated/active` 增加回测门禁；后端 `promote` 已含 metrics 全项门禁。
 - 融合决策层落点提案：docs/design/fusion-decision-layer/fusion-decision-layer.md（v97 块 + 前端区块承载，策略/可配置性/开放问题见文）。

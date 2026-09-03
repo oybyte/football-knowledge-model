@@ -31,7 +31,9 @@ const LEGAL_TRANSITIONS = Object.freeze({
   experiment: ['proposed', 'validated', 'deprecated'],
   validated: ['experiment', 'approved', 'deprecated'],
   approved: ['validated', 'active', 'deprecated'],
-  active: ['superseded', 'deprecated'],
+  // active→validated：在用的 V9.7 规则（loader 统一置 active+provisional）经真实回测达标后
+  // 「回测认证」为 validated；随后可 approved→active 重新上线为 trusted（re-certify 闭环）。
+  active: ['superseded', 'deprecated', 'validated'],
   superseded: [],
   deprecated: [],
 });

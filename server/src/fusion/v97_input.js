@@ -19,6 +19,9 @@ const { fuseDecision } = require('./index');
 /** 能产出「让球方向」的维度（其余维度为非方向信号）。 */
 const DIRECTION_DIMS = ['direction', 'signal_direction', 'handicap_direction', 'wdl_direction'];
 
+/** 能产出「总进球方向」的维度（S25 总进球阻诱对齐规则）。 */
+const TOTAL_GOALS_DIM = 'total_goals_signal';
+
 /** 未回测转正（provisional）的置信度折扣。 */
 const PROVISIONAL_DISCOUNT = 0.8;
 /** 命中规则缺省 base_confidence（规则未标注时的保守值）。 */
@@ -36,6 +39,20 @@ function mapDirection(values) {
   if (/下盘|受让|客让|favor_lower/i.test(blob)) return 'favor_lower';
   if (/^平|平局|走盘|\bdraw\b/i.test(blob)) return 'draw';
   if (/弃判|风险|警告|异常|warning/i.test(blob)) return 'warning';
+  return null;
+}
+
+/**
+ * V9.7 维度取值 → 总进球方向枚举（over/under）。
+ * 仅 total_goals_signal 维度产出；S25：「阻大=真实看大球」→ over、「阻小=真实看小球」→ under。
+ * @param {string[]} values
+ * @returns {'over'|'under'|null}
+ */
+function mapTotalGoals(values) {
+  const blob = (values || []).join('、');
+  if (!blob) return null;
+  if (/大球/.test(blob)) return 'over';
+  if (/小球/.test(blob)) return 'under';
   return null;
 }
 
@@ -71,6 +88,9 @@ function v97ToRuleOutput({ v97 = null, rules = [] } = {}) {
     }
   }
 
+  // 总进球方向（独立于让球方向轴）：S25 的 total_goals_signal → over/under
+  const totalGoalsDirection = mapTotalGoals(dims[TOTAL_GOALS_DIM]);
+
   const confById = new Map();
   for (const r of rules || []) {
     const id = r.rule_id || (r.v97 && r.v97.id) || r.id;
@@ -85,6 +105,7 @@ function v97ToRuleOutput({ v97 = null, rules = [] } = {}) {
 
   return {
     direction,
+    total_goals_direction: totalGoalsDirection,
     confidence,
     // 规则流参与合成（V9.7 为在用规则集）；provisional 身份已在置信度折价 + evidence 留痕
     trust: 'trusted',
@@ -95,7 +116,7 @@ function v97ToRuleOutput({ v97 = null, rules = [] } = {}) {
       hit_rule_ids: hits.map((h) => h.rule_id),
       hit_count: hits.length,
       dimensions: dims,
-      non_direction_dims: Object.keys(dims).filter((d) => !DIRECTION_DIMS.includes(d)),
+      non_direction_dims: Object.keys(dims).filter((d) => !DIRECTION_DIMS.includes(d) && d !== TOTAL_GOALS_DIM),
       field_coverage: `${usableFields}/${fields.length}`,
       trust_note: 'V9.7 规则均为 provisional（未回测转正），置信度已按未回测折价',
     },
@@ -128,14 +149,22 @@ function fuseV97Decision({ match_id, v97 = null, rules = [], context = {}, creat
       ? 'V9.7 命中规则含方向型维度 → 参与方向融合'
       : 'V9.7 命中规则无方向型维度（仅门禁/权重/信号）→ 方向弃判，维度结论见 dimensions')
     : 'V9.7 无规则命中 → 融合层无输入，方向弃判';
-  return { decision, rule_output: ruleOutput, dimensions: dims, note };
+  return {
+    decision,
+    rule_output: ruleOutput,
+    dimensions: dims,
+    total_goals_direction: ruleOutput ? ruleOutput.total_goals_direction : null,
+    note,
+  };
 }
 
 module.exports = {
   fuseV97Decision,
   v97ToRuleOutput,
   mapDirection,
+  mapTotalGoals,
   aggregateDimensions,
   DIRECTION_DIMS,
+  TOTAL_GOALS_DIM,
   PROVISIONAL_DISCOUNT,
 };

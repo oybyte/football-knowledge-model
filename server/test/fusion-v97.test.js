@@ -28,16 +28,20 @@ test('① 方向型维度 → 融合方向 favor_upper', () => {
   assert.equal(mapDirection(['略看小球']), null, '非方向语义不得臆造方向');
 });
 
-test('② 无方向型维度（门禁/信号）→ direction=null，融合判弃判', () => {
+test('② 无方向型维度（门禁/信号）→ direction=null，融合判弃判；但总进球信号识别为独立轴', () => {
   const out = v97ToRuleOutput({
     v97: v97([hit('E14', { gate: ['共振前置'] }), hit('S25', { total_goals_signal: ['赔付放开=略看小球'] })]),
     rules: [],
   });
   assert.ok(out, '有命中应产出 rule 流输入');
-  assert.equal(out.direction, null, '无方向型维度不得臆造方向');
+  assert.equal(out.direction, null, '无方向型维度不得臆造让球方向');
+  // P1：total_goals_signal 已升级为可映射的总进球轴（S25 转正试点），识别为 under
+  assert.equal(out.total_goals_direction, 'under', '总进球信号识别为独立轴方向');
   assert.ok(out.confidence > 0 && out.confidence < 1);
   assert.equal(out.evidence.hit_count, 2);
-  assert.ok(out.evidence.non_direction_dims.includes('total_goals_signal'));
+  // total_goals_signal 已作为可映射轴维度，不再归入「非方向维度」；gate 仍属非方向
+  assert.ok(!out.evidence.non_direction_dims.includes('total_goals_signal'));
+  assert.ok(out.evidence.non_direction_dims.includes('gate'));
 });
 
 test('③ 方向型维度命中 → 融合决策带方向与置信度', () => {
