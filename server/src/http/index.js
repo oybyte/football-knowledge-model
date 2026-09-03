@@ -64,6 +64,9 @@ function matchRoute(method, parts) {
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'merged') return { handler: 'getMergedPool' };
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'merged' && parts[2] === 'analysis') return { handler: 'getMergedAnalysis', id: parts[3] };
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'manual-odds' && parts[2] === 'analysis') return { handler: 'getManualAnalysis', id: parts[3] };
+    // P0②：预测台账（发布 + 幂等赛果回填）
+    if (parts.length === 2 && parts[0] === 'api' && parts[1] === 'predictions') return { handler: 'listPredictions' };
+    if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'predictions') return { handler: 'getPrediction', id: parts[2] };
   }
   if (method === 'GET') {
     if (parts.length === 2 && parts[0] === 'api' && parts[1] === 'health') return { handler: 'health' };
@@ -71,6 +74,10 @@ function matchRoute(method, parts) {
   }
   if (method === 'POST') {
     if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'ai' && parts[2] === 'candidates' && parts[4] === 'review') return { handler: 'reviewAiCandidate', id: parts[3] };
+    // P0②：发布预测（无 id，match_id 走 body）/ 回填赛果
+    if (parts.length === 2 && parts[0] === 'api' && parts[1] === 'predictions') return { handler: 'savePrediction', id: null };
+    if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'predictions') return { handler: 'savePrediction', id: parts[2] };
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'predictions' && parts[3] === 'result') return { handler: 'backfillPrediction', id: parts[2] };
   }
   return null;
 }

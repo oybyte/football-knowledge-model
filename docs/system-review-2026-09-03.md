@@ -66,7 +66,7 @@
 ### ❌ 未开发 / 未接线（能力缺位）
 | 项 | 说明 |
 |---|---|
-| **publish（预测发布/赛果回填）** | 8 个文件实现完整（不可变预测、幂等、赛果回填、证据锁定），但**无 HTTP 端点且未被引擎调用** → 前端无法保存预测/回填赛果 |
+| **publish（预测发布/赛果回填）** | ✅ **已端点化并接线**：`POST/GET /api/predictions`、`POST /api/predictions/:id/result`（once-only 幂等 + 自动从 DB 比分推导赛果）；`db_audit_adapter` 接 DB 审计，跨重启存活。前端分析页「保存预测」+ 历史记录页「预测台账」消费 |
 | **196 个字段** | 多数需**非盘口输入**（伤停/身价/战意/赛制细节），`value_gap_ratio`=身价差倍数已确认不可从盘赔推导 |
 | **custom 算子（13 处）** | R05/E02 等关键规则依赖，语义需按规则逐条定义 |
 | **统计模型（GBDT/XGBoost）** | 融合层"统计模型"一路仍为 placeholder，未训练 |
@@ -90,8 +90,8 @@
 
 | 优先级 | 事项 | 价值 |
 |---|---|---|
-| **P0** | 把 **v97 结果接入 fusion**（v97 dimensions → 融合输入；gate/weight/total_goals_signal 分流） | 让"预测链/融合层"从空转变成真链，方向结论可出 |
-| **P0** | **publish 端点化**（保存预测 / 赛果回填幂等）+ 前端接"保存复盘" | 补齐预测→回填闭环，历史记录页内容才有价值 |
+| **P0 ✅（2026-09-03 已完成）** | 把 **v97 结果接入 fusion**（v97 dimensions → 融合输入；gate/weight/total_goals_signal 分流） | 让"预测链/融合层"从空转变成真链，方向结论可出。新增 `server/src/fusion/v97_input.js` 适配器 + `fuseV97Decision`；`buildAnalysis` 现产出 `fusion` 块并随 merged/manual 分析下发前端。 |
+| **P0 ✅（2026-09-03 已完成）** | **publish 端点化**（保存预测 / 赛果回填幂等）+ 前端接"保存复盘" | 补齐预测→回填闭环，历史记录页内容才有价值。新增 `POST/GET /api/predictions`、`POST /api/predictions/:id/result`（自动推导赛果，once-only）；`publish/db_audit_adapter.js` 接 DB 审计；前端分析页「保存预测」+ 历史记录页「预测台账」消费。 |
 | **P1** | S25 转正试点（87 场 59.8% 证据 → promote validated；总进球方向映射） | 规则自我生长第一个完整闭环 |
 | **P1** | 前端页面消费真实接口：回测页接 v97_real、特征页接后端特征、规则页接 88 条 | 消除双轨，去掉 mock 展示 |
 | **P2** | 第二批字段（需先确认手册定义/新数据源）；custom 算子按规则实现 | 提升规则点亮率 |

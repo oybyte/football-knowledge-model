@@ -193,7 +193,7 @@ function render() {
   else if (state.page === "feature") main.innerHTML = (window.renderFeature ? window.renderFeature() : `<div class="page">特征引擎模块未加载。</div>`);
   else if (state.page === "dsl") main.innerHTML = (window.renderDsl ? window.renderDsl() : `<div class="page">DSL 引擎模块未加载。</div>`);
   else if (state.page === "api") { main.innerHTML = (window.renderApiView ? window.renderApiView() : `<div class="page">后端接入模块未加载。</div>`); window.__apiBoot ? window.__apiBoot() : 0; window.__ApiClient ? window.__ApiClient.init() : 0; }
-  else if (state.page === "history") main.innerHTML = `<div class="page">${renderHistory()}</div>`;
+  else if (state.page === "history") { main.innerHTML = `<div class="page">${renderHistory()}</div>`; setTimeout(function () { if (typeof loadPredictionLedger === 'function') loadPredictionLedger(); }, 0); }
   else if (state.page === "rules") { main.innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
   else if (state.page === "ai") main.innerHTML = (window.renderAIView ? window.renderAIView() : `<div class="page">AI 引擎模块未加载。</div>`);
   else if (state.page === "settings") main.innerHTML = `<div class="page">${renderSettings()}</div>`;
@@ -493,10 +493,50 @@ function renderV97Section(v97) {
     ).join(" ");
     return `<tr><td class="l"><span class="badge up">${r.rule_id}</span></td><td>${dims || '<span class="muted">命中（无维度输出）</span>'}</td></tr>`;
   }).join("");
-  return `<div class="page-section" style="margin-top:14px">
+  return `      <div class="page-section" style="margin-top:14px">
     <div class="section-title">V9.7 真规则求值 <span class="muted" style="font-weight:400">— ${tally.hit} 命中 / ${tally.miss} 未中 / ${tally.insuff} 无结论 · 字段 ${usable}/${fields.length}</span></div>
     <table class="tbl"><tbody>${hitRows || '<tr><td class="muted">无规则命中（多数规则仍待字段覆盖，详见字段清单）</td></tr>'}</tbody></table>
   </div>`;
+}
+
+/** V9.7 真规则 → 融合层 决策展示（P0①：真链落地面板）。 */
+function renderFusionPanel(fusion) {
+  if (!fusion) return "";
+  if (fusion.error) {
+    return `<div class="page-section" style="margin-top:14px"><div class="section-title">融合决策（V9.7 → 融合层）</div><div class="callout risk">融合计算异常：${fusion.error}</div></div>`;
+  }
+  const dec = fusion.decision || {};
+  const dir = dec.final_direction;
+  const dirText = dir === 'favor_upper' ? '上盘' : dir === 'favor_lower' ? '下盘' : '方向弃判（无方向型维度命中）';
+  const dirCls = dir === 'favor_upper' ? 'up' : dir === 'favor_lower' ? 'down' : 'none';
+  const conf = dec.final_confidence != null ? Math.round(dec.final_confidence * 100) : 0;
+  const dims = fusion.dimensions || {};
+  const dimRows = Object.keys(dims).map((d) =>
+    `<span class="badge dim">${v97DimZh(d)}：${(dims[d] || []).join('、')}</span>`).join(' ');
+  return `<div class="page-section" style="margin-top:14px">
+    <div class="section-title">融合决策（V9.7 真规则 → 融合层）<span class="muted" style="font-weight:400"> · 可保存为预测台账</span></div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+      <span class="vc-pill ${dirCls}">${dirText} · ${conf}%</span>
+      ${fusion.note ? `<span class="muted">${fusion.note}</span>` : ''}
+    </div>
+    ${dimRows ? `<div style="margin-bottom:6px">${dimRows}</div>` : ''}
+    ${dec.audit_trail_id ? `<div class="muted" style="font-size:12px">audit_trail_id：${dec.audit_trail_id} · V9.7 均为 provisional（未回测转正），置信度已按未回测折价</div>` : ''}
+  </div>`;
+}
+
+/** 在分析页保存当前场预测（V9.7→融合决策落库）。 */
+function saveMergedPrediction(matchId) {
+  const api = window.__ApiClient ? window.__ApiClient.getApi() : null;
+  if (!api || typeof api.savePrediction !== 'function') { toast('当前模式不支持保存预测，请切到后端 API'); return; }
+  api.savePrediction(matchId).then(function (r) {
+    if (!r.ok) {
+      if (r.error === 'no_verifiable_direction') toast('该场融合层无方向型维度命中，暂不可保存（多数历史场规则未覆盖方向维）');
+      else toast('保存失败：' + (r.error || '未知错误'));
+      return;
+    }
+    const dir = r.data.final_direction === 'favor_upper' ? '上盘' : r.data.final_direction === 'favor_lower' ? '下盘' : r.data.final_direction;
+    toast('已保存预测：' + dir + ' · ' + Math.round(r.data.final_confidence * 100) + '%' + (r.data.duplicate ? '（已存在）' : ''));
+  })['catch'](function () { toast('保存失败：网络错误'); });
 }
 
 function renderMergedAnalysisShell(ml) {
@@ -522,11 +562,13 @@ function renderMergedAnalysisShell(ml) {
       return `<tr><td class="l">${k}</td><td class="num">${typeof v === "number" ? v.toFixed(3) : String(v == null ? "" : v)}</td></tr>`;
     }).join("");
     const v97Html = renderV97Section(d.v97);
+    const fusionHtml = renderFusionPanel(d.fusion);
     body = `<div class="page-head">
         <div><div class="ph-title">${ml.home} <span class="muted">vs</span> ${ml.away}</div>
         <div class="ph-sub">${ml.league} · ${ml.kickoff} · 序号 ${ml.serial} · 后端合并池 · 人工盘赔 ${od.snapshots} 条 (provisional)${d.anchor_source ? " · 锚源 " + d.anchor_source : ""}</div></div>
         ${pillHtml}
       </div>
+      ${fusionHtml}
       ${(d.hits && d.hits.length) ? `<div class="page-section" style="margin-top:14px">
         <div class="section-title">规则命中（融合链）</div>
         <table class="tbl"><tbody>${hitsRows}</tbody></table>
@@ -542,6 +584,7 @@ function renderMergedAnalysisShell(ml) {
       <button class="btn sm" onclick="exitAnalysis()">${ICON.back} 返回列表</button>
       <div class="ab-title">${ml.home} <span class="muted">vs</span> ${ml.away} <span class="badge provisional">人工盘赔 · ${od.snapshots}条</span></div>
       <div class="ab-spacer"></div>
+      <button class="btn sm primary" onclick="saveMergedPrediction('${ml.oddsDetail.mergedMatchId}')">${ICON.check}保存预测</button>
     </div>
     <div class="analysis-body"><main class="page" style="flex:1 1 0;min-width:0;overflow:auto;padding:18px">${body}</main></div>
   </div>`;
@@ -715,11 +758,12 @@ function renderRulesPanel() {
 // ============================ 历史记录 · 复盘 ============================
 function renderHistory() {
   const map = loadHistory(); const ids = Object.keys(map);
-  if (!ids.length) return `<div class="placeholder-page"><div class="icon">${ICON.replay}</div><div class="pt">暂无复盘记录</div><div class="ps">在首页选择一场比赛点击「分析」即可生成复盘记录，之后可在此重新运行引擎。</div></div>`;
-  const items = ids.map(id => {
-    const h = map[id];
-    const vcls = h.verdict.includes("上盘") ? "up" : (h.verdict.includes("下盘") ? "down" : "none");
-    return `<div class="history-item">
+  const localBlock = ids.length
+    ? (() => {
+        const items = ids.map(id => {
+          const h = map[id];
+          const vcls = h.verdict.includes("上盘") ? "up" : (h.verdict.includes("下盘") ? "down" : "none");
+          return `<div class="history-item">
       <div class="hi-main"><div class="hi-title">${h.label}</div><div class="hi-time">${fmtTime(h.ts)} · ${h.hits.length} 命中 / ${h.risks.length} 风险</div></div>
       <div class="hi-verdict ${vcls}">${h.verdict}</div>
       ${ringSmall(h.confidence, vcls)}
@@ -728,10 +772,69 @@ function renderHistory() {
         <button class="btn sm" onclick="deleteHistory('${id}')">${ICON.x}删除</button>
       </div>
     </div>`;
-  }).join("");
-  return `<div class="page-head"><div><div class="ph-title">历史记录</div><div class="ph-sub">${ids.length} 场已分析比赛 · 点击复盘可重新运行引擎</div></div>
-    <div class="ph-actions"><button class="btn sm" onclick="clearHistory()">${ICON.warn}清空</button></div></div>
-    <div class="history-list">${items}</div>`;
+        }).join("");
+        return `<div class="page-section" style="margin-bottom:16px">
+      <div class="section-title">本地复盘（${ids.length} 场）</div>
+      <div class="history-list">${items}</div>
+    </div>`;
+      })()
+    : `<div class="page-section" style="margin-bottom:16px"><div class="section-title">本地复盘</div><div class="muted">暂无本地复盘记录。</div></div>`;
+
+  return `<div class="page-head"><div><div class="ph-title">历史记录</div><div class="ph-sub">本地复盘（前端 localStorage） + 预测台账（后端持久化，V9.7→融合决策）</div></div>
+    <div class="ph-actions"><button class="btn sm" onclick="clearHistory()">${ICON.warn}清空本地</button></div></div>
+    <div class="page-section" style="margin-bottom:16px">
+      <div class="section-title">预测台账（后端） <button class="btn sm" onclick="loadPredictionLedger()">${ICON.refresh}刷新</button></div>
+      <div id="pred-ledger"><div class="muted">加载中…</div></div>
+    </div>
+    ${localBlock}`;
+}
+
+/** 从后端加载预测台账并显示（含回填动作）。 */
+async function loadPredictionLedger() {
+  const box = document.getElementById('pred-ledger');
+  if (!box) return;
+  const api = window.__ApiClient ? window.__ApiClient.getApi() : null;
+  if (!api || typeof api.listPredictions !== 'function') {
+    box.innerHTML = '<div class="callout risk">当前模式不支持预测台账，请切到「后端 API」。</div>';
+    return;
+  }
+  let r;
+  try { r = await api.listPredictions(); } catch (e) { box.innerHTML = '<div class="callout risk">加载失败：' + e.message + '</div>'; return; }
+  if (!r.ok) { box.innerHTML = '<div class="callout risk">加载失败：' + (r.error || '') + '</div>'; return; }
+  const list = r.data || [];
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">暂无已保存预测。在「首页」打开一场比赛的分析页，点「保存预测」即可落库（V9.7→融合决策）。</div>';
+    return;
+  }
+  box.innerHTML = list.map(function (p) {
+    const dir = p.final_direction === 'favor_upper' ? '上盘' : p.final_direction === 'favor_lower' ? '下盘' : p.final_direction;
+    const dcls = p.final_direction === 'favor_upper' ? 'up' : p.final_direction === 'favor_lower' ? 'down' : 'none';
+    const res = p.result;
+    const resHtml = res
+      ? `<span class="badge ${res.prediction_correct ? 'up' : 'down'}">${(res.match_result === 'upper' ? '上盘' : res.match_result === 'lower' ? '下盘' : '平')} · ${res.prediction_correct ? '命中' : '未中'}</span>`
+      : `<button class="btn sm" onclick="backfillPredictionFromLedger('${p.prediction_id}','${(p.match_id || '').replace(/'/g, "\\'")}')">回填赛果</button>`;
+    return `<div class="history-item">
+      <div class="hi-main"><div class="hi-title">${p.match_id}</div><div class="hi-time">${fmtTime(p.created_at)} · ${dir} · ${Math.round((p.final_confidence || 0) * 100)}%</div></div>
+      <div class="hi-verdict ${dcls}">${dir}</div>
+      ${resHtml}
+    </div>`;
+  }).join('');
+}
+
+/** 从台账回填赛果：优先后端自动推导；失败提示。 */
+async function backfillPredictionFromLedger(id, matchId) {
+  const api = window.__ApiClient ? window.__ApiClient.getApi() : null;
+  if (!api) return;
+  let r;
+  try { r = await api.backfillPrediction(id, null); } catch (e) { toast('回填失败：' + e.message); return; }
+  if (r.ok) {
+    toast(r.data.duplicate ? '赛果已回填（既有记录）' : '赛果回填完成 · ' + (r.data.result && r.data.result.prediction_correct ? '命中' : '未中'));
+  } else if (r.error === 'cannot_derive_result' || r.error === '422') {
+    toast('该场无可用数字赛果，无法自动回填（需 reconcile 落盘数字比分）');
+  } else {
+    toast('回填失败：' + (r.error || ''));
+  }
+  loadPredictionLedger();
 }
 function deleteHistory(id) {
   showConfirm('删除复盘', '确定删除该复盘记录？', () => {

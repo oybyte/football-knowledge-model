@@ -16,6 +16,11 @@ const { runBacktest, THRESHOLDS } = require('../backtest');
 const { mineCandidates, escalateToProposed } = require('../ai');
 const { buildSamples, buildEvidence } = require('./samples');
 const { MemoryCacheAdapter } = require('../cache/adapter');
+// P0①：V9.7 真规则结果 → 融合层（让预测链从空转变真链）
+const { fuseV97Decision } = require('../fusion/v97_input');
+// P0②：预测发布 / 幂等赛果回填（落库 + 审计）
+const { PredictionPublisher } = require('../publish');
+const { SqliteAuditAdapter } = require('../publish/db_audit_adapter');
 
 const BACKTEST_RANGE = { from: '2026-08-01T00:00:00+08:00', to: '2026-08-20T00:00:00+08:00' };
 
@@ -128,7 +133,7 @@ function getManualAnalysis(service, params) {
   const id = decodeURIComponent(params.id || ''); // match_id 含中文，需解码
   const match = (res.matches || []).find((m) => m.match_id === id);
   if (!match) return fail(404, 'match_not_found_in_manual_source');
-  const analysis = buildAnalysis(service, match);
+  const analysis = buildAnalysis(service, match, computeV97Block(match, service.rules.getActiveRules()));
   const snapShots = match.snapshots || [];
   return ok({
     ...analysis,
@@ -140,8 +145,9 @@ function getManualAnalysis(service, params) {
   });
 }
 
-/** 共享分析核心：MatchSchema → 特征快照 → 规则检索/融合 → 推理链。 */
-function buildAnalysis(service, match) {
+/** 共享分析核心：MatchSchema → 特征快照 → 规则检索/融合 → 推理链。
+ *  @param {Object} [v97] 已算好的 V9.7 块；传入则同步产出 fusion（P0①：真规则→融合层）。 */
+function buildAnalysis(service, match, v97 = null) {
   const at = match.match_time; // 赛前分析锚点（数据须早于开赛）
   const feat = computeMatchFeatures(match, at);
   if (!feat.ok) return fail(422, feat.errors.join(', '));
@@ -182,7 +188,23 @@ function buildAnalysis(service, match) {
     review_note: result.retrieval.arbitration.review_note,
   };
 
-  return { match_id: match.match_id, at, features: feat.snapshot.features, hits, reasoning, prediction, arbitration, feat_errors: [] };
+  // P0①：把 V9.7 真规则结果接入融合层 → 真实的方向/置信度决策（不再依赖旧 DSL 空转）。
+  let fusion = null;
+  if (v97) {
+    try {
+      const fused = fuseV97Decision({ match_id: match.match_id, v97, rules: service.rules.getActiveRules() });
+      fusion = {
+        decision: fused.decision,
+        note: fused.note,
+        dimensions: fused.dimensions,
+        rule_output: fused.rule_output,
+      };
+    } catch (e) {
+      fusion = { error: String((e && e.message) || e) };
+    }
+  }
+
+  return { match_id: match.match_id, at, features: feat.snapshot.features, hits, reasoning, prediction, arbitration, fusion, feat_errors: [] };
 }
 
 // ───────────────────────── GET /api/rules ─────────────────────────
@@ -439,8 +461,6 @@ async function getMergedAnalysis(service, params) {
     const id = decodeURIComponent(params.id || '');
     const match = (merged.pool || []).find((m) => m.match_id === id);
     if (!match) return fail(404, 'match_not_found_in_merged_pool');
-    const analysis = buildAnalysis(service, match);
-    const mergedFlag = !!(match.meta && match.meta.merged);
 
     // V9.7 真规则求值（与旧 DSL 推理链并存；响应新增 v97 块供前端消费）。
     const v97res = evaluateMatch(match, service.rules.getActiveRules(), match.match_time);
@@ -458,6 +478,8 @@ async function getMergedAnalysis(service, params) {
       fields: listFields().map((f) => ({ field: f, status: getField(f, v97res.ctx).status })),
     };
 
+    const mergedFlag = !!(match.meta && match.meta.merged);
+    const analysis = buildAnalysis(service, match, v97);
     return ok({
       ...analysis,
       source: 'src_merged_pool',
@@ -470,6 +492,193 @@ async function getMergedAnalysis(service, params) {
     });
   } catch (e) {
     return fail(500, 'merged_analysis_error');
+  }
+}
+
+// ───────────────────────── P0② 预测发布 / 幂等赛果回填 ─────────────────────────
+// 让「预测 → 融合 → 落库 → 赛果回填」真正闭环：V9.7 真规则经融合层产出方向，
+// 保存为不可变预测记录（DB 持久化）；赛后一键回填赛果并判定命中（once-only + 时间安全）。
+
+/** 惰性构造 PredictionPublisher（DB 持久化存储 + DB 审计适配器，跨重启存活）。 */
+function getPublisher(service) {
+  if (!service._predictionPublisher) {
+    service._predictionPublisher = new PredictionPublisher({
+      store: service.predictionStore,
+      audit: new SqliteAuditAdapter(service.auditStore),
+    });
+  }
+  return service._predictionPublisher;
+}
+
+/** 解析一场合并池（或纯人工盘赔）的真实比赛，供发布/回填复用。 */
+async function resolveAnalysisMatch(service, id) {
+  const { value: schedule } = await syncAnchorCached(service, false);
+  const manual = loadManualOddsFromDb(service.qd)
+    || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+  const merged = mergeMatchSources({ schedule, manual });
+  let match = (merged.pool || []).find((m) => m.match_id === id);
+  if (!match && manual && manual.matches) {
+    match = manual.matches.find((m) => m.match_id === id) || null;
+  }
+  return match || null;
+}
+
+/** 计算 V9.7 求值块（与 getMergedAnalysis 同构，供发布端点复用）。 */
+function computeV97Block(match, rules) {
+  const v97res = evaluateMatch(match, rules, match.match_time);
+  return {
+    rule_count: v97res.results.length,
+    filtered_out: v97res.filtered_out,
+    rules: v97res.results.map((r) => ({
+      rule_id: r.rule_id,
+      status: r.status,
+      dimensions: r.dimensions,
+      effects: r.effects,
+      missing: r.missing,
+      no_atoms: r.no_atoms,
+    })),
+    fields: listFields().map((f) => ({ field: f, status: getField(f, v97res.ctx).status })),
+  };
+}
+
+/** 预测记录 → 视图（含回填结果，若有）。 */
+function toPredView(p) {
+  const r = p.result || null;
+  return {
+    prediction_id: p.prediction_id,
+    match_id: p.match_id,
+    final_direction: p.final_direction,
+    final_confidence: p.final_confidence,
+    created_at: p.created_at,
+    audit_trail_id: p.audit_trail_id,
+    meta: p.meta || null,
+    result: r
+      ? {
+          match_result: r.match_result,
+          outcome: r.outcome,
+          prediction_correct: r.prediction_correct,
+          verifiable: r.verifiable,
+          known_at: r.known_at,
+          backfilled_at: r.backfilled_at,
+        }
+      : null,
+  };
+}
+
+/** 从 DB 比赛实际比分 + 让球盘口自动推导让球盘赛果（upper/lower/draw）。 */
+function deriveMatchResult(service, match_id) {
+  try {
+    const manual = loadManualOddsFromDb(service.qd);
+    const match = manual && manual.matches && manual.matches.find((m) => m.match_id === match_id);
+    if (!match) return null;
+    const score = (match.actual_result || '').toString().trim();
+    const m = score.match(/(\d+)\s*[-:]\s*(\d+)/);
+    if (!m) return null;
+    const home = Number(m[1]);
+    const away = Number(m[2]);
+    const hhad = (match.snapshots || []).find((s) => s.data && s.data.poolNameZh === '让球胜平负');
+    if (!hhad || hhad.data.goalLine == null) return null; // 无让球盘口则无法判定让球方向
+    const line = Number(hhad.data.goalLine);
+    const adjusted = home - away + line; // 主队让球：line<0；受让：line>0
+    const match_result = adjusted > 0 ? 'upper' : adjusted < 0 ? 'lower' : 'draw';
+    const outcome = home > away ? 'home_win' : home < away ? 'away_win' : 'draw';
+    return { match_result, outcome, observed_at: null, received_at: null };
+  } catch (e) {
+    return null;
+  }
+}
+
+// ───────────────────────── POST /api/predictions ─────────────────────────
+// 复算 V9.7→融合决策并落库；无方向型维度命中（方向弃判）则 422 拒绝发布。
+async function savePrediction(service, params, body) {
+  const match_id = (body && body.match_id) || params.id || null;
+  if (!match_id) return fail(400, 'match_id_required');
+  const match = await resolveAnalysisMatch(service, match_id);
+  if (!match) return fail(404, 'match_not_found_in_merged_pool');
+
+  const rules = service.rules.getActiveRules();
+  const v97 = computeV97Block(match, rules);
+  const fused = fuseV97Decision({ match_id, v97, rules });
+  if (!fused.rule_output || !fused.decision.final_direction) {
+    return fail(422, 'no_verifiable_direction'); // 融合层无方向型维度命中 → 不发布
+  }
+
+  const decision = {
+    prediction_id: fused.decision.prediction_id,
+    match_id,
+    final_direction: fused.decision.final_direction,
+    final_confidence: fused.decision.final_confidence,
+    weights: fused.decision.weights,
+    reasoning_chain: fused.decision.reasoning_chain,
+    audit_trail_id: fused.decision.audit_trail_id,
+    created_by: 'http:predict',
+    meta: {
+      dimensions: fused.dimensions,
+      hit_rule_ids: fused.rule_output.evidence.hit_rule_ids,
+      field_coverage: fused.rule_output.evidence.field_coverage,
+      trust_note: fused.rule_output.evidence.trust_note,
+    },
+  };
+
+  const publisher = getPublisher(service);
+  const idemKey = (body && body.idempotency_key) || `pred:${match_id}`;
+  const res = publisher.publish({ decision, idempotency_key: idemKey, created_by: 'http:predict' });
+  return ok({
+    prediction_id: res.prediction.prediction_id,
+    match_id,
+    final_direction: res.prediction.final_direction,
+    final_confidence: res.prediction.final_confidence,
+    audit_trail_id: res.prediction.audit_trail_id,
+    duplicate: !!res.duplicate,
+    note: fused.note,
+  });
+}
+
+// ───────────────────────── GET /api/predictions ─────────────────────────
+function listPredictions(service) {
+  const publisher = getPublisher(service);
+  const list = publisher
+    .listPredictions()
+    .map((p) => publisher.predictionWithResult(p.prediction_id))
+    .filter(Boolean);
+  return ok(list.map(toPredView).sort((a, b) => String(a.created_at) < String(b.created_at) ? 1 : -1));
+}
+
+// ───────────────────────── GET /api/predictions/:id ─────────────────────────
+function getPrediction(service, params) {
+  const publisher = getPublisher(service);
+  const p = publisher.predictionWithResult(params.id);
+  if (!p) return fail(404, 'prediction_not_found');
+  return ok(toPredView(p));
+}
+
+// ───────────────────────── POST /api/predictions/:id/result ─────────────────────────
+// 幂等回填：缺省自动从 DB 比赛实际比分 + 让球盘口推导赛果；once-only 重复回填返回既有。
+async function backfillPrediction(service, params, body) {
+  const publisher = getPublisher(service);
+  const pred = publisher.getPrediction(params.id);
+  if (!pred) return fail(404, 'prediction_not_found');
+
+  const bodyResult = body && body.result;
+  const known_at = (body && body.known_at) || new Date().toISOString();
+  let result = bodyResult && bodyResult.match_result ? bodyResult : deriveMatchResult(service, pred.match_id);
+  if (!result || !result.match_result) return fail(422, 'cannot_derive_result');
+
+  try {
+    const r = publisher.backfill({
+      prediction_id: params.id,
+      result,
+      known_at,
+      actor: 'http:backfill',
+    });
+    return ok({ prediction_id: params.id, duplicate: false, result: r.result, evidence: r.evidence });
+  } catch (e) {
+    if (e && e.name === 'AlreadyBackfilledError') {
+      const existing = publisher.predictionWithResult(params.id);
+      return ok({ prediction_id: params.id, duplicate: true, result: existing.result });
+    }
+    if (e && e.name === 'PublishError') return fail(422, e.code || 'publish_error');
+    return fail(500, 'backfill_error');
   }
 }
 
@@ -488,5 +697,10 @@ module.exports = {
   getManualOddsStatus,
   getMergedPool,
   getMergedAnalysis,
+  // P0②：预测发布 / 幂等赛果回填
+  savePrediction,
+  listPredictions,
+  getPrediction,
+  backfillPrediction,
   candidateRegistry,
 };

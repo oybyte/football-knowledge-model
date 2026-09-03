@@ -211,7 +211,39 @@
         feat_errors: [],
       });
     },
+
+    // P0② 预测台账（mock 兜底：localStorage 自洽，真实语义以后端为准）
+    savePrediction: function (matchId, opts) {
+      var list = mockPredictionLedger();
+      var id = 'pred_mock_' + matchId + '_' + Date.now();
+      list.push({ prediction_id: id, match_id: matchId, final_direction: 'favor_upper', final_confidence: 0.6, created_at: new Date().toISOString(), result: null, meta: null });
+      storageSet('oe_mock_predictions', JSON.stringify(list));
+      return okBody({ prediction_id: id, match_id: matchId, final_direction: 'favor_upper', final_confidence: 0.6, duplicate: false, note: 'mock' });
+    },
+    listPredictions: function () {
+      return okBody(mockPredictionLedger());
+    },
+    getPrediction: function (id) {
+      var list = mockPredictionLedger();
+      var p = list.find(function (x) { return x.prediction_id === id; });
+      return p ? okBody(p) : errBody('prediction_not_found');
+    },
+    backfillPrediction: function (id, result) {
+      var list = mockPredictionLedger();
+      var p = list.find(function (x) { return x.prediction_id === id; });
+      if (!p) return errBody('prediction_not_found');
+      p.result = { match_result: (result && result.match_result) || 'upper', prediction_correct: true, verifiable: true, known_at: new Date().toISOString(), backfilled_at: new Date().toISOString() };
+      storageSet('oe_mock_predictions', JSON.stringify(list));
+      return okBody({ prediction_id: id, duplicate: false, result: p.result });
+    },
   };
+
+  function mockPredictionLedger() {
+    try {
+      var raw = storageGet('oe_mock_predictions', '[]');
+      return JSON.parse(raw) || [];
+    } catch (e) { return []; }
+  }
 
   // ───────────────────────── HTTP 适配器 ─────────────────────────
   // fetch 后端 REST；所有请求统一 { baseUrl + path }，响应壳 { ok, data?, error? }。
@@ -359,6 +391,23 @@
           r.data.mode = 'http';
           return r;
         });
+      },
+
+      // ── P0② 预测台账：发布 / 列表 / 单条 / 幂等赛果回填 ──
+      savePrediction: function (matchId, opts) {
+        return req('POST', '/api/predictions', {
+          match_id: matchId,
+          idempotency_key: (opts && opts.idempotency_key) || ('pred:' + matchId),
+        });
+      },
+      listPredictions: function () {
+        return req('GET', '/api/predictions');
+      },
+      getPrediction: function (id) {
+        return req('GET', '/api/predictions/' + encodeURIComponent(id));
+      },
+      backfillPrediction: function (id, result) {
+        return req('POST', '/api/predictions/' + encodeURIComponent(id) + '/result', { result: result || null });
       },
     };
   }
