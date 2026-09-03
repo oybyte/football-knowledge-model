@@ -13,6 +13,8 @@ const {
   confidenceProvider,
   computeBasisWeights,
   normalizeWeights,
+  parseWeightsFromEnv,
+  WEIGHTS_ENV,
   DEFAULT_WEIGHTS,
   resolveTrust,
   gateCheck,
@@ -59,6 +61,56 @@ test('权重 · rule exact 命中 → 规则话语权 ×1.2', () => {
 test('权重 · anomaly 主动触发 → 异常话语权 ×1.5', () => {
   const w = computeBasisWeights({ anomaly_output: { alert: 'drift' } });
   assert.ok(Math.abs(w.anomaly - 0.3 / 1.1) < 1e-9);
+});
+
+// ---------- 权重可配置性（关闭 G10「可配置性空白」）----------
+test('权重 · 显式 weights 覆盖优先于默认', () => {
+  const w = computeBasisWeights({ weights: { rule: 0.7, model: 0.2, anomaly: 0.1 } });
+  assert.ok(Math.abs(w.rule - 0.7) < 1e-9);
+  assert.ok(Math.abs(w.model - 0.2) < 1e-9);
+  assert.ok(Math.abs(w.anomaly - 0.1) < 1e-9);
+});
+
+test('权重 · 显式 weights 允许部分键，缺失键回退默认并归一', () => {
+  const w = computeBasisWeights({ weights: { model: 0.8 } });
+  // model 0.8 + rule 0.5 + anomaly 0.2 = 1.5 → model=0.8/1.5
+  assert.ok(Math.abs(w.model - 0.8 / 1.5) < 1e-9);
+  assert.ok(Math.abs(w.rule - 0.5 / 1.5) < 1e-9);
+});
+
+test('权重 · env OE_FUSION_WEIGHTS 解析覆盖（仅覆盖给定键）', () => {
+  const prev = process.env.OE_FUSION_WEIGHTS;
+  try {
+    process.env.OE_FUSION_WEIGHTS = 'model:0.6,anomaly:0.3';
+    const w = computeBasisWeights({});
+    // 缺失的 rule 回退默认 0.5 → 0.5/1.4, 0.6/1.4, 0.3/1.4
+    assert.ok(Math.abs(w.rule - 0.5 / 1.4) < 1e-9);
+    assert.ok(Math.abs(w.model - 0.6 / 1.4) < 1e-9);
+    assert.ok(Math.abs(w.anomaly - 0.3 / 1.4) < 1e-9);
+  } finally {
+    if (prev === undefined) delete process.env.OE_FUSION_WEIGHTS;
+    else process.env.OE_FUSION_WEIGHTS = prev;
+  }
+});
+
+test('权重 · env 格式非法/缺失 → 回退默认 {rule:0.5,model:0.3,anomaly:0.2}', () => {
+  const prev = process.env.OE_FUSION_WEIGHTS;
+  try {
+    process.env.OE_FUSION_WEIGHTS = 'not-a-weight';
+    const w = computeBasisWeights({});
+    assert.ok(Math.abs(w.rule - 0.5) < 1e-9);
+    assert.ok(Math.abs(w.model - 0.3) < 1e-9);
+    assert.ok(Math.abs(w.anomaly - 0.2) < 1e-9);
+  } finally {
+    if (prev === undefined) delete process.env.OE_FUSION_WEIGHTS;
+    else process.env.OE_FUSION_WEIGHTS = prev;
+  }
+});
+
+test('权重 · parseWeightsFromEnv：无效键忽略，无有效数字 → null', () => {
+  assert.equal(parseWeightsFromEnv({ OE_FUSION_WEIGHTS: 'foo:1,bar:2' }), null);
+  const w = parseWeightsFromEnv({ OE_FUSION_WEIGHTS: 'rule:0.4' });
+  assert.ok(w && Math.abs(w.rule - 0.4 / (0.4 + 0.3 + 0.2)) < 1e-9);
 });
 
 // ---------- 信任隔离 ----------

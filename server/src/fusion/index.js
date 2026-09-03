@@ -4,7 +4,7 @@
 // ============================================================================
 'use strict';
 
-const { DEFAULT_WEIGHTS, STREAMS, normalizeWeights, computeBasisWeights } = require('./weights');
+const { DEFAULT_WEIGHTS, STREAMS, WEIGHTS_ENV, normalizeWeights, parseWeightsFromEnv, computeBasisWeights } = require('./weights');
 const { resolveTrust, gateCheck, isValidDirection, isValidConfidence } = require('./containment');
 const { ConfidenceProvider } = require('./confidence');
 const { fuse } = require('./fuse');
@@ -56,7 +56,9 @@ module.exports = {
   // 权重
   DEFAULT_WEIGHTS,
   STREAMS,
+  WEIGHTS_ENV,
   normalizeWeights,
+  parseWeightsFromEnv,
   computeBasisWeights,
   // 隔离
   resolveTrust,

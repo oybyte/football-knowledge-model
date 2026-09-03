@@ -46,11 +46,32 @@
    见 backtest/metrics.js THRESHOLDS + promote/promote.js）后，该规则方向结论
    才允许进入统一方向仲裁。
 
-## 4. 可配置项（设计目标，Phase 后续）
+## 4. 可配置项
 
-- 维度中文映射表 V97_DIM_ZH（app.js，已实现，可扩充）
-- 每维度「是否参与方向仲裁」开关（默认否，转正后由 promote 侧开启）
-- edge/ROI 加权（Phase 2；当前命中率加权仅为兼容占位）
+| 项 | 状态 | 说明 |
+|---|---|---|
+| 维度中文映射表 V97_DIM_ZH | ✅ 已实现 | app.js，可扩充 |
+| **融合三路权重（rule/model/anomaly）** | ✅ **已实现（2026-09-03）** | env `OE_FUSION_WEIGHTS=rule:0.5,model:0.3,anomaly:0.2`；仅覆盖给定键、缺失键回退默认、自动归一；解析失败回退默认。关闭 G10「可配置性空白」。 |
+| 每维度「是否参与方向仲裁」开关 | ⏳ Phase 2 | 默认否，转正后由 promote 侧开启 |
+| **置信度 edge/ROI 加权** | ⏳ **Phase 2（定义见 §4.1）** | 当前为回测命中率加权（兼容占位）；让球盘基础胜率天然≈50%，须改用 edge/ROI 度量真实优势 |
+
+### 4.1 edge/ROI 置信度目标公式（Phase 2 接入点）
+
+规则最终置信度 `C_rule` 当前由 G19 取回测 `confidence`（命中率加权）。Phase 2 改为以
+**期望收益 edge** 为主、命中率为辅的可解释度量，接入点 = `server/src/fusion/confidence.js`
+的 `ConfidenceProvider.resolve()`：
+
+```
+edge = mean( (odds_implied_prob_i - true_prob_i) / true_prob_i )   // 盘口隐含概率 vs 真实概率的偏离（去水）
+roi  = mean( (payout_i - 1) * indicator(hit_i) - (1 - indicator(hit_i)) )  // 单位注净收益
+C_rule = clamp( 0.5 + k * edge , 0, 1 )          // edge>0 抬高，edge<0 压低；k 为可调增益
+            （命中率仍作为 gate 前置门槛：hit_rate ≥ 55% 才允许进入仲裁，见 promote 门禁）
+```
+
+要点：
+- edge 直接反映「盘口定价偏差带来的可下注优势」，比命中率更贴合竞彩让球盘（基线≈50%）；
+- ROI 用于回测台账与赛果回填的盈亏口径（predictions-publish 已支持赛果回填，可直接接 ROI 列）；
+- 与现有门禁一致：hit_rate/roi/edge 同为转正硬门槛（用户拍板 edge≥0 / roi≥0 / 样本≥80）。
 
 ## 5. 开放问题（待拍板）
 
@@ -58,6 +79,7 @@
   现有 v97_real 探针已给出 S25 倾向命中 61.8%（76 场），可作为转正证据输入。
 - AI 候选（untrusted）经 review→proposed 后，是否强制要求 v97_real 回测达标才可实验
   （当前 promote 已要求 metrics 全项达标，建议维持）。
+- edge/ROI 置信度公式中的增益系数 k 与基线 0.5 是否需写入设置页（当前为常量，待可配置化）。
 
 ## 6. 关联代码
 

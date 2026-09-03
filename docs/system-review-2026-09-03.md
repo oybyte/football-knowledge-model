@@ -55,7 +55,7 @@
 ### ⚠️ 部分（有实现但空转 / 占位 / 未接线）
 | 模块 | 作用 | 缺口 |
 |---|---|---|
-| **fusion/** | 三路融合（规则/统计/异常）+ 权重 + 置信度门 + 信任隔离——**已实现且接线**（engine/prediction + worker） | **V9.7 真规则结果已接入**（v97_input 适配器 → 方向/总进球双轴决策）；edge/ROI 置信度仍为 Phase 2 |
+| **fusion/** | 三路融合（规则/统计/异常）+ 权重 + 置信度门 + 信任隔离——**已实现且接线**（engine/prediction + worker） | **V9.7 真规则结果已接入**（v97_input 适配器 → 方向/总进球双轴决策）；**三路权重已可配置**（env `OE_FUSION_WEIGHTS`，关闭 G10 可配置性空白）；edge/ROI 置信度仍为 Phase 2（公式已定义于 fusion-decision-layer.md §4.1） |
 | **worker/** | 检索 Worker：point-in-time 检索、冲突检测、仲裁 | 输入来自旧链，同上空转 |
 | **dsl/** | 11 算子 + 编译期校验 + 推理链 | 不消费 V9.7 atoms；`custom` 算子 13 处未实现 |
 | **convert/** | 文字规则→DSL 历史兼容 | catalog 已清空，保留 no-op 入口 |

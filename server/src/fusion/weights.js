@@ -8,6 +8,9 @@
 
 const DEFAULT_WEIGHTS = Object.freeze({ rule: 0.5, model: 0.3, anomaly: 0.2 });
 const STREAMS = ['rule', 'model', 'anomaly'];
+// 运行时可配置（关闭 G10「可配置性空白」）：env OE_FUSION_WEIGHTS=rule:0.5,model:0.3,anomaly:0.2
+// 仅覆盖给定键，缺失键回退默认；解析失败/空 → 默认。格式宽松：允许部分键、允许非 1 总和（归一化）。
+const WEIGHTS_ENV = 'OE_FUSION_WEIGHTS';
 
 /** @param {number|undefined} x @returns {boolean} */
 function isFiniteNum(x) {
@@ -30,13 +33,41 @@ function normalizeWeights(weights) {
 }
 
 /**
+ * 从 env（或显式 env 对象）解析融合权重覆盖。
+ * 格式：rule:0.5,model:0.3,anomaly:0.2（键可省、值须非负有限数）。
+ * 仅覆盖给定键，其余回退 DEFAULT_WEIGHTS；解析失败/空 → 返回 null（调用方回退默认）。
+ * @param {Object} [env] 默认 process.env
+ * @returns {?Object} 已归一化的权重或 null
+ */
+function parseWeightsFromEnv(env) {
+  const src = (env && env[WEIGHTS_ENV]) ||
+    (typeof process !== 'undefined' && process.env && process.env[WEIGHTS_ENV]) || '';
+  if (!src) return null;
+  const picked = {};
+  for (const part of String(src).split(',')) {
+    const kv = part.split(':');
+    if (kv.length !== 2) continue;
+    const k = kv[0].trim();
+    const v = Number(kv[1].trim());
+    if (STREAMS.includes(k) && Number.isFinite(v) && v >= 0) picked[k] = v;
+  }
+  if (!STREAMS.some((s) => picked[s] !== undefined)) return null;
+  const merged = { ...DEFAULT_WEIGHTS };
+  for (const s of STREAMS) if (picked[s] !== undefined) merged[s] = picked[s];
+  return normalizeWeights(merged);
+}
+
+/**
  * 计算标称（basis）权重：默认 + 场景调整，归一化到 [0,1] 且总和 1。
  * 尚未做信任隔离（untrusted 归零在 fuse.js 完成）。
- * @param {Object} streams { rule_output?, model_output?, anomaly_output?, context? }
+ * @param {Object} streams { rule_output?, model_output?, anomaly_output?, weights?, context? }
+ * @param {?Object} [streams.weights] 显式权重覆盖（优先于 env）；缺省读 env OE_FUSION_WEIGHTS，再回退默认
  * @returns {Object} { rule, model, anomaly }
  */
-function computeBasisWeights({ rule_output = null, model_output = null, anomaly_output = null } = {}) {
-  const w = { ...DEFAULT_WEIGHTS };
+function computeBasisWeights({ rule_output = null, model_output = null, anomaly_output = null, weights = null } = {}) {
+  const explicit = weights || parseWeightsFromEnv();
+  const base = { ...DEFAULT_WEIGHTS, ...(explicit || {}) }; // 部分覆盖键与默认合并，缺失键回退默认
+  const w = { ...base };
 
   // 规则 exact 命中（可解释强）→ 规则话语权提高
   if (rule_output && isFiniteNum(w.rule)) {
@@ -51,4 +82,4 @@ function computeBasisWeights({ rule_output = null, model_output = null, anomaly_
   return normalizeWeights(w);
 }
 
-module.exports = { DEFAULT_WEIGHTS, STREAMS, normalizeWeights, computeBasisWeights };
+module.exports = { DEFAULT_WEIGHTS, STREAMS, WEIGHTS_ENV, normalizeWeights, parseWeightsFromEnv, computeBasisWeights };
