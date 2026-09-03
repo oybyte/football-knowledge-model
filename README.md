@@ -191,7 +191,7 @@ node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
 
 ## V9.7 引擎垂直切片
 
-`server/src/engine/v97/` 已打通一条真实数据验证链：盘口快照 → 字段信封 → atom 三态求值 → effects → 维度输出。当前切片覆盖 5 个字段、8 个基础算子，并针对 R13、R01 做真实数据验证；未覆盖字段统一返回 `insufficient_data`，不把缺失数据当成条件不满足。
+`server/src/engine/v97/` 已打通一条真实数据验证链：盘口快照 → 字段信封 → atom 三态求值 → effects → 维度输出。当前切片覆盖 12 个字段、8 个基础算子；R01、R13、S25 已具备完整求值，E14、E06 等规则已出现真实命中，其余字段不足时统一返回 `insufficient_data`，不把缺失数据当成条件不满足。
 
 切片验证脚本：
 
@@ -199,7 +199,7 @@ node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
 node server/scripts/v97-slice-run.js
 ```
 
-该脚本用于验证字段覆盖率和引擎架构，不代表 88 条规则已经全部可求值，也不直接产出可执行的投注结论。完整规则仍以外部 V9.7 registry 为准。
+该脚本用于验证字段覆盖率和引擎架构，不代表 88 条规则已经全部可求值，也不直接产出可执行的投注结论。真实回测另由 `server/scripts/backtest-v97-run.js` 生成覆盖统计、命中事件台账和 S25 探针结果；当前证据不等同于生产准确率或 ROI。完整规则仍以外部 V9.7 registry 为准。
 
 ## 当前状态
 

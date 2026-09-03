@@ -23,6 +23,7 @@
 - `design/dsl-engine-1.4.0/`：DSL 编译、求值和检索设计。
 - `design/backtest-1.5.0/`：回测准入、指标和证据设计。
 - `design/fusion-1.6.0/`：多路信号融合和冲突仲裁设计。
+- `design/fusion-decision-layer/fusion-decision-layer.md`：V9.7 融合决策层落点、策略和开放问题提案（当前评审）。
 - `design/retrieval-worker-1.7.0/`：检索 Worker 和任务处理设计。
 - `design/prediction-backfill-1.8.0/`：预测发布与赛果回填设计。
 - `design/implementation-plan-1.0.0/`：从架构基线到工程实现的阶段计划。
