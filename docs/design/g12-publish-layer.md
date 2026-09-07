@@ -59,11 +59,14 @@ HTTP POST /api/analysis/:match_id/publish
 - 不可变:仅 insert;update/delete/patch 抛错(应用层 + DB 触发器兜底)。
 - 规则约束(AGENTS.md):架构文档保留为基线;`node --check` 校验变更 JS。
 
-## 5. 附带发现(不在 A1 范围,单独跟进)
-- `server/src/db/g12/manual_reconcile.js` 引用 `qd.qd_hist_scan_runs` / `qd_hist_match_version` /
-  `qd_hist_match_snapshot`,但 `server/migrations/001_init.sql` 的 12 张 qd_* 表**均无**这些表,
-  运行时该 reconcile 会抛错并被 `index.js:132` catch 为 `manual_odds_reconcile_failed`(静默降级)。
-  需另行确认这些 hist 表是否应收敛为目标表集合或删除该路径。
+## 5. 附带发现(已核实,非缺陷;记录于本文供后续观察)
+- `server/src/db/g12/manual_reconcile.js` 引用的 `qd_hist_match_version` / `qd_hist_match_snapshot` /
+  `qd_hist_scan_runs` 三张表由 `server/migrations/002_manual_odds_history.sql` 创建,
+  且 `createG12Repository` 的 `ENTITIES` 已注册(访问器 `qd.hist_match_version` 等可用)。
+  已实测:空/缺配置根目录时 `reconcileManualOddsToDb` 诚实返回 `MANUAL_ODDS_ROOT_MISSING`
+  (写一条 scan_run,不抛错);`loadManualOddsFromDb` 空库返回 `null`(调用方回退磁盘)。
+  即:不存在「缺失表」缺陷,`index.js:132` 的 `manual_odds_reconcile_failed` 仅出现在
+  根目录缺失或扫盘异常时,属预期的诚实降级。**无需修复,后续保持观察即可**。
 
 ## 6. 后续任务衔接(T2–T8)
 - T2 G12 预测写入适配器 `createG12PredictionWriter({ qd })`(FK 锚点 + 诚实失败)。
