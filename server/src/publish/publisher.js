@@ -18,6 +18,7 @@ const { defaultLogger } = require('../lib/logger');
  * @param {PredictionStore} [opts.store]
  * @param {IdempotencyGuard} [opts.guard]
  * @param {AuditLog} [opts.audit]
+ * @param {Object} [opts.g12Writer] createG12PredictionWriter 实例（A1 方案 B：提供后发布走 G12 事务写路径）
  * @param {import('../lib/logger').Logger} [opts.logger]
  */
 class PredictionPublisher {
@@ -25,6 +26,7 @@ class PredictionPublisher {
     this.store = opts.store || new PredictionStore();
     this.guard = opts.guard || new IdempotencyGuard();
     this.audit = opts.audit || new AuditLog();
+    this.g12Writer = opts.g12Writer || null;
     this.logger = opts.logger || defaultLogger;
   }
 
@@ -48,9 +50,27 @@ class PredictionPublisher {
       match_id: record.match_id,
     });
     if (reg.duplicate) {
-      const existing = this.store.get(reg.existing.prediction_id);
+      const existing = this.g12Writer
+        ? this.g12Writer.get(reg.existing.prediction_id)
+        : this.store.get(reg.existing.prediction_id);
       this.logger.warn('prediction_publish_duplicate', { prediction_id: record.prediction_id });
       return { published: false, duplicate: true, prediction: existing, existing };
+    }
+
+    // A1 方案 B：G12 事务写路径（qd_predictions + qd_analysis_commands + qd_audit_log 锚点同一事务原子提交）
+    if (this.g12Writer) {
+      const w = this.g12Writer.write(record);
+      if (!w.inserted) {
+        // G12 幂等兜底：并发/同 prediction_id 已被写入 → 返回既有
+        this.logger.warn('prediction_publish_duplicate', { prediction_id: record.prediction_id });
+        return { published: false, duplicate: true, prediction: w.prediction, existing: w.existing };
+      }
+      this.logger.info('prediction_published', {
+        prediction_id: w.prediction.prediction_id,
+        match_id: w.prediction.match_id,
+        final_direction: w.prediction.final_direction,
+      });
+      return { published: true, prediction: w.prediction };
     }
 
     const prediction = this.store.insert(record);

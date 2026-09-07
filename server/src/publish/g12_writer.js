@@ -92,7 +92,12 @@ function createG12PredictionWriter({ db, qd, logger = defaultLogger }) {
     });
   }
 
-  return { write };
+  /** 读取一条 G12 预测（供幂等分支与只读兼容层复用）。 */
+  function get(prediction_id) {
+    return qd.predictions.get(prediction_id);
+  }
+
+  return { write, get };
 }
 
 module.exports = { createG12PredictionWriter };
