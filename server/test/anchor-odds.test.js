@@ -13,6 +13,25 @@ const assert = require('node:assert/strict');
 const { syncSportteryOdds, mergeMatchSources } = require('../src/data');
 const { anchorSource } = require('../src/http/handlers');
 
+// ── 时敏修正：竞彩场次必须晚于「现在」才能通过三时间戳防线（snapshot_received_after_match_time）。
+// ── 假报文日期固定为过去（如 20260903）会随真实 now 推移而变红；改为相对「未来 7 天」业务日。
+function futureBusinessDate() {
+  const d = new Date(Date.now() + 7 * 86400000);
+  return (
+    d.getFullYear().toString() +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    String(d.getDate()).padStart(2, '0')
+  );
+}
+const FUTURE_BD = futureBusinessDate();
+
+// 未来 ISO 日期（YYYY-MM-DD，供构造合法 match_time / 快照时间戳）
+function futureISODate() {
+  const d = new Date(Date.now() + 7 * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+const FUTURE_ISO = futureISODate();
+
 // ── 竞彩官方赔率端点真实报文形状（getMatchCalculatorV1）──
 const SPORTTERY_PAYLOAD = {
   success: true,
@@ -20,14 +39,14 @@ const SPORTTERY_PAYLOAD = {
   value: {
     matchInfoList: [
       {
-        businessDate: '20260903',
+        businessDate: FUTURE_BD,
         subMatchList: [
           {
             matchId: 2041049,
             matchNumStr: '周三001',
             matchNum: 2001,
-            businessDate: '20260903',
-            matchDate: '20260903',
+            businessDate: FUTURE_BD,
+            matchDate: FUTURE_BD,
             matchTime: '18:30:00',
             matchStatus: 'Selling',
             leagueAllName: '英超',
@@ -51,12 +70,12 @@ const SPORTTERY_PAYLOAD_NO_NUM = {
   value: {
     matchInfoList: [
       {
-        businessDate: '20260903',
+        businessDate: FUTURE_BD,
         subMatchList: [
           {
             matchId: 2041050,
-            businessDate: '20260903',
-            matchDate: '20260903',
+            businessDate: FUTURE_BD,
+            matchDate: FUTURE_BD,
             matchTime: '21:00:00',
             matchStatus: 'Selling',
             leagueAllName: '英超',
@@ -111,7 +130,7 @@ test('① syncSportteryOdds：官方赔率报文 → MatchSchema（含期号/业
   assert.equal(o.away_team, '狼队');
   assert.equal(o.status, 'scheduled', 'Selling → scheduled（在售态）');
   assert.equal(o.meta.match_num_str, '周三001', '期号供确定性锚定');
-  assert.equal(o.meta.business_date, '20260903', '业务日决定「今日可买」批次');
+  assert.equal(o.meta.business_date, FUTURE_BD, '业务日决定「今日可买」批次');
   assert.equal(o.snapshots.length > 0, true, '官方盘口快照入列');
 });
 
@@ -131,7 +150,7 @@ test('② 期号一致 → 确定性对齐：官方 match_id 接管，align_via=
   assert.equal(m.meta.schedule_match_id, '2041049');
   assert.equal(m.status, 'scheduled', '在售态承接官方 Selling');
   // 官方 meta（business_date 等）须透传，供「今日可买」批次分组与期号溯源
-  assert.equal(m.meta.business_date, '20260903', '官方业务日透传（合并曾丢失，导致首页分组失真）');
+  assert.equal(m.meta.business_date, FUTURE_BD, '官方业务日透传（合并曾丢失，导致首页分组失真）');
   assert.equal(m.meta.match_num_str, '周三001', '官方期号透传');
   assert.equal(m.snapshots[0].match_id, '2041049', '快照 match_id 跟随顶层');
   assert.equal(m.snapshots[0].trust_level, 'provisional', '盘口快照信任不变');
@@ -169,14 +188,16 @@ test('④ 对比：同一人工场次，坏锚源降级 manual_only，odds 锚�
 // ───────────────────────── ⑤ 时间防线：官方在售但快照赛后回灌仍剔除 ─────────────────────────
 test('⑤ 时间防线不放松：即便 odds 锚源在售，盘口快照晚于开赛仍 conflicts', async () => {
   const odds = await syncSportteryOdds({ fetchImpl: fakeFetchOk(SPORTTERY_PAYLOAD) });
+  // 用未来业务日构造「晚于开赛」的快照（received 晚于 match_time → 赛后回灌形）
+  const lateTime = (hhmm) => `${FUTURE_ISO}T${hhmm}:00+08:00`;
   const late = manualMatch({
-    observed_at: '2026-09-03T19:00:00+08:00',
-    received_at: '2026-09-03T19:30:00+08:00', // 晚于 18:30 开赛 → 赛后回灌形
+    observed_at: lateTime('19:00'),
+    received_at: lateTime('19:30'), // 晚于 18:30 开赛 → 赛后回灌形
     snapshots: [{
       snapshot_id: 'manual_late', match_id: '英超_曼城vs狼队',
       institution: 'macau', market: 'handicap',
       source_id: 'src_manual_odds', trust_level: 'provisional',
-      observed_at: '2026-09-03T19:00:00+08:00', received_at: '2026-09-03T19:30:00+08:00',
+      observed_at: lateTime('19:00'), received_at: lateTime('19:30'),
       data: { line: '-0.5', home_water: 0.9, away_water: 0.9 },
     }],
     meta: { match_num_str: '周三001' },

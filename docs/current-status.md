@@ -127,6 +127,11 @@
 - 接线：ruleStore / auditStore 新增只读 listAll() 支持批量回填；createDb 装配 qd 仓库 + backfillG12。
 - 测试：migrations.test.js（核心表与历史派生表 / 触发器 / 索引 / 幂等 / 外键 / 关键字段对齐）+ db-persistence.test.js（运行时表、G12 表和历史派生表持久化）+ g12-repository.test.js（类型化读写、幂等、校验、不可变和外键）+ g12-backfill.test.js（FK 序迁移、幂等和事务原子性）。
 
+### 阶段 4b · G12 预测发布层迁移（A1，进行中）
+- A1·T2 server/src/publish/g12_writer.js `createG12PredictionWriter({ db, qd })`：把预测发布落库目标切到 G12 `qd_predictions`（方案 B，qd_* 为唯一写路径）。与 backfillG12 锚点逻辑严格对齐——match_id→qd_matches（NOT NULL FK）缺失即诚实失败（E2005 missing_match，绝不捏造）；audit_trail_id→qd_audit_log 缺失补占位 prediction_published 锚点；command_id→qd_analysis_commands（可空）缺失预置 completed 命令锚点。事务原子（qd_predictions + 锚点同事务，中途抛错整体回滚）；幂等（INSERT OR IGNORE，重复 publish 返回既有 inserted=false，首次内容不被覆盖）。测试 test/g12-writer.test.js（5 用例：锚点补全 / 占位审计 / 缺 match 诚实失败 / 幂等 / 事务回滚）。
+- 时敏缺陷修复（anchor-odds.test.js）：假报文日期固定为过去（20260903），随真实 now 推移触发 SNAPSHOT_AFTER_MATCH 拒绝 → degraded；改为相对「未来 7 天」业务日 + 合法 ISO 时间戳，保持期号/业务日/在售态断言语义不变，时间防线用例（⑤）改为未来「晚于开赛」快照仍验 conflicts。6 用例全绿且不再时敏。
+- 附带核查（manual_reconcile）：qd_hist_match_version / qd_hist_match_snapshot / qd_hist_scan_runs 三张历史派生表由 002 迁移创建，ENTITIES 已注册，访问器可用；缺 OE_MANUAL_ODDS_ROOT 时诚实返回 MANUAL_ODDS_ROOT_MISSING（写一条 scan_run，不抛错），非缺陷，无需修复。
+
 ### 阶段 2 · 前端原型（prototype-1.0.0）
 - 预测链流水线、规则治理、回测结果、数据接入监控、特征引擎、DSL 引擎、AI 引擎、规则库（增强 DSL 索引 + 检索命中预览）。
 - 首页已切换真实数据（mock 数据源已删除）：「今日可买」卡片消费竞彩官方在售列表（序号/让球/业务日/在售状态为权威元信息）；已关联本地人工盘赔的场次显示「盘赔明细 · N条」徽章（provisional 标注），开启分析后右侧渲染后端合并池推理链（规则命中 / 方向 / 置信度），「详细分析」进入三栏分析壳（规则命中表 + 特征快照表 + 方向胶囊）。
@@ -134,9 +139,9 @@
 - 公益网站减负（前端）：本地 localStorage 当天缓存 + 后端当天缓存双层，自动获取每日一次，右上角「手动刷新」按钮带 refresh=1 强制直连。
 
 ## 验证
-- 后端全量回归 418 用例：416 通过、0 失败、2 个外部服务用例可跳过（`npm test` = `node --test "server/test/*.test.js"`，干净退出无残留句柄）。
+- 后端全量回归 455 用例：453 通过、0 失败、2 个外部服务用例可跳过（`npm test` = `node --test "server/test/*.test.js"`，干净退出无残留句柄）。
 - 真实 Redis 运行时验收（real-redis-e2e.test.js 2 用例，可跳过式）：对**真实 Redis daemon**（OE_TEST_REDIS_URL 或本地 127.0.0.1:16379，无则 t.skip）一验证 createService({redisUrl}) 接线 backend=redis（cache/queue/lock 均为 Redis 适配器）且「重启后缓存不丢」在真实 Redis 上成立；二验证生产形态 HTTP 运行时（http.apiKey + OE_RATE_LIMIT_STORE=redis）在真实守护进程上 infra.backend=redis、infra.rateLimit=redis，health 免鉴权 200 → 缺 Key 401 → 带 Key 200——补齐 RESP 内存替身之外的守护进程级运行时证据（补上 deploy-smoke 用 mock、real-redis 只看 infra 层之间的夹缝），CI 无外部依赖不因缺 Redis 失败。
-- 测试覆盖：数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / V9.7 字段信封与 atom 三态求值 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（外部服务不可用时跳过）+ G12 数据模型迁移 + 网关鉴权 + 内存/Redis 限流 + HTTP 鉴权集成 + 密钥轮换生命周期。
+- 测试覆盖：数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / V9.7 字段信封与 atom 三态求值 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（外部服务不可用时跳过）+ G12 数据模型迁移 + G12 预测写入适配器（g12-writer，5 用例）+ 网关鉴权 + 内存/Redis 限流 + HTTP 鉴权集成 + 密钥轮换生命周期。
 - 端口解析纯函数（resolveHttpPort）用例：不绑定真实 3000，验证显式端口 > OE_PORT > 默认 3000 优先级。
 - 本地人工盘赔源实测：目录注入后扫描 75 场比赛；单场（韩K联 金泉尚武 vs 全北现代，001 场）解析 37 份盘口快照入合并池，信任分级 provisional、0 时间泄漏、0 冲突剔除。
 - 双源合并实测（HTTP 集成）：配置本地盘赔目录 + 官方赛程端点后，联赛别名收敛使场次语义键对齐 → merged:true（官方数字 match_id / 队名 / 开赛时间覆盖，快照 match_id 跟随）；未命中赛程的人工场次 manual_only 保留；时间防线剔除生效；`/api/merged/analysis` 打通盘口→特征→推理链，并返回 V9.7 真规则三态求值与维度结果。V9.7 规则方向映射进入正式方向仲裁仍属于后续融合策略阶段。
