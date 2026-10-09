@@ -1,6 +1,6 @@
 // ============================================================================
 // HTTP 层 · 入口 —— createHttpServer（CORS + 路由 + 统一响应壳）
-// 7 个 REST 端点全部由真实后端模块驱动（handlers.js），前端可切到真实后端。
+// REST 端点全部由真实后端模块驱动（handlers.js），前端可切到真实后端。
 // 响应壳：成功 { status:'ok', data }；失败 { status:'error', error }。
 // ============================================================================
 'use strict';
@@ -49,7 +49,7 @@ function sendJson(res, status, payload) {
   res.end(body);
 }
 
-/** 匹配 7 个端点；未命中返回 null。 */
+/** 匹配端点路由；未命中返回 null。 */
 function matchRoute(method, parts) {
   if (method === 'GET') {
     if (parts.length === 2 && parts[0] === 'api' && parts[1] === 'matches') return { handler: 'listMatches' };
@@ -57,6 +57,8 @@ function matchRoute(method, parts) {
     if (parts.length === 2 && parts[0] === 'api' && parts[1] === 'rules') return { handler: 'listRules' };
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'rules' && parts[3] === 'versions') return { handler: 'getRuleVersions', id: parts[2] };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'backtest') return { handler: 'getBacktest', id: parts[2] };
+    // 单场特征快照（薄端点）：合并池定位场次 → 特征纯函数，不触发规则检索/融合链。
+    if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'features') return { handler: 'getFeatures', id: parts[2] };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'ai' && parts[2] === 'candidates') return { handler: 'listAiCandidates' };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'manual-odds') return { handler: 'getManualOddsStatus' };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'schedule') return { handler: 'getScheduleStatus' };

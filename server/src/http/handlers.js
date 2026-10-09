@@ -212,19 +212,51 @@ function buildAnalysis(service, match, v97 = null) {
 }
 
 // ───────────────────────── GET /api/rules ─────────────────────────
-function listRules(service) {
-  const rules = service.rules.getActiveRules().map((v) => ({
+// 规则「方向语义」声明维度：取规则 v97.atoms[].effects 中声明性的方向维度值。
+// 注意：这是规则正文声明的语义文本（如「诱小→防大」「阻大=真实看大球」「按E01释义」），
+// **不是本场求值结论**——前端须原样展示，不得映射为「上盘/下盘」等臆造方向。
+const DIRECTION_EFFECT_DIMENSIONS = ['direction', 'signal_direction', 'total_goals_signal'];
+
+function declaredDirection(v) {
+  const values = [];
+  for (const atom of ((v.v97 && v.v97.atoms) || [])) {
+    for (const e of (atom.effects || [])) {
+      if (DIRECTION_EFFECT_DIMENSIONS.includes(e.dimension) && e.value) values.push(String(e.value));
+    }
+  }
+  return values.length ? values.join(' / ') : null;
+}
+
+/** 规则版本 → 视图（瘦视图：剔除 v97 大对象，仅保留展示/治理所需字段）。 */
+function ruleVersionView(v) {
+  return {
     rule_id: v.rule_id,
     version_id: v.version_id,
     version: v.version,
     status: v.status,
     category: v.category,
-    direction: v.direction,
+    rule_type: v.rule_type,
+    name: (v.v97 && v.v97.name) || null, // V9.7 规则短名（后端无顶层 name 字段）
+    conclusion: v.conclusion,
+    direction: v.direction,                // 规则类型字符串（rule/execution/signal），非方向
+    declared_direction: declaredDirection(v),
     base_confidence: v.base_confidence,
     priority: v.priority,
     trust_level: v.trust_level,
-    conclusion: v.conclusion,
-  }));
+    evidence_count: v.evidence_count,
+    valid_from: v.valid_from,
+    valid_to: v.valid_to,
+    previous_version_id: v.previous_version_id || null,
+    created_at: v.created_at || null,
+    created_by: v.created_by || null,
+    approved_at: v.approved_at || null,
+    superseded_at: v.superseded_at || null,
+    registry_version: v.registry_version || null,
+  };
+}
+
+function listRules(service) {
+  const rules = service.rules.getActiveRules().map(ruleVersionView);
   return ok(rules);
 }
 
@@ -232,7 +264,7 @@ function listRules(service) {
 function getRuleVersions(service, params) {
   const versions = service.rules.getRuleVersions(params.id);
   if (!versions.length) return fail(404, 'rule_not_found');
-  return ok(versions);
+  return ok(versions.map(ruleVersionView));
 }
 
 // ───────────────────────── GET /api/backtest/:id ─────────────────────────
@@ -278,13 +310,19 @@ function getBacktest(service, params) {
   }
   return ok({
     rule_id: params.id,
+    rule_name: (rule.v97 && rule.v97.name) || null,
+    rule_version: rule.version,
     job_id: job.job_id,
     adjudication: job.adjudication,
     sample_size: job.metrics ? job.metrics.sample_size : 0,
     metrics: job.metrics,
     thresholds: THRESHOLDS,
+    date_range: BACKTEST_RANGE,
     synthetic: true, // 旧 DSL 合成门禁仍为占位；真实数字见 v97_real
     v97_real: v97Real,
+    // 准入逐项明细 / 隔离样本数：后端当前未产出（B3 待办），诚实回 null，前端须标注「未提供」。
+    admission_detail: null,
+    untrusted_count: null,
   });
 }
 
@@ -496,6 +534,42 @@ async function getMergedAnalysis(service, params) {
     });
   } catch (e) {
     return fail(500, 'merged_analysis_error');
+  }
+}
+
+// ───────────────────────── GET /api/features/:id ─────────────────────────
+// 单场特征快照（薄端点）：合并池定位场次 → computeMatchFeatures（point-in-time 纯函数）。
+// 与 /api/merged/analysis/:id 同源同算，但**不触发**规则检索 / 融合链——特征页职责单一。
+// features 为注册表点分扁平键（未产出字段不出现在对象里，前端据此标注「未产出」，绝不补零）。
+async function getFeatures(service, params) {
+  try {
+    const { value: schedule } = await syncAnchorCached(service, false);
+    const manual = loadManualOddsFromDb(service.qd)
+      || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+    const merged = mergeMatchSources({ schedule, manual });
+    const id = decodeURIComponent(params.id || '');
+    const match = (merged.pool || []).find((m) => m.match_id === id);
+    if (!match) return fail(404, 'match_not_found_in_merged_pool');
+
+    const feat = computeMatchFeatures(match, match.match_time);
+    if (!feat.ok) return fail(422, feat.errors.join(', '));
+
+    return ok({
+      match_id: match.match_id,
+      league: match.league,
+      home_team: match.home_team,
+      away_team: match.away_team,
+      match_time: match.match_time,
+      status: match.status,
+      merged: !!(match.meta && match.meta.merged),
+      trust_level: (match.snapshots[0] && match.snapshots[0].trust_level) || 'provisional',
+      computed_at: feat.snapshot.computed_at,
+      feature_version: feat.snapshot.feature_version,
+      features: feat.snapshot.features,
+      meta: feat.snapshot.meta,
+    });
+  } catch (e) {
+    return fail(500, 'features_error');
   }
 }
 
@@ -779,6 +853,7 @@ module.exports = {
   getManualOddsStatus,
   getMergedPool,
   getMergedAnalysis,
+  getFeatures,
   anchorSource, // 导出锚源选择函数，供测试与可观测审计
   // P0②：预测发布 / 幂等赛果回填
   savePrediction,

@@ -185,6 +185,13 @@ test('GET /api/backtest/R01 返回回测作业与指标', async () => {
     assert.ok(d.metrics && typeof d.metrics.sample_size === 'number');
     assert.ok(d.thresholds && typeof d.thresholds.hit_rate === 'number');
     assert.equal(d.synthetic, true);
+    // 新增：真实区间 / V9.7 短名 / 未提供字段显式回 null（前端据此标注「未提供」）
+    assert.ok(d.date_range && d.date_range.from && d.date_range.to);
+    assert.ok(d.rule_name, '应携带 V9.7 规则短名');
+    assert.ok(d.rule_version != null);
+    assert.equal(d.admission_detail, null);
+    assert.equal(d.untrusted_count, null);
+    assert.ok('v97_real' in d);
   });
 });
 
@@ -323,6 +330,97 @@ test('GET /api/manual-odds/analysis 未配置时返回 503', async () => {
     });
   } finally {
     if (saved !== undefined) process.env.OE_MANUAL_ODDS_ROOT = saved;
+  }
+});
+
+// ───────────────────────── GET /api/rules（V9.7 真规则视图）─────────────────────────
+test('GET /api/rules 携带 V9.7 短名 / 分类 / 声明方向语义（瘦视图，不含 v97 大对象）', async () => {
+  await withServer(async (port) => {
+    const r = await request(port, 'GET', '/api/rules');
+    assert.equal(r.status, 200);
+    const d = r.body.data;
+    assert.ok(d.length >= 80, 'V9.7 规则应完整下发');
+    assert.ok(d.every((v) => 'name' in v && 'declared_direction' in v && 'evidence_count' in v && 'rule_type' in v), '应含新增归一化字段');
+    assert.ok(d.every((v) => !('v97' in v)), '瘦视图不应携带 v97 大对象');
+    const r01 = d.find((v) => v.rule_id === 'R01');
+    assert.equal(r01.name, '凯利0.05平权判定标准');
+    assert.equal(r01.rule_type, 'R');
+    assert.equal(r01.category, '盘性');
+    assert.equal(r01.status, 'active');
+    // E01 声明了 direction 语义（文本，不是上盘/下盘）
+    const e01 = d.find((v) => v.rule_id === 'E01');
+    assert.ok(e01.declared_direction && e01.declared_direction.includes('E01'), '声明方向语义应原样取自 v97.effects');
+  });
+});
+
+test('GET /api/rules/:id/versions 返回瘦版本视图（保留版本链字段）', async () => {
+  await withServer(async (port) => {
+    const r = await request(port, 'GET', '/api/rules/R01/versions');
+    assert.equal(r.status, 200);
+    const v = r.body.data[0];
+    assert.equal(v.rule_id, 'R01');
+    assert.ok(v.version_id);
+    assert.ok('previous_version_id' in v);
+    assert.ok(!('v97' in v), '版本瘦视图不应携带 v97');
+  });
+});
+
+// ───────────────────────── GET /api/features/:id（单场特征薄端点）─────────────────────────
+test('GET /api/features/:id 在合并池上返回特征快照（未产出字段不补零）', async () => {
+  const savedRoot = process.env.OE_MANUAL_ODDS_ROOT;
+  const savedSched = process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oe-http-feat-'));
+  const sub = path.join(root, 'match-f');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, '盘口数据.md'), SAMPLE_MD, 'utf8');
+  process.env.OE_MANUAL_ODDS_ROOT = root;
+  delete process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  try {
+    await withServer(async (port) => {
+      const id = encodeURIComponent('日职联_东京绿茵_vs_柏太阳神');
+      const r = await request(port, 'GET', `/api/features/${id}`);
+      assert.equal(r.status, 200);
+      assert.equal(r.body.status, 'ok');
+      const d = r.body.data;
+      assert.equal(d.match_id, '日职联_东京绿茵_vs_柏太阳神');
+      assert.ok(d.features && typeof d.features === 'object');
+      // 注册表点分扁平键：有数据的字段必须存在
+      assert.ok('institution.diff_max' in d.features, '横截面盘口离散应产出');
+      assert.ok('move_pattern' in d.features, '时序形态应产出');
+      assert.ok('betfair.turnover' in d.features, '必发成交额应产出');
+      // 后端未产出的字段不得出现（前端据此标注未产出，绝不补零）
+      assert.ok(!('betfair.heat_min' in d.features), '未产出字段不应补零/补 null');
+      assert.ok(!('onex.kelly_home_min' in d.features), '未产出字段不应出现');
+      // 快照元信息
+      assert.ok(d.meta && d.meta.snapshot_count > 0);
+      assert.ok(Array.isArray(d.meta.sources));
+      assert.equal(d.trust_level, 'provisional');
+      assert.ok(d.computed_at);
+      assert.ok(d.feature_version);
+    });
+  } finally {
+    if (savedRoot !== undefined) process.env.OE_MANUAL_ODDS_ROOT = savedRoot;
+    else delete process.env.OE_MANUAL_ODDS_ROOT;
+    if (savedSched !== undefined) process.env.ODDS_SPORTTERY_SCHEDULE_BASE = savedSched;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/features 未配置真实源时返回 404（不返回空特征冒充）', async () => {
+  const savedRoot = process.env.OE_MANUAL_ODDS_ROOT;
+  const savedSched = process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  delete process.env.OE_MANUAL_ODDS_ROOT;
+  delete process.env.ODDS_SPORTTERY_SCHEDULE_BASE;
+  try {
+    await withServer(async (port) => {
+      const r = await request(port, 'GET', '/api/features/M000');
+      assert.equal(r.status, 404);
+      assert.equal(r.body.status, 'error');
+      assert.equal(r.body.error, 'match_not_found_in_merged_pool');
+    });
+  } finally {
+    if (savedRoot !== undefined) process.env.OE_MANUAL_ODDS_ROOT = savedRoot;
+    if (savedSched !== undefined) process.env.ODDS_SPORTTERY_SCHEDULE_BASE = savedSched;
   }
 });
 
