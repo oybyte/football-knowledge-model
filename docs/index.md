@@ -24,6 +24,7 @@
 - `design/backtest-1.5.0/`：回测准入、指标和证据设计。
 - `design/fusion-1.6.0/`：多路信号融合和冲突仲裁设计。
 - `design/fusion-decision-layer/fusion-decision-layer.md`：V9.7 融合决策层落点、策略和开放问题提案（当前评审）。
+- `design/frontend-real-api/frontend-real-api.md`：前端 backtest / feature / rules 三页从 mock 切到真实端点的实施方案与**实施记录**（已实施，D1–D4 全按推荐项落地）。
 - `design/retrieval-worker-1.7.0/`：检索 Worker 和任务处理设计。
 - `design/prediction-backfill-1.8.0/`：预测发布与赛果回填设计。
 - `design/implementation-plan-1.0.0/`：从架构基线到工程实现的阶段计划。
