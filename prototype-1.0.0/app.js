@@ -115,31 +115,48 @@ RULES.forEach(r => {
 const BM_COLORS = { "澳*": "#f59e0b", "澳门": "#f59e0b", "36*": "#38bdf8", "威*": "#8b5cf6", "立*": "#10b981", "皇冠": "#f43f5e", "Bet365": "#22c55e", "Betfai*": "#ec4899", "Interwet*": "#64748b" };
 const THR_CFG = { dropN: { min: 1, max: 5, step: 1 }, riseN: { min: 1, max: 5, step: 1 }, ratio: { min: 0.30, max: 0.70, step: 0.05 }, kelly: { min: 0.90, max: 1.10, step: 0.01 } };
 
-// 规则库兜底：检索命中预览（对接 DSL 引擎）+ DSL 条件摘要
-let RULE_HITS = {}; let HIT_MATCH_ID = "";
-function buildRuleHits() {
-  RULE_HITS = {};
-  if (!window.__DSL) return;
-  const m = MATCHES[0]; HIT_MATCH_ID = m.id;
-  const A = window.__DSL.analyze(m);
-  A.list.forEach(x => { RULE_HITS[x.id] = { hit: x.hit, dir: x.dir }; });
+// ------------------------------ 规则库 · 通用工具与状态 ------------------------------
+// 数据源双轨：real = 后端 /api/rules（88 条 V9.7 真规则，**只读**）；mock = 原型 rules.js 沙盒。
+// 原「检索命中预览」列（旧 DSL 引擎按 MATCHES[0] 现算）与 V9.7 无关，随接真实端点一并移除；
+// real 模式下规则不可原地编辑（后端 append-only 版本台账），变更走治理流程。
+const RULE_STATE = { mode: "real", list: null, loading: false, error: null, reqSeq: 0 };
+
+function escHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function dslOpsHint(id) {
-  if (!window.__DSL) return "";
-  const e = window.__DSL.DSL.find(x => x.id === id);
-  if (!e) return "—";
-  if (e.placeholder) return "占位·未入检索";
-  const hasExt = e.steps.some(s => s.ref.startsWith("$raw."));
-  const ops = e.steps.map(s => s.op).join("+");
-  return `${hasExt ? "外部引用·" : ""}${ops}${e.guard && e.guard.length ? "·前置guard" : ""}`;
+function truncate(s, n) { const t = String(s == null ? "" : s); return t.length > n ? t.slice(0, n) + "…" : t; }
+
+/** mock 沙盒：原型 RULES → 与后端同形的归一化规则视图。 */
+function mockRuleList() {
+  return RULES.map(r => ({
+    id: r.id,
+    name: r.name || null,
+    conclusion: r.conclusion || r.name || "",
+    category: r.family || "unknown",
+    rule_type: null,
+    status: r.placeholder ? "placeholder" : "active",
+    version: 1,
+    trust_level: "provisional",
+    priority: null,
+    base_confidence: null,
+    declared_direction: (typeof r.direction === "number") ? (r.direction > 0 ? "上盘" : (r.direction < 0 ? "下盘" : "风险")) : null,
+    evidence_count: null,
+    valid_from: null,
+    valid_to: null,
+  }));
 }
-function hitChip(id) {
-  const h = RULE_HITS[id];
-  if (!h) return '<span class="badge muted">未命中</span>';
-  if (!h.hit) return '<span class="badge muted">未命中</span>';
-  if (h.dir > 0) return '<span class="badge up">命中·上盘</span>';
-  if (h.dir < 0) return '<span class="badge down">命中·下盘</span>';
-  return '<span class="badge risk">命中·风险</span>';
+/** 当前生效规则列表（real 走后端数据；mock 走本地沙盒）。 */
+function activeRuleList() { return RULE_STATE.mode === "mock" ? mockRuleList() : (RULE_STATE.list || []); }
+
+function ruleStatusBadge(s) {
+  const map = { active: ["up", "活跃"], validated: ["up", "已验证"], approved: ["up", "已批准"], proposed: ["brand", "提案"], experiment: ["brand", "试验"], draft: ["muted", "草稿"], rejected: ["risk", "已驳回"], placeholder: ["mock", "占位"] };
+  const m = map[s] || ["muted", s || "—"];
+  return `<span class="badge ${m[0]}">${escHtml(m[1])}</span>`;
+}
+function trustBadge(t) {
+  const map = { trusted: ["up", "trusted"], provisional: ["brand", "provisional"], untrusted: ["risk", "untrusted"] };
+  const m = map[t] || ["muted", t || "—"];
+  return `<span class="badge ${m[0]}">${m[1]}</span>`;
 }
 const FAM_COLOR = { cross: "#8b5cf6", temporal: "#38bdf8", resonance: "#10b981", anomaly: "#f59e0b", betfair: "#ec4899", onex: "#22c55e", unknown: "#64748b" };
 
@@ -187,14 +204,14 @@ function render() {
   if (state.page === "home") main.innerHTML = state.analyzeId ? renderAnalysisShell() : renderLotteryList();
   else if (state.page === "pipeline") main.innerHTML = (window.renderPipelinePage ? window.renderPipelinePage() : `<div class="page">预测链模块未加载。</div>`);
   else if (state.page === "governance") main.innerHTML = (window.renderGovernance ? window.renderGovernance() : `<div class="page">规则治理模块未加载。</div>`);
-  else if (state.page === "backtest") main.innerHTML = (window.renderBacktest ? window.renderBacktest() : `<div class="page">回测模块未加载。</div>`);
+  else if (state.page === "backtest") { main.innerHTML = (window.renderBacktest ? window.renderBacktest() : `<div class="page">回测模块未加载。</div>`); if (window.__btBoot) window.__btBoot(); }
   else if (state.page === "ingest") main.innerHTML = (window.renderIngest ? window.renderIngest() : `<div class="page">数据接入模块未加载。</div>`);
   else if (state.page === "historical") main.innerHTML = (window.renderHistorical ? window.renderHistorical() : `<div class="page">历史赛事模块未加载。</div>`);
-  else if (state.page === "feature") main.innerHTML = (window.renderFeature ? window.renderFeature() : `<div class="page">特征引擎模块未加载。</div>`);
+  else if (state.page === "feature") { main.innerHTML = (window.renderFeature ? window.renderFeature() : `<div class="page">特征引擎模块未加载。</div>`); if (window.__featBoot) window.__featBoot(); }
   else if (state.page === "dsl") main.innerHTML = (window.renderDsl ? window.renderDsl() : `<div class="page">DSL 引擎模块未加载。</div>`);
   else if (state.page === "api") { main.innerHTML = (window.renderApiView ? window.renderApiView() : `<div class="page">后端接入模块未加载。</div>`); window.__apiBoot ? window.__apiBoot() : 0; window.__ApiClient ? window.__ApiClient.init() : 0; }
   else if (state.page === "history") { main.innerHTML = `<div class="page">${renderHistory()}</div>`; setTimeout(function () { if (typeof loadPredictionLedger === 'function') loadPredictionLedger(); }, 0); }
-  else if (state.page === "rules") { main.innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
+  else if (state.page === "rules") { main.innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); if (window.__rulesBoot) window.__rulesBoot(); }
   else if (state.page === "ai") main.innerHTML = (window.renderAIView ? window.renderAIView() : `<div class="page">AI 引擎模块未加载。</div>`);
   else if (state.page === "settings") main.innerHTML = `<div class="page">${renderSettings()}</div>`;
 }
@@ -911,42 +928,93 @@ function renderRulesPage() {
   const body = tab === "rules" ? renderRulesLibrary() : renderFeatureCatalog();
   return `${tabs}${body}`;
 }
-function setRuleTab(t) { state.ruleTab = t; document.getElementById("main").innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
+function setRuleTab(t) { state.ruleTab = t; rerenderRules(); }
 
+/** 局部重渲规则页（仅在当前确实停留在规则页时）。 */
+function rerenderRules() {
+  const main = document.getElementById("main");
+  if (!main) return;
+  let onPage = false;
+  try { onPage = (typeof state !== "undefined") && state.page === "rules"; } catch (e) { onPage = false; }
+  if (!onPage) return;
+  main.innerHTML = `<div class="page">${renderRulesPage()}</div>`;
+  bindRuleSearch();
+}
+
+// ------------------------------ 规则库 Tab ------------------------------
 function renderRulesLibrary() {
-  buildRuleHits();
-  const chips = [["all", "全部"], ["temporal", "时序"], ["cross", "横截面"], ["resonance", "共振"], ["anomaly", "异常"], ["onex", "欧指"], ["betfair", "必发"], ["unknown", "占位"]];
-  return `<div class="page-head"><div><div class="ph-title">规则库</div><div class="ph-sub">${RULES.length} 条规则 · 覆盖让球盘 / 欧指 / 必发三数据源</div></div>
-    <div class="ph-actions"><button class="btn sm" onclick="downloadRules()">${ICON.download}导出</button><button class="btn sm primary" onclick="newRule()">${ICON.plus}新建规则</button></div></div>
-    <div class="card"><div class="card-hd">
-      <div class="filter-chips">${chips.map(([k, l]) => `<span class="chip ${state.ruleFamFilter === k ? "active" : ""}" onclick="setRuleFam('${k}')">${l}</span>`).join("")}</div>
-      <input class="inp" id="rule-search-input" style="width:200px" placeholder="搜索规则名称 / ID…" value="${state.ruleSearch}" autocomplete="off">
+  const loading = RULE_STATE.loading || (RULE_STATE.mode === "real" && !RULE_STATE.list && !RULE_STATE.error);
+  const src = RULE_STATE.mode === "mock" ? "Mock 沙盒（原型 rules.js）" : "后端 /api/rules";
+  const actions = RULE_STATE.mode === "mock"
+    ? `<button class="btn sm" onclick="downloadRules()">${ICON.download}导出</button><button class="btn sm primary" onclick="newRule()">${ICON.plus}新建规则</button>`
+    : `<button class="btn sm" onclick="downloadRules()">${ICON.download}导出</button><button class="btn sm primary" onclick="goGovernanceProposal()">${ICON.plus}发起变更提案</button>`;
+
+  if (loading) {
+    return `<div class="page-head"><div><div class="ph-title">规则库</div><div class="ph-sub">${escHtml(src)}</div></div>
+      <div class="ph-actions">${actions}</div></div>
+      <div class="card"><div class="card-bd"><div class="empty">正在加载真实数据…</div></div></div>`;
+  }
+  if (RULE_STATE.error) {
+    return `<div class="page-head"><div><div class="ph-title">规则库</div><div class="ph-sub">${escHtml(src)}</div></div>
+      <div class="ph-actions">${actions}</div></div>
+      <div class="card"><div class="card-bd"><div class="empty">后端不可用（error: ${escHtml(RULE_STATE.error)}）· 可在左下角切换 Mock 模式</div></div></div>`;
+  }
+
+  const list = activeRuleList();
+  const cats = [["all", "全部"], ...ruleCategoryCounts(list)];
+  const banner = RULE_STATE.mode === "mock"
+    ? `Mock 沙盒：规则来自原型 <code>rules.js</code>（示例规则），可本地新建/编辑，<strong>不写回后端</strong>。`
+    : `规则库为<strong>只读</strong>：后端规则 append-only 版本化，不可原地修改——变更须走治理流程（提案 → 回测门禁 → 人工审批 → 转正）。「方向语义」为该规则 <code>v97.effects</code> 声明的语义文本，<strong>非本场求值结论</strong>，不得解读为上盘/下盘。`;
+
+  return `<div class="page-head"><div><div class="ph-title">规则库</div><div class="ph-sub">${list.length} 条规则 · ${escHtml(src)}</div></div>
+    <div class="ph-actions">${actions}</div></div>
+    <div class="pipeline-banner">${banner}</div>
+    <div class="card" style="margin-top:12px"><div class="card-hd">
+      <div class="filter-chips">${cats.map(([k, l]) => `<span class="chip ${state.ruleFamFilter === k ? "active" : ""}" onclick="setRuleFam('${escHtml(k)}')">${escHtml(l)}</span>`).join("")}</div>
+      <input class="inp" id="rule-search-input" style="width:200px" placeholder="搜索 ID / 名称 / 分类…" value="${escHtml(state.ruleSearch)}" autocomplete="off">
     </div>
-    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">ID</th><th class="l">名称</th><th>家族</th><th>方向</th><th>阈值</th><th>状态</th><th>版本</th><th>检索命中 <span class="muted mono" style="font-size:10px">${HIT_MATCH_ID}</span></th><th>DSL条件</th><th></th></tr></thead><tbody id="rules-tbody">${buildRuleRows()}</tbody></table></div></div>`;
+    <div class="card-bd" style="padding:0"><table class="tbl"><thead><tr><th class="l">ID</th><th class="l">名称</th><th>分类</th><th>类型</th><th>方向语义</th><th>状态</th><th>版本</th><th>可信</th><th>证据</th><th></th></tr></thead><tbody id="rules-tbody">${buildRuleRows()}</tbody></table></div></div>`;
+}
+
+/** 分类聚合（后端 category / mock family），按数量降序。 */
+function ruleCategoryCounts(list) {
+  const m = new Map();
+  list.forEach(r => { const c = r.category || "unknown"; m.set(c, (m.get(c) || 0) + 1); });
+  return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+}
+
+function filteredRules(list) {
+  let out = list;
+  if (state.ruleFamFilter !== "all") out = out.filter(r => (r.category || "unknown") === state.ruleFamFilter);
+  if (state.ruleSearch) {
+    const q = state.ruleSearch.toLowerCase();
+    out = out.filter(r => `${r.id} ${r.name || ""} ${r.conclusion || ""} ${r.category || ""}`.toLowerCase().includes(q));
+  }
+  return out;
 }
 
 function buildRuleRows() {
-  let list = RULES;
-  if (state.ruleFamFilter !== "all") list = RULES.filter(r => r.family === state.ruleFamFilter);
-  if (state.ruleSearch) {
-    const q = state.ruleSearch.toLowerCase();
-    list = list.filter(r => (r.name + r.id).toLowerCase().includes(q));
-  }
+  const list = filteredRules(activeRuleList());
+  if (!list.length) return `<tr><td colspan="10"><div class="empty">无匹配规则</div></td></tr>`;
   return list.map(r => {
-    const d = (typeof r.direction === "function") ? "动态" : (r.direction > 0 ? "上盘" : (r.direction < 0 ? "下盘" : "风险"));
-    const dBd = d === "上盘" ? "up" : (d === "下盘" ? "down" : (d === "风险" ? "risk" : "brand"));
-    const status = r.placeholder ? '<span class="badge mock">占位</span>' : '<span class="badge up">活跃</span>';
+    const name = r.name || (r.conclusion ? truncate(r.conclusion, 26) : "—");
+    const dir = r.declared_direction
+      ? `<span class="badge" title="规则 v97.effects 声明的方向语义（非本场求值结论）">${escHtml(truncate(r.declared_direction, 18))}</span>`
+      : '<span class="muted">—</span>';
+    const actions = RULE_STATE.mode === "mock"
+      ? `<button class="btn sm" onclick="editRule('${escHtml(r.id)}')">编辑</button>`
+      : `<button class="btn sm" onclick="showRuleVersions('${escHtml(r.id)}')">版本历史</button>`;
     return `<tr>
-      <td class="l"><span class="rule-id">${r.id}</span></td>
-      <td class="l">${r.name}${r.placeholder ? ' <span class="badge mock">占位</span>' : ""}</td>
-      <td><span class="badge brand">${r.family}</span></td>
-      <td><span class="badge ${dBd}">${d}</span></td>
-      <td>${r.hasThreshold ? `<span class="num mono">${state.thresholds[r.id]}</span>` : '<span class="muted">—</span>'}</td>
-      <td>${status}</td>
-      <td class="num muted mono">v1</td>
-      <td>${hitChip(r.id)}</td>
-      <td><span class="mono" style="font-size:11px;color:var(--t-2)">${dslOpsHint(r.id)}</span></td>
-      <td><button class="btn sm" onclick="editRule('${r.id}')">编辑</button></td></tr>`;
+      <td class="l"><span class="rule-id">${escHtml(r.id)}</span></td>
+      <td class="l" title="${escHtml(r.conclusion)}">${escHtml(name)}</td>
+      <td><span class="badge brand">${escHtml(r.category || "—")}</span></td>
+      <td class="num muted mono">${escHtml(r.rule_type || "—")}</td>
+      <td>${dir}</td>
+      <td>${ruleStatusBadge(r.status)}</td>
+      <td class="num muted mono">v${escHtml(r.version != null ? r.version : "—")}</td>
+      <td>${trustBadge(r.trust_level)}</td>
+      <td class="num ${r.evidence_count != null ? "mono" : "muted"}">${r.evidence_count != null ? escHtml(r.evidence_count) : "—"}</td>
+      <td>${actions}</td></tr>`;
   }).join("");
 }
 
@@ -963,6 +1031,68 @@ function bindRuleSearch() {
     el.addEventListener("input", (e) => setRuleSearch(e.target.value));
   }
 }
+
+// ------------------------------ 规则取数 / 版本历史 / 提案入口 ------------------------------
+// 路由 render() 以 window.__rulesBoot 触发取数（与 __featBoot / __btBoot 同约定）。
+function rulesBoot() {
+  const api = window.__ApiClient ? window.__ApiClient.getApi() : null;
+  RULE_STATE.mode = api ? api.name : "mock";
+  if (RULE_STATE.mode === "mock") { RULE_STATE.loading = false; RULE_STATE.error = null; RULE_STATE.list = null; return; }
+  if (RULE_STATE.list) return; // 已加载（后端规则不可变，无需重复拉取）
+  loadRules();
+}
+
+async function loadRules() {
+  const api = window.__ApiClient ? window.__ApiClient.getApi() : null;
+  if (!api) { RULE_STATE.error = "api_client_unavailable"; rerenderRules(); return; }
+  const seq = ++RULE_STATE.reqSeq;
+  RULE_STATE.loading = true; RULE_STATE.error = null;
+  rerenderRules();
+  let r;
+  try { r = await api.listRules(); }
+  catch (e) { r = { ok: false, error: String((e && e.message) || e) }; }
+  if (seq !== RULE_STATE.reqSeq) return; // 过期响应丢弃（防快速切页竞态）
+  RULE_STATE.loading = false;
+  if (!r.ok) { RULE_STATE.error = r.error || "unknown"; rerenderRules(); return; }
+  RULE_STATE.list = r.data || [];
+  rerenderRules();
+}
+
+/** 版本历史弹窗（只读）：后端 append-only 台账，展示版本链与替代指针。 */
+async function showRuleVersions(id) {
+  const api = window.__ApiClient ? window.__ApiClient.getApi() : null;
+  if (!api) return;
+  let r;
+  try { r = await api.getRuleVersions(id); }
+  catch (e) { r = { ok: false, error: String((e && e.message) || e) }; }
+  if (!r.ok) { toast("版本历史获取失败：" + (r.error || "unknown")); return; }
+  const rows = (r.data || []).map(v => `<tr>
+      <td class="l mono">${escHtml(v.version_id)}</td>
+      <td class="num mono">v${escHtml(v.version != null ? v.version : "—")}</td>
+      <td>${ruleStatusBadge(v.status)}</td>
+      <td>${trustBadge(v.trust_level)}</td>
+      <td class="l">${escHtml(v.name || (v.conclusion ? truncate(v.conclusion, 30) : "—"))}</td>
+      <td class="num muted mono">${escHtml(v.valid_from || "—")}</td>
+      <td class="num muted mono">${escHtml(v.created_at ? String(v.created_at).slice(0, 10) : "—")}</td>
+      <td class="l muted mono">${escHtml(v.previous_version_id || "—")}</td>
+    </tr>`).join("");
+  showModal(`规则版本历史 · ${escHtml(id)}`,
+    `<div style="overflow:auto;max-height:52vh"><table class="tbl"><thead><tr>
+      <th class="l">版本 ID</th><th class="num">版本</th><th>状态</th><th>可信</th><th class="l">名称</th><th class="num">生效自</th><th class="num">创建</th><th class="l">前序版本</th>
+    </tr></thead><tbody>${rows || `<tr><td colspan="8"><div class="empty">无版本记录</div></td></tr>`}</tbody></table></div>
+    <div class="setting-note" style="margin-top:10px">后端版本不可变：修改只生成新版本并标记旧版被替代（指针语义），历史内容永久留档。</div>`,
+    [{ label: "关闭", cls: "", onClick: () => true }]);
+}
+
+/** 规则变更入口：real 模式无写端点，跳转治理流程。 */
+function goGovernanceProposal() {
+  state.page = "governance";
+  render();
+  toast("规则变更须走治理流程：请在治理页推进提案");
+}
+
+// 路由钩子：render() 中 window.__rulesBoot() 触发真实规则取数
+window.__rulesBoot = rulesBoot;
 
 const FEATURE_CATALOG = [
   ["inst.handicap_dispersion", "盘口离散", "cross", "scalar", "max(临盘) − min(临盘)", "各机构 current.handicap"],
@@ -991,20 +1121,24 @@ function renderFeatureCatalog() {
         <div class="kv"><div><div style="font-weight:500">${name} <span class="muted mono" style="font-size:11px">${id}</span></div><div class="ff" style="font-family:var(--mono);font-size:11px;color:var(--t-3);margin-top:2px">${def}</div></div>
         <div style="text-align:right"><span class="badge brand">${type}</span><div class="muted" style="font-size:11px;margin-top:4px">输入：${inputs}</div></div></div>`).join("")}</div></div>`;
   }).join("");
-  return `<div class="page-head"><div><div class="ph-title">特征目录</div><div class="ph-sub">${FEATURE_CATALOG.length} 个特征定义 · 四族分类 · point-in-time 纯函数 · 版本化不可变</div></div>
+  return `<div class="page-head"><div><div class="ph-title">特征目录</div><div class="ph-sub">${FEATURE_CATALOG.length} 个特征定义（契约示例子集）· 四族分类 · point-in-time 纯函数 · 版本化不可变</div></div>
     <div class="ph-actions"><button class="btn sm" onclick="downloadFeatures()">${ICON.download}导出契约</button><button class="btn sm primary" onclick="newFeature()">${ICON.plus}新建特征</button></div></div>
+    <div class="pipeline-banner">本目录是<strong>字段契约定义</strong>（示例子集，非后端产出的完整清单）。后端当前实际产出的字段与缺失标注，请以「特征引擎」页为准（缺失字段渲染为「—」并计入未产出，<strong>绝不补零</strong>）。此处新建特征仅存于本地 Mock 沙盒。</div>
     <div class="grid-2">${cards}</div>`;
 }
 
 // ============================ 规则库 / 特征目录 · 壳层 CRUD ============================
+// 说明：以下新建/编辑仅在 mock 模式下可达（real 模式规则库为只读，变更走治理流程）。
 function downloadRules() {
-  const data = RULES.map(r => ({
-    id: r.id, name: r.name, family: r.family,
-    direction: (typeof r.direction === "function") ? "动态" : r.direction,
-    enabled: state.enabled[r.id] !== false,
-    threshold: state.thresholds[r.id] != null ? state.thresholds[r.id] : (r.threshold != null ? r.threshold : null)
+  const list = activeRuleList();
+  const data = list.map(r => ({
+    id: r.id, name: r.name, category: r.category, rule_type: r.rule_type,
+    status: r.status, version: r.version, trust_level: r.trust_level,
+    declared_direction: r.declared_direction, evidence_count: r.evidence_count,
+    valid_from: r.valid_from, valid_to: r.valid_to,
+    conclusion: r.conclusion,
   }));
-  downloadJson("odds-edge-rules.json", { exportedAt: Date.now(), count: RULES.length, rules: data });
+  downloadJson("odds-edge-rules.json", { exportedAt: Date.now(), mode: RULE_STATE.mode, count: list.length, rules: data });
 }
 
 function newRule() {
@@ -1014,8 +1148,8 @@ function newRule() {
     <div class="setting-row col"><label>家族</label><select class="inp" id="nr-fam">${fams.map(f => `<option>${f}</option>`).join("")}</select></div>
     <div class="setting-row col"><label>方向</label><select class="inp" id="nr-dir"><option value="1">上盘</option><option value="-1">下盘</option><option value="0">风险</option></select></div>
     <div class="setting-row col"><label>阈值（可选）</label><input class="inp" id="nr-thr" type="number" placeholder="留空表示无阈值"></div>
-    <div class="setting-note">原型新建规则含占位判定（test 返回 null），不参与引擎打分；真实判定逻辑在 Phase 2 实现。</div>`;
-  showModal("新建规则", inner, [
+    <div class="setting-note">原型新建规则含占位判定（test 返回 null），不参与引擎打分；<strong>仅存在于本地 Mock 沙盒，不写回后端</strong>。</div>`;
+  showModal("新建规则（Mock 沙盒）", inner, [
     { label: "取消", cls: "", onClick: () => true },
     { label: "创建", cls: "primary", onClick: (ov) => {
       const name = ov.querySelector("#nr-name").value.trim();
@@ -1027,7 +1161,8 @@ function newRule() {
       const nr = { id, name, family: fam, direction: dir, weight: 1, hasThreshold: thrRaw !== "", threshold: thrRaw !== "" ? parseFloat(thrRaw) : undefined, placeholder: false, test: () => null, evidence: () => "" };
       if (nr.hasThreshold) { nr.thrKey = "ratio"; state.thresholds[id] = parseFloat(thrRaw); }
       RULES.push(nr); state.enabled[id] = true;
-      toast("规则已创建：" + id);
+      toast("规则已创建（沙盒）：" + id);
+      rerenderRules();
       return true;
     } }
   ]);
@@ -1038,8 +1173,9 @@ function editRule(id) {
   const inner = `
     <div class="setting-row col"><label>规则名称</label><input class="inp" id="er-name" value="${r.name}"></div>
     <div class="setting-row col"><label>默认启用</label><select class="inp" id="er-en"><option value="1" ${state.enabled[id] !== false ? "selected" : ""}>启用</option><option value="0" ${state.enabled[id] === false ? "selected" : ""}>停用</option></select></div>
-    <div class="setting-row col"><label>阈值（可选）</label><input class="inp" id="er-thr" type="number" value="${r.hasThreshold ? (state.thresholds[id] != null ? state.thresholds[id] : r.threshold) : ""}" placeholder="留空表示无阈值"></div>`;
-  showModal("编辑规则 · " + id, inner, [
+    <div class="setting-row col"><label>阈值（可选）</label><input class="inp" id="er-thr" type="number" value="${r.hasThreshold ? (state.thresholds[id] != null ? state.thresholds[id] : r.threshold) : ""}" placeholder="留空表示无阈值"></div>
+    <div class="setting-note">仅修改本地 Mock 沙盒（append-only 台账留痕），<strong>不写回后端规则</strong>。</div>`;
+  showModal("编辑规则 · " + id + "（Mock 沙盒）", inner, [
     { label: "取消", cls: "", onClick: () => true },
     { label: "保存", cls: "primary", onClick: (ov) => {
       const name = ov.querySelector("#er-name").value.trim();
@@ -1061,7 +1197,8 @@ function editRule(id) {
       state.enabled[id] = ov.querySelector("#er-en").value === "1";
       const thrRaw = ov.querySelector("#er-thr").value.trim();
       if (r.hasThreshold) state.thresholds[id] = thrRaw !== "" ? parseFloat(thrRaw) : (r.threshold || 0);
-      if (!name || name === r.name) toast("规则已更新（仅运行时设置）");
+      if (!name || name === r.name) toast("规则已更新（仅本地沙盒设置）");
+      rerenderRules();
       return true;
     } }
   ]);
@@ -1155,7 +1292,7 @@ function updateThrDisplay(el, id, key) {
   if (vEl) vEl.textContent = v;
 }
 function changeThr(id, key, val) { state.thresholds[id] = (key === "ratio" || key === "kelly") ? parseFloat(val) : parseInt(val, 10); render(); }
-function setRuleFam(f) { state.ruleFamFilter = f; document.getElementById("main").innerHTML = `<div class="page">${renderRulesPage()}</div>`; bindRuleSearch(); }
+function setRuleFam(f) { state.ruleFamFilter = f; rerenderRules(); }
 function resetRules() { RULES.forEach(r => { state.enabled[r.id] = true; if (r.hasThreshold) state.thresholds[r.id] = r.threshold; }); render(); }
 
 // ============================ 顶栏全局搜索 ============================
@@ -1168,11 +1305,11 @@ function bindGlobalSearch() {
     const q = input.value.trim().toLowerCase();
     if (!q) { pop.classList.remove("show"); return; }
     const mMatches = MATCHES.filter(m => (m.home + m.away + m.league).toLowerCase().includes(q)).slice(0, 4);
-    const rMatches = RULES.filter(r => (r.name + r.id).toLowerCase().includes(q)).slice(0, 4);
+    const rMatches = activeRuleList().filter(r => `${r.id} ${r.name || ""} ${r.conclusion || ""}`.toLowerCase().includes(q)).slice(0, 4);
     const fMatches = FEATURE_CATALOG.filter(f => (f[0] + f[1]).toLowerCase().includes(q)).slice(0, 4);
     let html = "";
     if (mMatches.length) html += `<div class="sp-group">比赛</div>` + mMatches.map(m => `<div class="sp-item" onclick="goSearchMatch('${m.id}')"><span>${m.home} vs ${m.away}</span><span class="sp-tag">${m.league}</span></div>`).join("");
-    if (rMatches.length) html += `<div class="sp-group">规则</div>` + rMatches.map(r => `<div class="sp-item" onclick="goSearchRule('${r.id}')"><span>${r.id} ${r.name}</span><span class="sp-tag">${r.family}</span></div>`).join("");
+    if (rMatches.length) html += `<div class="sp-group">规则</div>` + rMatches.map(r => `<div class="sp-item" onclick="goSearchRule('${escHtml(r.id)}')"><span>${escHtml(r.id)} ${escHtml(r.name || truncate(r.conclusion, 16))}</span><span class="sp-tag">${escHtml(r.category || "—")}</span></div>`).join("");
     if (fMatches.length) html += `<div class="sp-group">特征</div>` + fMatches.map(f => `<div class="sp-item" onclick="goSearchFeature('${f[1]}')"><span>${f[1]}</span><span class="sp-tag mono">${f[0]}</span></div>`).join("");
     if (!html) html = `<div class="sp-empty">未找到匹配项</div>`;
     pop.innerHTML = html;
@@ -1184,7 +1321,7 @@ function bindGlobalSearch() {
       const q = input.value.trim().toLowerCase();
       const m = MATCHES.find(m => (m.home + m.away).toLowerCase().includes(q));
       if (m) { goSearchMatch(m.id); return; }
-      const r = RULES.find(r => (r.name + r.id).toLowerCase().includes(q));
+      const r = activeRuleList().find(x => `${x.id} ${x.name || ""} ${x.conclusion || ""}`.toLowerCase().includes(q));
       if (r) { goSearchRule(r.id); return; }
       toast("未找到匹配项");
     }

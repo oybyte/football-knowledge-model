@@ -67,11 +67,18 @@ function fakeStorage(init) {
   assert.ok(versions.data.length >= 1);
   assert.equal(versions.data[0].rule_id, 'R01');
 
-  // ⑤ 回测（sample_size → admitted 归一化）
+  // ⑤ 回测（归一化契约：sample_size + metrics + v97_real 透传）
   const bt = await a.getBacktest('R01');
   assert.equal(bt.ok, true);
-  assert.ok(typeof bt.data.admitted === 'number', '回测应归一化为 admitted');
+  assert.ok(typeof bt.data.sample_size === 'number', '回测应含 sample_size');
+  assert.ok(bt.data.metrics && typeof bt.data.metrics === 'object', '应含 metrics');
+  assert.ok('v97_real' in bt.data, '应透传 v97_real（无历史库时为 null）');
   assert.ok(bt.data.thresholds && typeof bt.data.thresholds.hit_rate === 'number');
+
+  // ⑤b 特征薄端点：无真实源时诚实 404（不返回空特征冒充）
+  const feat = await a.getFeature('M001');
+  assert.equal(feat.ok, false, '无合并池场次时特征端点应失败');
+  assert.equal(feat.error, 'match_not_found_in_merged_pool');
 
   // ⑥ AI 候选（candidates 数组 → 视图契约）
   const cand = await a.listAiCandidates();

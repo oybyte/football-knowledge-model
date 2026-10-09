@@ -83,21 +83,56 @@
       return okBody({ match_id: matchId, hits: hits, reasoning: reasoning });
     },
 
+    // 单场特征快照（mock）：复用原型 features.js 的 computeFeatures（已为族嵌套结构），
+    // 与 http 适配器归一化后的 shape 完全一致 → 视图代码不区分模式。
+    getFeature: function (matchId) {
+      var M = global.MATCHES || [];
+      var m = M.find(function (x) { return String(x.id) === String(matchId); });
+      if (!m) return errBody('match_not_found');
+      var f = (typeof global.computeFeatures === 'function') ? global.computeFeatures(m) : {};
+      return okBody({
+        match_id: m.id,
+        league: m.league,
+        home_team: m.home,
+        away_team: m.away,
+        match_time: m.kickoff || null,
+        merged: false,
+        trust_level: 'provisional',
+        computed_at: null,
+        feature_version: 'mock',
+        features: f,
+        meta: { snapshot_count: (m.snapshots || []).length, filtered_out: 0, sources: ['mock'] },
+        mode: 'mock',
+      });
+    },
+
     listRules: function () {
       var R = global.RULES || [];
       return okBody(R.map(function (r) {
         return {
           id: r.id,
-          conclusion: r.conclusion,
-          category: r.category || 'odds_change',
+          version_id: r.id + '#1',
+          name: r.name || null,
+          conclusion: r.conclusion || r.name || '',
+          category: r.category || r.family || 'unknown',
+          rule_type: null,
           status: 'active',        // 原型规则已在用
           version: 1,
           trust_level: 'provisional',
-          threshold: r.threshold,
+          priority: null,
+          base_confidence: null,
+          // 原型规则用数值 direction（1/-1/0）表示方向，归一化成词（仅 mock 沙盒语义）
+          declared_direction: (typeof r.direction === 'number')
+            ? (r.direction > 0 ? '上盘' : (r.direction < 0 ? '下盘' : '风险'))
+            : null,
+          evidence_count: null,
+          valid_from: null,
+          valid_to: null,
         };
       }));
     },
 
+    // 版本链（mock）：与 http 瘦视图保持同形，多一列 condition_summary 供沙盒说明。
     getRuleVersions: function (ruleId) {
       var R = global.RULES || [];
       var r = R.find(function (x) { return x.id === ruleId; });
@@ -107,24 +142,67 @@
         rule_id: r.id,
         version: 1,
         status: 'active',
+        category: r.category || r.family || 'unknown',
+        rule_type: null,
+        name: r.name || null,
         trust_level: 'provisional',
-        category: r.category || 'odds_change',
-        conclusion: r.conclusion,
+        conclusion: r.conclusion || r.name || '',
+        declared_direction: (typeof r.direction === 'number')
+          ? (r.direction > 0 ? '上盘' : (r.direction < 0 ? '下盘' : '风险'))
+          : null,
+        base_confidence: null,
+        priority: null,
+        evidence_count: null,
+        valid_from: null,
+        valid_to: null,
+        previous_version_id: null,
         condition_summary: 'prototype:' + r.id,
         created_at: '2026-08-14T00:00:00+08:00',
       }]);
     },
 
+    // 回测（mock）：与 http 适配器**同形**归一化契约。mock 沙盒无 V9.7 真实台账 → v97_real 恒 null。
     getBacktest: function (ruleId) {
       var bt = global.__BACKTEST;
       if (!bt || typeof bt.makeMetrics !== 'function') return errBody('backtest_unavailable');
       var rep = bt.makeMetrics(ruleId);
+      var ev = (typeof bt.evalBt === 'function') ? bt.evalBt(rep) : { adjudication: null };
+      var eligible = rep.eligible != null ? rep.eligible : 0;
       return okBody({
         rule_id: ruleId,
-        admitted: rep.eligible,
-        metrics: rep.metrics,
-        thresholds: bt.THRESHOLDS,
-        admission: rep.checks,
+        rule_name: null,
+        rule_version: 1,
+        job_id: 'job_' + ruleId,
+        adjudication: ev.adjudication || null,
+        sample_size: eligible,
+        metrics: {
+          sample_size: eligible,
+          direction_count: rep.direction != null ? rep.direction : null,
+          hit_count: rep.hitCount != null ? rep.hitCount : null,
+          hit_rate: rep.hitRate != null ? rep.hitRate : null,
+          roi: rep.roi != null ? rep.roi : null,
+          max_drawdown: rep.maxDD != null ? rep.maxDD : null,
+          time_stability: rep.timeStab != null ? rep.timeStab : null,
+          league_coverage: rep.league != null ? rep.league : null,
+          leagues: rep.leagueNames || [],
+        },
+        // 阈值为后端同形扁平数值表（{hit_rate:0.55,…}）；原型沙盒是 {op,value} 富形状 → 取 value 归一化
+        thresholds: (function (t) {
+          var out = {};
+          var src = t || {};
+          for (var k in src) {
+            if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+            var v = src[k];
+            out[k] = (typeof v === 'number') ? v : (v && v.value != null ? v.value : null);
+          }
+          return out;
+        })(bt.THRESHOLDS),
+        date_range: null,
+        synthetic: false,
+        v97_real: null,
+        admission_detail: rep.failDist || null, // mock 沙盒有逐项失败分布；后端当前为 null
+        untrusted_count: rep.untrusted != null ? rep.untrusted : null,
+        mode: 'mock',
       });
     },
 
@@ -265,15 +343,26 @@
       });
     }
 
-    // 后端规则 → 视图契约 { id, conclusion, category, status, version, trust_level }
+    // 后端规则 → 视图契约 { id, name, conclusion, category, rule_type, declared_direction, ... }
+    // 注：declared_direction 是规则 v97.effects 声明的**语义文本**（如「诱小→防大」），
+    // 不是本场求值出的上盘/下盘；展示层须原样呈现并注明「声明语义」。
     function ruleView(r) {
       return {
         id: r.rule_id,
+        version_id: r.version_id,
+        name: r.name || null,
         conclusion: r.conclusion,
         category: r.category,
+        rule_type: r.rule_type || null,
         status: r.status,
         version: r.version,
         trust_level: r.trust_level,
+        priority: r.priority != null ? r.priority : null,
+        base_confidence: r.base_confidence != null ? r.base_confidence : null,
+        declared_direction: r.declared_direction || null,
+        evidence_count: r.evidence_count != null ? r.evidence_count : null,
+        valid_from: r.valid_from || null,
+        valid_to: r.valid_to || null,
       };
     }
     // 后端 AI 候选 → 视图契约 { id, pattern, source, status, trust }
@@ -289,6 +378,43 @@
     // 后端推理链 → 视图契约 { rule_id, hit, dir, note }
     function reasoningView(h) {
       return { rule_id: h.rule_id, hit: !!h.hit, dir: h.dir, note: h.note || '' };
+    }
+
+    // ── 特征契约归一化：后端点分扁平键 → 前端六族嵌套键 ──
+    // 后端 features 为注册表点分命名（institution.diff_max），前端特征页按族渲染（cross.handicap_dispersion）。
+    // 映射按「同一语义」逐项对齐；未列出的后端键不进入族结构（前端也不消费）。
+    var FLAT_TO_FAMILY = {
+      'institution.diff_max': ['cross', 'handicap_dispersion'],
+      'water.upper.dispersion': ['cross', 'home_water_dispersion'],
+      'water.lower.dispersion': ['cross', 'away_water_dispersion'],
+      'handicap.change': ['temp', 'handicap_movement'],
+      'water.upper.change': ['temp', 'home_water_movement'],
+      'water.lower.change': ['temp', 'away_water_movement'],
+      'move_pattern': ['temp', 'move_pattern'],
+      'stability_flag': ['temp', 'stability_flag'],
+      'water.upper.drop_count': ['temp', 'home_water_drop_count'],
+      'water.upper.rise_count': ['temp', 'home_water_rise_count'],
+      'institution.sync_count': ['reso', 'sync_handicap_count'],
+      'consensus_direction': ['reso', 'consensus_direction'],
+      'kelly_index.max': ['anom', 'maxKelly'],
+      'kelly_index.min': ['anom', 'minKelly'],
+      'kelly_index.divergence': ['anom', 'kelly_divergence'],
+      'volume.ratio': ['anom', 'volume_anomaly'],
+      'kelly_index.home_max': ['onex', 'kelly_home_max'],
+      'betfair.turnover': ['betfair', 'turnover'],
+      'betfair.heat': ['betfair', 'heat_max'],
+      'betfair.dominant_ratio': ['betfair', 'dominant_ratio'],
+    };
+    /** 扁平特征 → 族嵌套；后端未产出的字段保持「键不存在」（前端据此标注未产出，不补零）。 */
+    function toFamilyShape(flat) {
+      var out = { cross: {}, temp: {}, reso: {}, anom: {}, onex: {}, betfair: {} };
+      var src = flat || {};
+      for (var k in src) {
+        if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+        var m = FLAT_TO_FAMILY[k];
+        if (m) out[m[0]][m[1]] = src[k];
+      }
+      return out;
     }
 
     return {
@@ -309,15 +435,35 @@
         });
       },
       getRuleVersions: function (id) { return req('GET', '/api/rules/' + encodeURIComponent(id) + '/versions'); },
+      // 单场特征快照：归一化为族嵌套 shape（视图只认族结构，mock/http 同形）。
+      getFeature: function (id) {
+        return req('GET', '/api/features/' + encodeURIComponent(id)).then(function (r) {
+          if (!r.ok) return r;
+          r.data.features = toFamilyShape(r.data.features);
+          r.data.mode = 'http';
+          return r;
+        });
+      },
+      // 回测：统一为归一化契约。真实数字在 v97_real（旧 DSL 门禁 synthetic=true 仅为占位）。
       getBacktest: function (id) {
         return req('GET', '/api/backtest/' + encodeURIComponent(id)).then(function (r) {
           if (!r.ok) return r;
+          var d = r.data || {};
           r.data = {
-            rule_id: r.data.rule_id,
-            admitted: r.data.sample_size,
-            metrics: r.data.metrics,
-            thresholds: r.data.thresholds,
-            admission: { adjudication: r.data.adjudication, job_id: r.data.job_id },
+            rule_id: d.rule_id,
+            rule_name: d.rule_name || null,
+            rule_version: d.rule_version != null ? d.rule_version : null,
+            job_id: d.job_id,
+            adjudication: d.adjudication,
+            sample_size: d.sample_size != null ? d.sample_size : 0,
+            metrics: d.metrics || null,
+            thresholds: d.thresholds || null,
+            date_range: d.date_range || null,
+            synthetic: !!d.synthetic,
+            v97_real: d.v97_real || null,
+            admission_detail: d.admission_detail || null,
+            untrusted_count: d.untrusted_count != null ? d.untrusted_count : null,
+            mode: 'http',
           };
           return r;
         });
