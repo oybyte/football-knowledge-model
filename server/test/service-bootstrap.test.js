@@ -5,6 +5,10 @@
 // ============================================================================
 'use strict';
 
+// 规则源夹具（2026-10-10）：见 http-server.test.js 同款说明。
+// 本文件顶层即调用 loadPrototypeRules()，故 env 必须在任何 require 之前设置。
+process.env.OE_V97_REGISTRY_DIR = require('node:path').join(__dirname, 'fixtures', 'v97-registry');
+
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');

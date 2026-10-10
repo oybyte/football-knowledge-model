@@ -5,6 +5,12 @@
 // ============================================================================
 'use strict';
 
+// 规则源夹具（2026-10-10）：测试自带一份 V9.7 注册表，不依赖仓库外绝对路径。
+// 生产默认走 server/config/registry-empty（空注册表——规则体系已停用）；
+// 但 loader → migrate → store → HTTP 呈现 这条管线仍需真规则源来回归，夹具提供 88 条。
+// 必须在 require('../src/...') 之前设置：v97loader 在调用时读 env。
+process.env.OE_V97_REGISTRY_DIR = require('node:path').join(__dirname, 'fixtures', 'v97-registry');
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');

@@ -24,13 +24,15 @@ const { computeMatchFeatures } = require('../src/features');
 const T = '2026-08-14T17:00:00+08:00';
 
 // ───────────────────────── ① 配置驱动 ─────────────────────────
-test('① provider 配置驱动：默认 stub，联网 provider 默认关闭，切换不进业务代码', () => {
+test('① provider 配置驱动：默认 deepseek，stub 恒兜底，切换不进业务代码', () => {
   const cfg = providers.loadConfig();
-  assert.equal(cfg.default, 'stub');
+  assert.equal(cfg.default, 'deepseek');
+  const ds = cfg.providers.find((p) => p.id === 'deepseek');
+  assert.ok(ds && ds.enabled === true, 'deepseek 应为默认启用的联网 provider');
   const stub = cfg.providers.find((p) => p.id === 'stub');
-  assert.ok(stub && stub.enabled === true);
-  const net = cfg.providers.filter((p) => !p.enabled);
-  assert.ok(net.length >= 2, '应内置多个禁用的联网 provider');
+  assert.ok(stub && stub.enabled === true, 'stub 恒 enabled 作离线兜底');
+  const net = cfg.providers.filter((p) => p.enabled && p.category !== 'offline');
+  assert.ok(net.length >= 1, '应至少有一个启用的联网 provider');
   for (const p of cfg.providers) {
     if (p.api_key_env) assert.notEqual(p.api_key_env.length, 0);
   }
