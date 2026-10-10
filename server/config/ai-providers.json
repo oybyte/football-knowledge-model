@@ -1,6 +1,6 @@
 {
-  "default": "stub",
-  "comment": "AI 多模型适配层配置（阶段 2.4）。切换模型/凭证均在此配置，不改业务代码。api_key 一律经环境变量注入（api_key_env 指向环境变量名），本文件不含任何真实密钥。stub 为离线确定性 provider（离线/测试兜底），degraded=true 表示回退此 provider。",
+  "default": "deepseek",
+  "comment": "AI 多模型适配层配置。切换模型/凭证均在此配置，不改业务代码。api_key 一律经环境变量注入（api_key_env 指向环境变量名），本文件不含任何真实密钥。default=deepseek：真实 LLM 为首选（比赛分析与复盘规则沉淀走它）；未配置 DEEPSEEK_API_KEY 时 providers.chat 会跳过它并回退 stub（degraded=true），离线/测试仍可用。stub 为离线确定性 provider，恒 enabled 作兜底。",
   "providers": [
     {
       "id": "stub",
@@ -19,7 +19,7 @@
       "base_url": "https://api.deepseek.com/v1/chat/completions",
       "model": "deepseek-chat",
       "api_key_env": "DEEPSEEK_API_KEY",
-      "enabled": false,
+      "enabled": true,
       "degraded": false
     },
     {

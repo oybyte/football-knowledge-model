@@ -1,0 +1,6 @@
+{
+  "registry_version": "V9.7",
+  "generated": "2026-10-10T08:00:00Z",
+  "note": "空注册表 —— 规则重新积累的基线。由 env OE_V97_REGISTRY_DIR 指向本目录。原 V9.7 workbench 规则源（F:/ocr_python_data/doc/workbench/current）保持只读完整、sha256 不破；复盘产出的候选规则经人工审核后回注为 V9.8。删除 .env 中的 OE_V97_REGISTRY_DIR 行即可完全回滚到 88 条规则。",
+  "rules": []
+}
