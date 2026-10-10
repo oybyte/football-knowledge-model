@@ -50,10 +50,10 @@ Windows 下也可使用便利脚本：`python run.py` 会读取根目录 `.env` 
 $env:OE_WEB_PORT=8080        # 前端端口，默认 8080
 $env:OE_PORT=3000            # 后端端口，默认 3000
 $env:OE_REDIS_URL="redis://localhost:6379"   # 启用真实 Redis 缓存/队列/锁（可选）
-$env:OE_V97_REGISTRY_DIR="D:\\path\\to\\v97"  # V9.7 真规则目录（默认位置不可用时配置）
+$env:OE_V97_REGISTRY_DIR="D:\\path\\to\\registry"  # 规则注册表目录，默认 server/config/registry-empty（空注册表）
 ```
 
-后端启动时会校验外部 V9.7 规则 registry 与 gate index，当前规则集为 88 条；规则文件不在本仓库内，缺失或版本不符会阻断规则 seed，避免误用旧规则或假数据。
+后端启动时会校验规则 registry 与 gate index 的版本，缺失或版本不符会阻断 seed，不会静默退回旧规则或假数据。**当前生产规则源为空注册表**（`server/config/registry-empty`，通过门禁但载入 0 条）——规则手册驱动路线已于 2026-10-10 停用，分析改由 AI 直接产出、赛后按赛果复盘沉淀规则（见 `docs/decisions.md`）。规则管线代码保留，指向任一目录即恢复载入。
 
 ### 网关鉴权 / 限流（可选）
 
@@ -124,7 +124,7 @@ python -m http.server 8137
 Copy-Item .env.example .env
 
 # 2) 如需接入本地人工盘赔，在 .env 中填入宿主机源目录后：
-#    OE_MANUAL_ODDS_ROOT=D:\ocr_python_data\FootballScreenshotOcr\output
+#    OE_MANUAL_ODDS_ROOT=F:\ocr_python_data\odds-active   # 聚合根：用 junction 汇总各来源场次目录
 
 # 3) 拉起全栈
 docker compose up -d --build
@@ -189,7 +189,9 @@ node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
 - `server/src/db/g12/backfill.js` —— `backfillG12` 把运行时持久化层存量按 FK 依赖序、事务内幂等回填到 G12 表（data_sources → matches → audit_log → rule_versions → predictions），缺 match 的预测跳过并计数、缺值不捏造。
 - `createDb`（`server/src/db`）已装配 `qd` 仓库与 `backfillG12`。测试：`test/g12-repository.test.js`（8 用例）＋ `test/g12-backfill.test.js`（3 用例）。
 
-## V9.7 引擎垂直切片
+## V9.7 引擎垂直切片（已停用，代码保留）
+
+> **2026-10-10 起停用**：生产注册表为空，规则手册不再驱动分析结论。本节描述的引擎能力仍在 `server/src/engine/v97/` 中，仅作为代码与验证脚本的历史能力记录，不代表当前产线行为。
 
 `server/src/engine/v97/` 已打通一条真实数据验证链：盘口快照 → 字段信封 → atom 三态求值 → effects → 维度输出。当前切片覆盖 12 个字段、8 个基础算子；R01、R13、S25 已具备完整求值，E14、E06 等规则已出现真实命中，其余字段不足时统一返回 `insufficient_data`，不把缺失数据当成条件不满足。
 
@@ -199,11 +201,11 @@ node --test test/real-redis-e2e.test.js   # 连真实 Redis 跑 5 用例
 node server/scripts/v97-slice-run.js
 ```
 
-该脚本用于验证字段覆盖率和引擎架构，不代表 88 条规则已经全部可求值，也不直接产出可执行的投注结论。真实回测另由 `server/scripts/backtest-v97-run.js` 生成覆盖统计、命中事件台账和 S25 探针结果；当前证据不等同于生产准确率或 ROI。完整规则仍以外部 V9.7 registry 为准。
+该脚本用于验证字段覆盖率和引擎架构，不直接产出可执行的投注结论。真实回测另由 `server/scripts/backtest-v97-run.js` 生成覆盖统计、命中事件台账和 S25 探针结果。这些数字均为**停用前**的历史实测，不等同于生产准确率或 ROI，也不再是当前的分析依据。
 
 ## 当前状态
 
-前端仍保留明确标记的模拟/降级模式，但后端已接入真实竞彩赛程与赔率适配器、人工盘赔源、SQLite、Redis、DSL、回测、预测发布、鉴权、限流和 TLS。当前状态与未完成项详见 `docs/current-status.md`。
+前端仍保留明确标记的模拟/降级模式，但后端已接入真实竞彩赛程与赔率适配器、人工盘赔源、SQLite、Redis、DSL、回测、预测发布、鉴权、限流和 TLS。**分析路线已于 2026-10-10 转为 AI 驱动**：AI 接入层（`server/src/ai/`）与多模型 provider 已就绪，默认 provider 为 `deepseek`（未配置 `DEEPSEEK_API_KEY` 时自动降级为离线 stub）。当前状态与未完成项详见 `docs/current-status.md`。
 
 ## 版本约定
 

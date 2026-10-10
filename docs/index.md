@@ -2,14 +2,20 @@
 
 ## 当前入口
 
+- `current-status.md`：能力清单与验收范围（**状态权威**）。
+- `decisions.md`：已确认的取舍与路线决策（**决策权威**）。
 - `../prototype-1.0.0/index.html`：现役交互原型。
 - `../server/src/index.js`：后端服务装配入口。
 - `../package.json`：根级启动和测试命令。
+- `../ledgers/`：赛后复盘台账（按日期分目录）。
+- `../proposals/`：候选规则提案（人工审核前的隔离区）。
 - `architecture/architecture-1.0.0.html`：总体架构设计。
 - `architecture/retrieval-engine-1.0.0.html`：检索引擎、DSL、数据模型、API、回测和生产设计。
 - `architecture/architecture-review-1.0.0.html`：架构缺口和实施优先级评审。
 - `architecture/data-source-layering.md`：数据来源分层原则（体彩仅作基础锚定 + 本地人工盘赔作明细，先锚后明细）。
 - `../server/scripts/v97-slice-run.js`：V9.7 引擎垂直切片的真实数据验证脚本。
+- `progress-review-2026-10-10.md`：项目进度评估（分层进度、价值链断点定位、后续优先级实测快照）。
+- `system-review-2026-09-03.md`：系统模块状态与开发优先级评审（含 2026-10-09 更新注）。
 
 ## 子系统设计
 
