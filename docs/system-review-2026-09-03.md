@@ -83,6 +83,8 @@
 3. **真规则求值链**：88 条 V9.7 → 12 字段信封 → 3 条规则完全可求值 → 真实回测 161 场（S25 探针 59.8%）→ 前端"V9.7 真规则求值"区块渲染
 
 > 关键判断：**数据侧与规则求值侧已真实可用；"预测/发布/融合"这一段仍是空转的旧链**——因为 V9.7 结果没有接进 fusion，也没有落库/回填端点。
+>
+> **更新（2026-10-09）**：以上判断已过期——P0 两条（v97→fusion 接入、publish 端点化）于 **09-03 当天完成**，P1 三条（S25 转正试点、前端三页消费真实接口）亦已完成。当前真正未闭环的面收窄为：`custom` 算子 13 处、剩余 196 字段（多需**非盘口输入**）、统计模型（仍为 placeholder）、edge/ROI 置信度（Phase 2）、生产部署闭环。详见 `docs/current-status.md` 「未实现 / 待后续」。
 
 ---
 
@@ -93,6 +95,6 @@
 | **P0 ✅（2026-09-03 已完成）** | 把 **v97 结果接入 fusion**（v97 dimensions → 融合输入；gate/weight/total_goals_signal 分流） | 让"预测链/融合层"从空转变成真链，方向结论可出。新增 `server/src/fusion/v97_input.js` 适配器 + `fuseV97Decision`；`buildAnalysis` 现产出 `fusion` 块并随 merged/manual 分析下发前端。 |
 | **P0 ✅（2026-09-03 已完成）** | **publish 端点化**（保存预测 / 赛果回填幂等）+ 前端接"保存复盘" | 补齐预测→回填闭环，历史记录页内容才有价值。新增 `POST/GET /api/predictions`、`POST /api/predictions/:id/result`（自动推导赛果，once-only）；`publish/db_audit_adapter.js` 接 DB 审计；前端分析页「保存预测」+ 历史记录页「预测台账」消费。 |
 | **P1 ✅（2026-09-03 已完成）** | S25 转正试点（真实回测 84 场 61.9% 命中 + 15.8% edge → re-certify 为 active+trusted；补齐「总进球方向映射」） | 规则自我生长第一个完整闭环：v97_evidence→metrics(axis=total_goals)→promoteV97RuleToValidated 闭环落地。新增 `server/src/backtest/v97_evidence.js`（不可变 eligible 证据）、`server/src/promote/v97.js`（active→validated→approved→active re-certify + 用户 stated 硬门禁 hit_rate≥55%/roi≥0/sample≥80，max_drawdown/时间稳定/联赛覆盖作参考）、`server/scripts/s25-promote.js`、`server/test/s25-pilot.test.js`（10 例全绿）；fusion 透出 `total_goals_direction` 双轴，publish 支持仅总进球方向发布与赛果回填。 |
-| **P1** | 前端页面消费真实接口：回测页接 v97_real、特征页接后端特征、规则页接 88 条 | 消除双轨，去掉 mock 展示 |
+| **P1 ✅（2026-10-09 已完成）** | 前端页面消费真实接口：回测页接 v97_real、特征页接后端特征、规则页接 88 条 | 消除双轨，去掉 mock 展示。后端：新增薄端点 `GET /api/features/:id`（合并池定位 → 特征纯函数，不触发检索/融合链）；`/api/rules` 与 `/api/rules/:id/versions` 改**瘦视图**（剔除 v97 大对象，88 条响应体积大降）；`/api/backtest/:id` 补 `sample_size`/`date_range`/`v97_real`。前端：三页改**状态驱动异步渲染**（统一 `reqSeq` 防竞态），保留 mock 离线降级（`oe_api_mode_v2`）；rules 页降级为**只读 + 版本历史**，编辑入口改「发起变更提案」跳治理页。零假数据：未产出字段 / 季度序列 / 准入明细一律标注「未提供」不补零。方案与实施记录见 `docs/design/frontend-real-api/frontend-real-api.md` §9；回归 `prototype-1.0.0/test/render-real-pages.js`（4 例）。 |
 | **P2** | 第二批字段（需先确认手册定义/新数据源）；custom 算子按规则实现 | 提升规则点亮率 |
 | **P3** | edge/ROI 置信度、统计模型、生产部署闭环 | 长期 |

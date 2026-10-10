@@ -140,13 +140,14 @@
 - 公益网站减负（前端）：本地 localStorage 当天缓存 + 后端当天缓存双层，自动获取每日一次，右上角「手动刷新」按钮带 refresh=1 强制直连。
 
 ## 验证
-- 后端全量回归 461 用例：459 通过、0 失败、2 个外部服务用例可跳过（`npm test` = `node --test "server/test/*.test.js"`，干净退出无残留句柄）。
+- 后端全量回归 465 用例：463 通过、0 失败、2 个外部服务用例可跳过（`npm test` = `node --test "server/test/*.test.js"`，干净退出无残留句柄）。2026-10-09 新增 4 例：`GET /api/features/:id` 正/反例、规则列表瘦视图、规则版本瘦视图（断言不含 v97 大对象）。
 - 真实 Redis 运行时验收（real-redis-e2e.test.js 2 用例，可跳过式）：对**真实 Redis daemon**（OE_TEST_REDIS_URL 或本地 127.0.0.1:16379，无则 t.skip）一验证 createService({redisUrl}) 接线 backend=redis（cache/queue/lock 均为 Redis 适配器）且「重启后缓存不丢」在真实 Redis 上成立；二验证生产形态 HTTP 运行时（http.apiKey + OE_RATE_LIMIT_STORE=redis）在真实守护进程上 infra.backend=redis、infra.rateLimit=redis，health 免鉴权 200 → 缺 Key 401 → 带 Key 200——补齐 RESP 内存替身之外的守护进程级运行时证据（补上 deploy-smoke 用 mock、real-redis 只看 infra 层之间的夹缝），CI 无外部依赖不因缺 Redis 失败。
 - 测试覆盖：数据接入 / 特征 / 规则存储 / DSL / 回测 / 融合 / 检索 Worker / 发布回填 / 文字转 DSL / AI 引擎 / 回测转正 / 预测链 / V9.7 字段信封与 atom 三态求值 / 持久化存储 / 服务启动装配 / HTTP 层 / 真实赛程源适配器 / 本地人工盘赔源 / 双源合并（7 用例，含联赛别名收敛 2 例）+ 合并 HTTP 端点（4 用例）+ 公益网站当天缓存（3 用例）/ 缓存适配器 / 网关 / Redis 锁 / 分析队列 / Redis 服务接线（5 用例）+ 真实 RESP 协议端到端（5 用例）+ 真实 Redis 服务端端到端（外部服务不可用时跳过）+ G12 数据模型迁移 + G12 预测写入适配器（g12-writer，5 用例）+ G12 发布事务原子化（g12-publish，6 用例）+ 网关鉴权 + 内存/Redis 限流 + HTTP 鉴权集成 + 密钥轮换生命周期。
 - 端口解析纯函数（resolveHttpPort）用例：不绑定真实 3000，验证显式端口 > OE_PORT > 默认 3000 优先级。
 - 本地人工盘赔源实测：目录注入后扫描 75 场比赛；单场（韩K联 金泉尚武 vs 全北现代，001 场）解析 37 份盘口快照入合并池，信任分级 provisional、0 时间泄漏、0 冲突剔除。
 - 双源合并实测（HTTP 集成）：配置本地盘赔目录 + 官方赛程端点后，联赛别名收敛使场次语义键对齐 → merged:true（官方数字 match_id / 队名 / 开赛时间覆盖，快照 match_id 跟随）；未命中赛程的人工场次 manual_only 保留；时间防线剔除生效；`/api/merged/analysis` 打通盘口→特征→推理链，并返回 V9.7 真规则三态求值与维度结果。V9.7 规则方向映射进入正式方向仲裁仍属于后续融合策略阶段。
 - 原型 api-client 冒烟（mock/http 契约一致，含 merged 池与合并分析）+ 真实后端联调通过；浏览器实测「后端接入」视图从本地服务加载。
+- 前端三页消费真实接口（2026-10-09）：feature / backtest / rules 三页从 mock 切真实端点（保留 mock 离线降级），端到端回归 `prototype-1.0.0/test/render-real-pages.js` 4 例全绿（自包含浏览器同构沙箱 + `:memory:` DB，真实后端装配）；`frontend-v97.test.js` 改为**动态选取合并池内场次**（不再硬编码当日场次 ID）后转绿。实测：特征字段契约 27 项 → 后端产出 20 / 未产出 7（前端动态统计并逐项标注「未产出」，不补零）。方案与实施记录见 `docs/design/frontend-real-api/frontend-real-api.md` §9。
 - 生产部署形态合并冒烟（deploy-smoke.test.js 1 用例）：单进程同时启用 HTTPS（自签）+ 鉴权（API Key）+ Redis 共享限流（真实 RESP），跨真实 TLS 套接字依次断言 /api/health 200（免鉴权）→ /api/matches 缺 Key 401 → 带 Key 200 → 超限 429（rate_limited），且 getStatus() scheme=https / infra.backend=redis / infra.rateLimit=redis 三者并存——证明网关鉴权、限流、TLS、Redis 接线在生产配置下同进程协同生效。
 - 前端端到端实测（浏览器）：首页「今日可买」16 场在售赛事渲染；001 场「开启分析预测」→ 推理链加载 → 「关闭」收起 → 「详细分析」进入分析面板 → 「返回列表」退出，全按钮矩阵操作 window error / unhandledrejection 双通道捕获为零错误。
 
@@ -155,7 +156,7 @@
 - 规则持续优化流水线，以及基于真实长期样本的 edge/ROI 校准。
 - V9.7 引擎继续补齐剩余 196 个字段与算子；多数剩余规则卡在**非盘口输入**（伤停/身价/战意/赛制细节/custom 算子），需新数据源或手册定义确认（缺口分析见 v97_real 覆盖报告）。
 - 真实回测已落地（覆盖/台账/S25 探针）；规则→赛果语义映射（方向型规则转正后进仲裁）待融合层策略评审（见 fusion-decision-layer.md）。
-- 前端从当前后端接入视图继续演进为完整生产客户端。
+- 前端剩余页从 mock 收口：`pipeline`（预测链，25 处 mock）、`dsl`（9 处）、`ingest`（9 处）——2026-10-09 起 feature / backtest / rules 三页已消费真实接口，其状态驱动异步渲染骨架（`reqSeq` 防竞态 + 三态渲染）可照搬；`pipeline` 页的可视化形态依赖融合决策层的最终定义，建议排在其后以免返工。
 
 ## 事实状态
 - 原型：`active`，功能验证用途。
