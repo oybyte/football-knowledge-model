@@ -5,7 +5,8 @@
 //     （显式优于隐式，符合零假数据 / 可审计原则）。
 //   · 支持 # 注释行、空行、KEY=VALUE（VALUE 可含 = 与空格，首尾空格去除，支持单/双引号包裹）。
 //   · 文件不存在时静默跳过（不影响无 .env 运行，亦兼容 docker 已注入环境变量的场景）。
-// 默认目标：仓库根目录 .env（server/src/lib/load_env.js → ../../.env）。
+// 默认目标：仓库根目录 .env（server/src/lib/load_env.js → ../../../.env），
+// 找不到时回退 server/.env。
 // ============================================================================
 'use strict';
 
@@ -18,7 +19,12 @@ const path = require('node:path');
  * @returns {Object} 实际加载的键值对（用于日志）
  */
 function loadDotEnv(filePath) {
-  const target = filePath || path.resolve(__dirname, '..', '..', '.env');
+  // 仓库根 .env（server/src/lib → 上溯三级 = 仓库根）；兼容历史位置 server/.env。
+  // 修正：原实现只上溯两级（= server/），与"默认目标：仓库根目录 .env"的注释不符，
+  // 导致仓库根的 .env 从未被加载（过去靠 shell 手动注入 env 才生效）。
+  const repoRootEnv = path.resolve(__dirname, '..', '..', '..', '.env');
+  const serverEnv = path.resolve(__dirname, '..', '..', '.env');
+  const target = filePath || (fs.existsSync(repoRootEnv) ? repoRootEnv : serverEnv);
   const loaded = {};
   let text;
   try {

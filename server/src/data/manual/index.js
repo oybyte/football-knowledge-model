@@ -33,7 +33,10 @@ function locateMdFiles(root) {
   try { entries = fs.readdirSync(root, { withFileTypes: true }); }
   catch { return out; }
   for (const e of entries) {
-    if (!e.isDirectory()) continue;
+    // 目录；或符号链接/junction——Windows junction 在 Dirent 下是 lstat 语义（isSymbolicLink=true，
+    // isDirectory=false），而聚合根正是用 junction 挂载场次目录，故须一并放行。
+    // 目标不存在或其中无 md 时，下方的 existsSync 会自然过滤，不会误收。
+    if (!e.isDirectory() && !e.isSymbolicLink()) continue;
     const md = path.join(root, e.name, MD_FILENAME);
     if (fs.existsSync(md)) out.push(md);
   }

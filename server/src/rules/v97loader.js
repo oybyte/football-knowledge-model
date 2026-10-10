@@ -2,8 +2,10 @@
 // 规则存储服务 · v97loader —— V9.7 registry 适配器（真规则唯一来源）
 //
 // 职责：
-//  1) 读取真实规则源 F:/ocr_python_data/doc/workbench/current/rule_registry.json
-//     （不在本仓库内，可用 env OE_V97_REGISTRY_DIR 覆盖）。
+//  1) 读取规则源：默认项目内 server/config/registry-empty（空注册表 —— 规则体系已停用）；
+//     需要真实 V9.7 规则包时用 env OE_V97_REGISTRY_DIR 覆盖。
+//     注意：默认值必须落在本仓库内，不得硬编码仓库外绝对路径（跨机不可移植、且外部
+//     目录被移动即导致启动失败 —— 2026-10-10 workbench 归档时曾因此炸掉 59 个测试）。
 //  2) 启动门禁：核对 rule_registry.json 与 _gate_index.json 的 registry_version
 //     都为 EXPECTED_VERSION(V9.7)；不一致则抛错拦截启动（对齐 V9.7 AGENT.md 每场启动门禁）。
 //  3) 将 88 条 V9.7 规则映射为 RuleVersion：
@@ -29,8 +31,10 @@ const path = require('node:path');
  */
 const EXPECTED_VERSION = 'V9.7';
 
-/** 默认 registry 目录（用户正在使用的最新规则；不在本仓库内）。 */
-const DEFAULT_REGISTRY_DIR = 'F:/ocr_python_data/doc/workbench/current';
+/** 默认 registry 目录：项目内空注册表（规则体系已停用，载入 0 条）。
+ *  历史默认值 'F:/ocr_python_data/doc/workbench/current' 已于 2026-10-10 归档，
+ *  不再作硬依赖。显式覆盖请用 env OE_V97_REGISTRY_DIR。 */
+const DEFAULT_REGISTRY_DIR = path.resolve(__dirname, '..', '..', 'config', 'registry-empty');
 
 /** @returns {string} registry 目录（env 优先） */
 function resolveRegistryDir() {

@@ -7,6 +7,9 @@
 'use strict';
 
 const path = require('node:path');
+const { loadDotEnv } = require('../src/lib/load_env');
+// 与 bin/start.js 保持一致：加载仓库根 .env（仅设置尚未存在的键，显式注入优先）。
+loadDotEnv();
 const { createDb } = require('../src/db');
 const { reconcileManualOddsToDb } = require('../src/db/g12/manual_reconcile');
 const { defaultLogger } = require('../src/lib/logger');
