@@ -833,6 +833,18 @@ body {
 .ing-feed { display: flex; gap: 4px; flex-wrap: wrap; }
 .ing-ts { display: flex; flex-direction: column; gap: 2px; font-family: var(--mono); }
 .ing-hlth { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+/* 人工盘赔「数据目录绑定」表单（统一目录 + 场次目录） */
+.ing-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.ing-input {
+  flex: 1 1 260px; min-width: 200px; height: 28px; padding: 0 10px;
+  font-size: 12px; color: var(--t-1); font-family: inherit;
+  background: var(--bg-1); border: 1px solid var(--bd-1); border-radius: 6px;
+}
+.ing-input.sm { flex: 0 1 220px; min-width: 170px; }
+.ing-input.xs { flex: 0 1 130px; min-width: 110px; }
+.ing-input::placeholder { color: var(--t-3); }
+.ing-input:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand); }
 .lamp { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .lamp.ok { background: var(--up); box-shadow: 0 0 0 3px var(--up-soft); }
 .lamp.risk { background: var(--risk); box-shadow: 0 0 0 3px var(--risk-soft); }

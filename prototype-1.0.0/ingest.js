@@ -85,7 +85,8 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
   const nowTxt = () => { const d = new Date(); const p = n => String(n).padStart(2, "0"); return `${p(d.getHours())}:${p(d.getMinutes())}`; };
 
   // ── 真实数据源可观测：本地人工盘赔源（经 api-client → 后端 HTTP） ──
-  // root 由 env:OE_MANUAL_ODDS_ROOT 动态配置；每次点击「实时刷新」向后端扫描。
+  // 扫描根 = DB 目录绑定（统一目录 + 场次目录）∪ env:OE_MANUAL_ODDS_ROOT 兜底；
+  // 每次点击「实时刷新」向后端扫描。
   let manualState = null; // null=加载中
   let manualAnalysis = null; // 当前选中场次的推理链
   async function refreshManual() {
@@ -167,6 +168,141 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
     const m = map[status] || { label: status || "未知", tone: "info" };
     return `<span class="badge ${m.tone}">${m.label}</span>`;
   }
+
+  // ── 人工盘赔「数据目录绑定」：统一目录 + 场次目录（004 可变配置，经后端读写） ──
+  // 语义：统一目录是基线；场次目录用于「统一目录扫不到该场」或「对已有场次换源刷新」。
+  let dirsState = null; // null=加载中
+  let dirsBusy = false; // 写操作进行中（防重复提交）
+  let dirsMsg = null;   // { tone, text }
+
+  async function refreshDirs() {
+    try {
+      const Api = window.__ApiClient;
+      if (!Api || typeof Api.getApi !== 'function') { dirsState = { error: 'api_client_unavailable' }; if (window.render) window.render(); return; }
+      const r = await Api.getApi().listManualOddsDirs();
+      dirsState = (r && r.ok) ? r.data : { error: (r && r.error) || 'http_error' };
+    } catch (e) {
+      dirsState = { error: String((e && e.message) || e) };
+    }
+    if (window.render) window.render();
+  }
+
+  /** 统一入口：执行一次写操作 → 展示结果 → 重拉绑定表与场次列表。 */
+  async function applyDirsAction(run) {
+    if (dirsBusy) return;
+    dirsBusy = true; dirsMsg = null;
+    if (window.render) window.render();
+    try {
+      const Api = window.__ApiClient;
+      const r = await run(Api.getApi());
+      if (r && r.ok) {
+        const sc = r.data && r.data.scan;
+        dirsMsg = { tone: 'up', text: sc ? `已生效：接入 ${sc.imported} 场 · 跳过 ${sc.skipped} 场 · 取代 ${sc.superseded} 场` : '已生效' };
+      } else {
+        dirsMsg = { tone: 'risk', text: `操作失败：${(r && r.error) || 'http_error'}` };
+      }
+    } catch (e) {
+      dirsMsg = { tone: 'risk', text: String((e && e.message) || e) };
+    }
+    dirsBusy = false;
+    await refreshDirs();
+    await refreshManual();
+  }
+
+  function setUnifiedDir() {
+    const el = document.getElementById('ing-unified-dir');
+    const v = el ? String(el.value || '').trim() : '';
+    if (!v) { dirsMsg = { tone: 'risk', text: '请先填写统一目录路径' }; if (window.render) window.render(); return; }
+    return applyDirsAction((api) => api.setManualOddsDir({ scope: 'unified', dir_path: v }));
+  }
+  function restoreUnifiedDir() {
+    return applyDirsAction((api) => api.removeManualOddsDir('unified'));
+  }
+  function addMatchDir() {
+    const dirEl = document.getElementById('ing-match-dir');
+    const keyEl = document.getElementById('ing-match-key');
+    const kindEl = document.getElementById('ing-match-kind');
+    const lbEl = document.getElementById('ing-match-label');
+    const dirPath = dirEl ? String(dirEl.value || '').trim() : '';
+    const matchKey = keyEl ? String(keyEl.value || '').trim() : '';
+    if (!dirPath || !matchKey) { dirsMsg = { tone: 'risk', text: '请填写比赛键与目录路径' }; if (window.render) window.render(); return; }
+    return applyDirsAction((api) => api.setManualOddsDir({
+      scope: 'match',
+      dir_path: dirPath,
+      match_key: matchKey,
+      match_key_kind: kindEl ? kindEl.value : 'official',
+      label: lbEl ? (String(lbEl.value || '').trim() || null) : null,
+    }));
+  }
+  function removeMatchDir(bindingId) {
+    return applyDirsAction((api) => api.removeManualOddsDir(bindingId));
+  }
+
+  /** 官方在售场次作为「比赛键」输入建议（复用已加载的竞彩官方赔率，不额外请求）。 */
+  function matchKeyCandidates() {
+    const ms = (oddsState && Array.isArray(oddsState.matches)) ? oddsState.matches : [];
+    return ms.map((m) => `<option value="${m.match_id}">${m.serial || ''} ${m.home_team || ''} vs ${m.away_team || ''}</option>`).join("");
+  }
+
+  function renderDirsConfig() {
+    if (dirsState === null) return `<div class="card-mb"><div class="empty">正在读取人工盘赔目录绑定…</div></div>`;
+    if (dirsState.error) {
+      return `<div class="card-mb"><div class="callout risk"><strong>目录绑定读取失败。</strong>${dirsState.error}</div><span class="muted">请启动本地后端并切换为「后端API」。</span></div>`;
+    }
+    const u = dirsState.unified || {};
+    const rows = (dirsState.matches || []).map((d) => {
+      const lr = d.last_result || {};
+      const scanBadge = lr.ok ? '<span class="badge up">有数据</span>' : '<span class="badge risk">无 md</span>';
+      const kindBadge = `<span class="badge ${d.match_key_kind === 'official' ? 'brand' : 'info'}">${d.match_key_kind || '-'}</span>`;
+      const action = dirsBusy
+        ? '<span class="muted">处理中…</span>'
+        : `<button class="btn sm" onclick="window.__ingRemoveDir('${d.binding_id}')">移除</button>`;
+      const labelTxt = d.label ? d.label : '<span class="muted">-</span>';
+      return `<tr>
+        <td class="mono">${d.match_key || '-'}</td>
+        <td>${kindBadge}</td>
+        <td class="mono" style="word-break:break-all">${d.dir_path}</td>
+        <td>${scanBadge}<span class="muted"> md ${lr.md_files == null ? '-' : lr.md_files} / 接入 ${lr.admitted == null ? '-' : lr.admitted}</span></td>
+        <td>${labelTxt}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join("") || '<tr><td colspan="6" class="empty">暂无场次目录绑定</td></tr>';
+
+    const msg = dirsMsg ? `<div class="callout ${dirsMsg.tone === 'up' ? 'up' : 'risk'}" style="margin:8px 0">${dirsMsg.text}</div>` : '';
+    const unifiedInput = `<input id="ing-unified-dir" class="ing-input" placeholder="统一目录路径（含 盘口数据.md 的单场目录，或含多场子目录的上层根）" value="${u.origin === 'db' && u.dir_path ? u.dir_path : ''}">`;
+    return `<div class="card-mb">
+      <div class="manual-src-head">
+        <span class="ing-name">数据目录绑定</span>
+        <span class="badge muted">统一目录 + 场次目录</span>
+        ${u.overridden ? '<span class="badge warn">已被运行时覆盖</span>' : ''}
+      </div>
+      ${msg}
+      <div class="ing-sum mt">
+        <div class="bt-chip"><b>当前统一目录</b><span class="mono" style="word-break:break-all">${u.dir_path || '（未配置）'}</span></div>
+        <div class="bt-chip"><b>来源</b><span>${u.origin === 'db' ? '运行时指定' : (u.origin === 'env' ? 'env 兜底' : '-')}</span></div>
+        <div class="bt-chip"><b>env 兜底</b><span class="mono" style="word-break:break-all">${u.env_fallback || '（无）'}</span></div>
+      </div>
+      <div class="ing-form">
+        ${unifiedInput}
+        <button class="btn sm primary" onclick="window.__ingSetUnifiedDir()">应用统一目录</button>
+        <button class="btn sm" onclick="window.__ingRestoreUnifiedDir()">恢复 env 默认</button>
+      </div>
+      <div class="ing-table-wrap manual-table-wrap mt"><table class="ing-table">
+        <thead><tr><th>比赛</th><th>键类型</th><th>目录</th><th>最近扫描</th><th>备注</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="ing-form mt">
+        <input id="ing-match-key" class="ing-input sm" placeholder="比赛键（官方数字 id 如 2041922，或人工 match_id）" list="ing-match-candidates">
+        <select id="ing-match-kind" class="ing-input xs"><option value="official">官方场次</option><option value="manual">人工场次</option></select>
+        <input id="ing-match-dir" class="ing-input" placeholder="该场比赛的目录路径">
+        <input id="ing-match-label" class="ing-input xs" placeholder="备注（可选）">
+        <button class="btn sm primary" onclick="window.__ingAddMatchDir()">新增/更新场次目录</button>
+      </div>
+      <datalist id="ing-match-candidates">${matchKeyCandidates()}</datalist>
+      <div class="muted tts" style="font-size:12px">统一目录是基线；场次目录用于「统一目录扫不到该场」或「对已有场次换源刷新」——换源后内容变化即产生新版本并取代旧版本（append-only，旧数据保留）。冲突优先级：场次目录 &gt; 统一目录。目录变更立即重扫落库并写入 append-only 审计。</div>
+    </div>`;
+  }
+
   function renderManualSource() {
     if (manualState === null) {
       return `<div class="card-mb"><div class="empty">正在实时加载本地人工盘赔源状态…</div></div>`;
@@ -216,6 +352,7 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
         <div class="bt-chip"><b>拒绝</b><span class="risk">${meta.rejected}</span></div>
         <div class="bt-chip"><b>连线</b><span class="brand">盘口 → 特征 → 推理链</span></div>
       </div>
+      ${renderDirsConfig()}
       <div class="ing-table-wrap manual-table-wrap"><table class="ing-table">
         <thead><tr><th>match_id</th><th>联赛</th><th>对阵</th><th>开赛</th><th>快照</th><th>赛果</th><th>信任</th><th>锚定</th><th>操作</th></tr></thead>
         <tbody>${matches}</tbody>
@@ -299,7 +436,7 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
         </div>
       </div>
 
-      <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">真实数据源 · 本地人工盘赔</div><div class="extra muted">经后端 HTTP · 目录根 env:OE_MANUAL_ODDS_ROOT 动态配置</div></div>
+      <div class="card" style="margin-top:14px"><div class="card-hd"><div class="title">真实数据源 · 本地人工盘赔</div><div class="extra muted">经后端 HTTP · 扫描根 = 目录绑定（DB）∪ env:OE_MANUAL_ODDS_ROOT 兜底</div></div>
         ${renderManualSource()}
       </div>
 
@@ -533,16 +670,36 @@ if (typeof window !== "undefined" && !window.__ingestLoaded) {
   window.__ingRefresh = refreshNow;
   window.__ingRefreshManual = refreshManual;
   window.__ingAnalyzeManual = analyzeManualMatch;
+  // 人工盘赔目录绑定（统一目录 / 场次目录）
+  window.__ingSetUnifiedDir = setUnifiedDir;
+  window.__ingRestoreUnifiedDir = restoreUnifiedDir;
+  window.__ingAddMatchDir = addMatchDir;
+  window.__ingRemoveDir = removeMatchDir;
   // 竞彩赛程/赔率：手动刷新才直连体彩官方（公益网站减负）
   window.__ingRefreshSchedule = function () { refreshSchedule(true); };
   window.__ingRefreshOdds = function () { refreshOdds(true); };
   window.__ingRefreshMerged = refreshMerged;
   window.__ingAnalyzeMerged = analyzeMergedMatch;
 
-  refreshManual(); // 初次进入即向后端实时拉取本地盘赔源状态
-  refreshSchedule(false); // 自动获取当天竞彩赛程（当天缓存命中则零请求）
-  refreshOdds(false); // 自动获取当天竞彩赔率（当天缓存命中则零请求）
-  refreshMerged(); // 初次进入即向后端实时拉取双源合并「真实比赛池」
+  // 页面引导（与 backtest / feature / api 页同约定：进入页面时由 app.js 调用）。
+  // 两条硬约束：
+  //   1) index.html 中 ingest.js 在 src/api-client/api-client.js **之前**加载，故严禁在
+  //      脚本解析期直接拉取——那一刻 window.__ApiClient 尚未定义，会把状态永久打成
+  //      api_client_unavailable 且没有任何重试路径。
+  //   2) 各 refresh* 完成后会调 window.render()，而 app.js 的 ingest 分支每次 render 都会
+  //      再调 __ingBoot()。若引导不做短路，就会形成 render→boot→refresh→render 的无界递归
+  //      （实测可造成每秒数百次 /api/sources/manual-odds/dirs 请求）。
+  //      故引导**在同一页面会话内只执行一次**；之后靠页内「实时刷新」按钮按需重取。
+  let ingestBooted = false;
+  window.__ingBoot = function () {
+    if (ingestBooted) return;
+    ingestBooted = true;
+    refreshManual();        // 本地人工盘赔源状态
+    refreshDirs();          // 目录绑定（统一目录 + 场次目录）
+    refreshSchedule(false); // 当天竞彩赛程（当天缓存命中则零请求）
+    refreshOdds(false);     // 当天竞彩赔率（当天缓存命中则零请求）
+    refreshMerged();        // 双源合并「真实比赛池」
+  };
 
   if (typeof module !== "undefined") {
     module.exports = { SOURCES, TRUST, recent, statsOf, ocrToken, renderIngest };

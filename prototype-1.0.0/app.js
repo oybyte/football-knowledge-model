@@ -205,7 +205,7 @@ function render() {
   else if (state.page === "pipeline") main.innerHTML = (window.renderPipelinePage ? window.renderPipelinePage() : `<div class="page">预测链模块未加载。</div>`);
   else if (state.page === "governance") main.innerHTML = (window.renderGovernance ? window.renderGovernance() : `<div class="page">规则治理模块未加载。</div>`);
   else if (state.page === "backtest") { main.innerHTML = (window.renderBacktest ? window.renderBacktest() : `<div class="page">回测模块未加载。</div>`); if (window.__btBoot) window.__btBoot(); }
-  else if (state.page === "ingest") main.innerHTML = (window.renderIngest ? window.renderIngest() : `<div class="page">数据接入模块未加载。</div>`);
+  else if (state.page === "ingest") { main.innerHTML = (window.renderIngest ? window.renderIngest() : `<div class="page">数据接入模块未加载。</div>`); if (window.__ingBoot) window.__ingBoot(); }
   else if (state.page === "historical") main.innerHTML = (window.renderHistorical ? window.renderHistorical() : `<div class="page">历史赛事模块未加载。</div>`);
   else if (state.page === "feature") { main.innerHTML = (window.renderFeature ? window.renderFeature() : `<div class="page">特征引擎模块未加载。</div>`); if (window.__featBoot) window.__featBoot(); }
   else if (state.page === "dsl") main.innerHTML = (window.renderDsl ? window.renderDsl() : `<div class="page">DSL 引擎模块未加载。</div>`);

@@ -233,6 +233,17 @@
       });
     },
 
+    // 人工盘赔目录绑定（统一目录 / 场次目录）——Mock 仅占位，真实读写需后端 API。
+    listManualOddsDirs: function () {
+      return okBody({ unified: { binding_id: 'unified', dir_path: null, origin: null, env_fallback: null, overridden: false, last_scanned_at: null, last_result: null }, matches: [] });
+    },
+    setManualOddsDir: function () {
+      return errBody('mock_mode_readonly');
+    },
+    removeManualOddsDir: function () {
+      return errBody('mock_mode_readonly');
+    },
+
     getSportteryOddsStatus: function () {
       // Mock 占位：竞彩官方赔率仅在 http 适配（后端直连 sporttery.cn）下可观测。
       return okBody({
@@ -482,6 +493,25 @@
           r.data.mode = 'http';
           return r;
         });
+      },
+
+      // 人工盘赔目录绑定：统一目录（scope=unified）+ 场次目录（scope=match）。
+      // 写操作在后端做路径/绑定键校验与重扫，前端只透传与展示错误码。
+      listManualOddsDirs: function () {
+        return req('GET', '/api/sources/manual-odds/dirs');
+      },
+      setManualOddsDir: function (payload) {
+        var p = payload || {};
+        return req('POST', '/api/sources/manual-odds/dirs', {
+          scope: p.scope,
+          dir_path: p.dir_path,
+          match_key: p.match_key == null ? null : p.match_key,
+          match_key_kind: p.match_key_kind == null ? null : p.match_key_kind,
+          label: p.label == null ? null : p.label,
+        });
+      },
+      removeManualOddsDir: function (bindingId) {
+        return req('POST', '/api/sources/manual-odds/dirs/' + encodeURIComponent(bindingId) + '/remove', {});
       },
 
       getSportteryOddsStatus: function (opts) {
