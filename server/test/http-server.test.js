@@ -681,6 +681,10 @@ test('GET /api/sources/merged 配置本地盘赔后返回 manual_only 场次', a
       assert.equal(r.body.data.pool.length, 1);
       assert.equal(r.body.data.pool[0].merged, false);
       assert.ok(r.body.data.pool[0].snapshots > 0);
+      // 溯源键必须透出（2026-10-12 新增）：顶层 match_id 会被官方接管，不留这两个键就无法
+      // 回答「这条来自哪场人工盘赔、靠什么锚定上的」。未对齐时 align_via 诚实为 null。
+      assert.equal(r.body.data.pool[0].align_via, null);
+      assert.ok(r.body.data.pool[0].manual_match_id, 'manual_match_id 应透出以便溯源');
     });
   } finally {
     if (savedRoot !== undefined) process.env.OE_MANUAL_ODDS_ROOT = savedRoot;

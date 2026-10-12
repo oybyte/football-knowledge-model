@@ -515,7 +515,12 @@ function listManualOddsDirs(service) {
   const rows = listDirs(service.db);
   const roots = resolveRoots({ db: service.db, env: process.env });
   const unifiedRoot = roots.find((r) => r.scope === 'unified') || null;
-  const unifiedRow = rows.find((r) => r.scope === 'unified') || null;
+  // 两种 unified 行须区分（见 recordScan 注释）：
+  //   status='active'   用户显式覆盖行 → 决定 dir_path/origin/overridden
+  //   status='disabled' 仅系统记录 env 兜底根的扫描痕迹 → 只提供 last_scanned_at/last_result
+  const unifiedRows = rows.filter((r) => r.scope === 'unified');
+  const overrideRow = unifiedRows.find((r) => r.status === 'active') || null;
+  const traceRow = overrideRow || unifiedRows[0] || null;
   const envRoot = String(process.env.OE_MANUAL_ODDS_ROOT || '').trim() || null;
   return ok({
     unified: {
@@ -523,9 +528,9 @@ function listManualOddsDirs(service) {
       dir_path: unifiedRoot ? unifiedRoot.dir : null,
       origin: unifiedRoot ? unifiedRoot.origin : null, // 'db' = 运行时指定；'env' = 环境变量兜底
       env_fallback: envRoot,                            // 永远展示兜底值，便于「恢复默认」
-      overridden: !!(unifiedRow && unifiedRow.dir_path && envRoot && unifiedRow.dir_path !== envRoot),
-      last_scanned_at: unifiedRow ? unifiedRow.last_scanned_at : null,
-      last_result: unifiedRow ? parseJsonOrNull(unifiedRow.last_result) : null,
+      overridden: !!(overrideRow && overrideRow.dir_path && envRoot && overrideRow.dir_path !== envRoot),
+      last_scanned_at: traceRow ? traceRow.last_scanned_at : null,
+      last_result: traceRow ? parseJsonOrNull(traceRow.last_result) : null,
     },
     matches: rows.filter((r) => r.scope === 'match').map(dirView),
   });
@@ -643,6 +648,10 @@ async function getMergedPool(service, params) {
         merged: !!(m.meta && m.meta.merged),
         snapshots: m.snapshots.length,
         actual_result: m.actual_result,
+        // 锚定溯源：顶层 match_id 被官方接管后，靠这两个键才能回答「这一条来自哪场人工盘赔、
+        // 是期号锚定还是语义键命中的」。只透出这两个键，不透出整个 meta（缩小暴露面）。
+        align_via: (m.meta && m.meta.align_via) || null,
+        manual_match_id: (m.meta && m.meta.manual_match_id) || null,
       })),
       dismissed: merged.dismissed,
     });
@@ -689,6 +698,9 @@ async function getMergedAnalysis(service, params) {
       anchor_source: anchorSource(),
       merged: mergedFlag,
       schedule_match_id: (match.meta && match.meta.schedule_match_id) || null,
+      // 锚定溯源（与 /api/sources/merged 的 pool 投影保持同名字段，便于排障对照）
+      align_via: (match.meta && match.meta.align_via) || null,
+      manual_match_id: (match.meta && match.meta.manual_match_id) || null,
       snapshots: (match.snapshots || []).length,
       trust_level: (match.snapshots[0] && match.snapshots[0].trust_level) || 'provisional',
       v97,

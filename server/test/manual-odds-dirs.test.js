@@ -261,6 +261,32 @@ test('⑦ 目录绑定变更写入 append-only 审计', async () => {
   });
 });
 
+test('⑧ env 兜底根未被覆盖时，扫描元信息仍被记录且 origin 保持 env', async () => {
+  const envRoot = makeRootDir(tmpRoot, 'env-fallback-root', ['甲队A', '乙队B']);
+  process.env.OE_MANUAL_ODDS_ROOT = envRoot;
+  try {
+    await withServer(async (port) => {
+      const r = await request(port, 'GET', '/api/sources/manual-odds/dirs');
+      assert.equal(r.status, 200);
+      const u = r.body.data.unified;
+      // 语义不变：未被用户显式覆盖 → 仍是 env 兜底，绝不能因「留了扫描痕迹」而误判成 db 覆盖
+      assert.equal(u.dir_path, envRoot);
+      assert.equal(u.origin, 'env');
+      assert.equal(u.overridden, false);
+      assert.equal(u.env_fallback, envRoot);
+      // 扫描痕迹必须留下。历史缺陷：env 兜底根没有 DB 行，recordScan 的 UPDATE 命中 0 行、
+      // 静默丢失 → 前端永远显示「从未扫描」。
+      assert.ok(u.last_scanned_at, 'env 兜底根的最近扫描时间应被记录');
+      assert.equal(u.last_result.ok, true);
+      assert.ok(u.last_result.md_files >= 2, `应扫到 2 份 md，实际 ${u.last_result.md_files}`);
+      // 痕迹行不得混入场次绑定列表
+      assert.deepEqual(r.body.data.matches, []);
+    });
+  } finally {
+    delete process.env.OE_MANUAL_ODDS_ROOT;
+  }
+});
+
 test.after(() => {
   try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* ignore */ }
   if (ENV_ROOT_SAVED !== undefined) process.env.OE_MANUAL_ODDS_ROOT = ENV_ROOT_SAVED;

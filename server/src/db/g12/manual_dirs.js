@@ -69,11 +69,40 @@ function removeDir(db, bindingId) {
   return { removed: r.changes === 1 };
 }
 
-/** 记录一次扫描结果（可观测：这次扫描扫到几个 md、接入几场、为何拒绝）。 */
-function recordScan(db, bindingId, result) {
+/**
+ * 记录一次扫描结果（可观测：这次扫描扫到几个 md、接入几场、为何拒绝）。
+ *
+ * env 兜底根在用户未覆盖时**没有 DB 行**（`resolveRoots` 返回的是合成对象），单靠 UPDATE
+ * 会命中 0 行、静默丢记录 → 前端永远显示「从未扫描」。故对 unified 先补一行**扫描痕迹行**：
+ *   · `status='disabled'` 表示「本行不构成生效绑定，只是 env 兜底根的扫描痕迹」。
+ *     `resolveRoots` 只认 `status='active'` 才算用户覆盖，故 `origin` 不会被误判为 'db'。
+ *     （不能新造一个 status 取值：004 有 `CHECK (status IN ('active','disabled'))`，
+ *      非法值会被 INSERT OR IGNORE 静默丢弃——这正是本实现踩过的坑。）
+ *   · 已存在覆盖行（`status='active'`）时 `INSERT OR IGNORE` 为 no-op，只更新元信息、不动 status。
+ *   · 004 的 `uniq_manual_dirs_unified`（scope='unified' 唯一）保证至多一行，二者共用同一行。
+ * @param {Object} db
+ * @param {string} bindingId
+ * @param {Object} result 扫描结果摘要
+ * @param {{scope?:string, dirPath?:string}} [opts] unified 根需传 scope='unified' 与本次实际扫描目录
+ */
+function recordScan(db, bindingId, result, opts = {}) {
   const at = nowIso();
-  db.prepare('UPDATE qd_manual_odds_dirs SET last_scanned_at = ?, last_result = ?, updated_at = ? WHERE binding_id = ?')
-    .run(at, JSON.stringify(result), at, bindingId);
+  const dirPath = opts.dirPath == null ? null : String(opts.dirPath);
+  if (opts.scope === 'unified') {
+    db.prepare(
+      `INSERT OR IGNORE INTO qd_manual_odds_dirs
+         (binding_id, scope, match_key, match_key_kind, dir_path, label, status,
+          last_scanned_at, last_result, created_at, updated_at)
+       VALUES (?, 'unified', NULL, NULL, ?, NULL, 'disabled', NULL, NULL, ?, ?)`
+    ).run(bindingId, dirPath, at, at);
+  }
+  // dir_path 用 COALESCE 只在本次确有目录时覆盖：env 根换值后痕迹行随之刷新，
+  // 而覆盖行本就等于其扫描目录，写入为等值 no-op。
+  db.prepare(
+    `UPDATE qd_manual_odds_dirs
+        SET dir_path = COALESCE(?, dir_path), last_scanned_at = ?, last_result = ?, updated_at = ?
+      WHERE binding_id = ?`
+  ).run(dirPath, at, JSON.stringify(result), at, bindingId);
 }
 
 /**

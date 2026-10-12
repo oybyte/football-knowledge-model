@@ -27,14 +27,16 @@ function genRunId() { return `hsr_${Date.now().toString(36)}_${crypto.randomByte
 
 /**
  * 把每个扫描根的结果回写到绑定表 last_result（可观测：哪个目录扫到几个 md、接入几场）。
- * 绑定不存在时（如 env 兜底合成的 unified）静默忽略——不影响主链。
+ * unified 根在未被用户覆盖时没有 DB 行，recordScan 会为其补一行 status='env' 的扫描痕迹行
+ * （不算用户覆盖，见 recordScan 注释）；配置表不可用时静默跳过，不影响主链。
  */
 function recordRootScans(db, scan) {
   const roots = (scan && scan.meta && scan.meta.roots) || [];
   for (const r of roots) {
     if (!r.binding_id) continue;
     try {
-      recordScan(db, r.binding_id, { ok: r.ok, md_files: r.md_files, admitted: r.admitted, rejected: r.rejected });
+      recordScan(db, r.binding_id, { ok: r.ok, md_files: r.md_files, admitted: r.admitted, rejected: r.rejected },
+        { scope: r.scope, dirPath: r.dir });
     } catch { /* 配置表不可用（迁移未跑）→ 不阻断扫描落库 */ }
   }
 }

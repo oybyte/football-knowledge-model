@@ -11,6 +11,13 @@
 --     数字 match_id（如 2041922）；='manual' 时为人工侧 match_id（联赛_主队_vs_客队）。
 --   · 冲突优先级：match 绑定 > unified；同优先级取 created_at 更新者，其余记 shadowed 不入库。
 --
+-- status 语义：
+--   · 'active'  ：生效绑定（用户显式设置；unified 行存在即覆盖 env 兜底值）
+--   · 'disabled'：**不构成生效绑定**。目前用于 env 兜底根的「扫描痕迹行」——用户未覆盖
+--     unified 时本无 DB 行，为让 last_scanned_at/last_result 有处可写而补一行；因其非
+--     'active'，resolveRoots 不会把它当成覆盖，origin 仍为 'env'（2026-10-12 起）。
+--     注意：新增 status 取值需同时改本文件的 CHECK 约束，否则非法值会被 INSERT OR IGNORE 静默丢弃。
+--
 -- 本表是**可变配置**（允许 UPDATE），刻意不设不可变触发器（对照 001 的 6 个 append-only 触发器）。
 -- 审计另行写入 audit_logs / qd_audit_log（append-only），配置表本身不承担审计职责。
 --
