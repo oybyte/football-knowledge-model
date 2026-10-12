@@ -44,6 +44,7 @@ const SPORTTERY_PAYLOAD = {
           {
             matchId: 2041049,
             matchNumStr: '周三001',
+            matchNumDate: FUTURE_BD.slice(2), // 竞彩序号只在同一业务日内唯一，锚定须带业务日
             matchNum: 2001,
             businessDate: FUTURE_BD,
             matchDate: FUTURE_BD,
@@ -137,7 +138,7 @@ test('① syncSportteryOdds：官方赔率报文 → MatchSchema（含期号/业
 // ───────────────────────── ② 期号确定性对齐 → aligned（在售态接管）─────────────────────────
 test('② 期号一致 → 确定性对齐：官方 match_id 接管，align_via=match_num，status=在售', async () => {
   const odds = await syncSportteryOdds({ fetchImpl: fakeFetchOk(SPORTTERY_PAYLOAD) });
-  const manual = { matches: [manualMatch({ meta: { match_num_str: '周三001' } })] };
+  const manual = { matches: [manualMatch({ meta: { match_num_str: '周三001', match_num_date: FUTURE_BD.slice(2) } })] };
   const res = mergeMatchSources({ schedule: odds, manual });
   assert.equal(res.ok, true);
   assert.equal(res.meta.aligned, 1);
@@ -172,7 +173,7 @@ test('③ 无期号 → 语义键（联赛+队名）对齐：align_via=semantic_
 // ───────────────────────── ④ 锚定端点升级对比：broken schedule → manual_only；odds 锚 → aligned ─────────────────────────
 test('④ 对比：同一人工场次，坏锚源降级 manual_only，odds 锚源升级 aligned', async () => {
   const odds = await syncSportteryOdds({ fetchImpl: fakeFetchOk(SPORTTERY_PAYLOAD) });
-  const manual = { matches: [manualMatch({ meta: { match_num_str: '周三001' } })] };
+  const manual = { matches: [manualMatch({ meta: { match_num_str: '周三001', match_num_date: FUTURE_BD.slice(2) } })] };
 
   // 模拟「赛程锚源不可达」：官方源为空 → 人工场诚实保留 manual_only
   const degraded = mergeMatchSources({ schedule: { matches: [] }, manual });
@@ -200,7 +201,7 @@ test('⑤ 时间防线不放松：即便 odds 锚源在售，盘口快照晚于�
       observed_at: lateTime('19:00'), received_at: lateTime('19:30'),
       data: { line: '-0.5', home_water: 0.9, away_water: 0.9 },
     }],
-    meta: { match_num_str: '周三001' },
+    meta: { match_num_str: '周三001', match_num_date: FUTURE_BD.slice(2) },
   });
   const res = mergeMatchSources({ schedule: odds, manual: { matches: [late] } });
   assert.equal(res.meta.aligned, 0);

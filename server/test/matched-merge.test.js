@@ -153,13 +153,13 @@ test('⑦ 官方期号一致 → 队名 OCR 变体也对齐（align_via=match_nu
   const sched = scheduleMatch({
     match_id: '2041244', league: '日本联赛杯', home_team: '八户南源', away_team: '枥木城',
     match_time: '2026-09-02T17:30:00+08:00',
-    meta: { match_num_str: '周三001' },
+    meta: { match_num_str: '周三001', match_num_date: '260902' },
   });
   const manual = manualMatch({
     match_id: '日联杯_八户云罗里_vs_杨木市FC', league: '日联杯', home_team: '八户云罗里', away_team: '杨木市FC',
     match_time: '2026-09-02T17:30:00+08:00',
     observed_at: '2026-09-02T13:56:00+08:00', received_at: '2026-09-02T13:56:00+08:00',
-    meta: { match_num_str: '周三001' },
+    meta: { match_num_str: '周三001', match_num_date: '260902' },
   });
   const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
   assert.equal(res.meta.aligned, 1, '期号一致应确定性对齐');
@@ -230,4 +230,75 @@ test('⑦e 仅业务日（无序号）不得锚定：回退语义键，语义键
   const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
   assert.equal(res.pool[0].meta.align_via, 'semantic_key', '无序号只能走语义键');
   assert.notEqual(res.pool[0].meta.align_via, 'match_num');
+});
+
+test('⑦f 同序号但业务日不同 → 不得锚定（序号仅在同一业务日内唯一）', () => {
+  // 真实回归取证：09-08 的「周一002」与 10-12 的「周一002」是两场完全不同的比赛。
+  // 曾因只按「周X+序号」匹配（丢掉业务日），历史场次被错锚到当天在售场次，
+  // 造成 7 组 / 13 条重复池条目，并把别场的赛果挂到本场。
+  const sched = scheduleMatch({
+    match_id: '2041922', league: '意大利甲级联赛', home_team: '亚特兰大', away_team: '威尼斯',
+    match_time: '2026-10-13T00:30:00+08:00',
+    meta: { match_num_str: '周一002', match_num_date: '261012' }, // 业务日 2026-10-12
+  });
+  const manual = manualMatch({
+    match_id: '西甲_赫塔菲_vs_塞尔塔', league: '西甲', home_team: '赫塔菲', away_team: '塞尔塔',
+    match_time: '2026-09-08T03:30:00+08:00',
+    observed_at: '2026-09-07T20:00:00+08:00', received_at: '2026-09-07T20:00:00+08:00',
+    meta: { match_num_str: '周一002', match_num_date: '260907' }, // 业务日 2026-09-07（另一个周一）
+  });
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
+  assert.equal(res.meta.aligned, 0, '业务日不同 → 不得锚定');
+  assert.equal(res.meta.manual_only, 1);
+  assert.equal(res.pool[0].match_id, '西甲_赫塔菲_vs_塞尔塔', '保留人工侧 id，未被官方接管');
+  assert.equal(res.pool[0].meta.merged, false);
+});
+
+test('⑦g 缺业务日 → 不做确定性锚定，诚实回退语义键', () => {
+  const sched = scheduleMatch({
+    match_id: '2041049', league: '英超', home_team: '曼城', away_team: '狼队',
+    meta: { match_num_str: '周三001' }, // 官方缺 match_num_date
+  });
+  const manual = manualMatch({ meta: { match_num_str: '周三001' } }); // 人工缺 match_num_date
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
+  assert.equal(res.pool[0].meta.merged, true);
+  assert.equal(res.pool[0].meta.align_via, 'semantic_key', '无业务日不得走期号锚定');
+});
+
+test('⑦h 两场人工数据指向同一官方场次 → 后到者剔除，不产生重复池条目', () => {
+  const sched = scheduleMatch({
+    match_id: '2041922', league: '意大利甲级联赛', home_team: '亚特兰大', away_team: '威尼斯',
+    match_time: '2026-10-13T00:30:00+08:00',
+    meta: { match_num_str: '周一002', match_num_date: '261012' },
+  });
+  const mk = (id) => manualMatch({
+    match_id: id, league: '意甲', home_team: '亚特兰大', away_team: '威尼斯',
+    match_time: '2026-10-13T00:30:00+08:00',
+    observed_at: '2026-10-12T20:00:00+08:00', received_at: '2026-10-12T20:00:00+08:00',
+    meta: { match_num_str: '周一002', match_num_date: '261012' },
+  });
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [mk('人工A'), mk('人工B')] } });
+  const hits = res.pool.filter((m) => m.match_id === '2041922');
+  assert.equal(hits.length, 1, '同一官方 match_id 只允许一条池条目');
+  assert.equal(hits[0].meta.manual_match_id, '人工A', '首到者胜出，且保留人工侧 id 供溯源');
+  const dup = res.dismissed.filter((d) => d.reason === 'duplicate_official_anchor');
+  assert.equal(dup.length, 1);
+  assert.equal(dup[0].manual_match_id, '人工B');
+});
+
+test('⑦i 合并 meta 保留 manual_match_id（顶层 id 被官方接管后仍可溯源）', () => {
+  const sched = scheduleMatch({
+    match_id: '2041922', league: '意大利甲级联赛', home_team: '亚特兰大', away_team: '威尼斯',
+    match_time: '2026-10-13T00:30:00+08:00',
+    meta: { match_num_str: '周一002', match_num_date: '261012' },
+  });
+  const manual = manualMatch({
+    match_id: '意甲_亚特兰大_vs_威尼斯', league: '意甲', home_team: '亚特兰大', away_team: '威尼斯',
+    match_time: '2026-10-13T00:30:00+08:00',
+    observed_at: '2026-10-12T20:00:00+08:00', received_at: '2026-10-12T20:00:00+08:00',
+    meta: { match_num_str: '周一002', match_num_date: '261012' },
+  });
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
+  assert.equal(res.pool[0].match_id, '2041922');
+  assert.equal(res.pool[0].meta.manual_match_id, '意甲_亚特兰大_vs_威尼斯');
 });

@@ -27,6 +27,27 @@ function matchKey(m) {
 }
 
 /**
+ * 期号锚定复合键 = 业务日 + 序号（如 `261012#002`）。
+ *
+ * **必须带业务日**：竞彩序号只在**同一业务日内**唯一——「周一002」每个周一都会重现。
+ * 2026-10-12 实测：只按「周X+序号」匹配时，09-08 赫塔菲、09-14 图尔库、09-28 韩国
+ * 等**不同业务日**的历史场次全部错锚到当天在售的「周一002」（亚特兰大 vs 威尼斯），
+ * 造成 7 组 / 13 条重复池条目，并把别场的赛果挂到本场（张冠李戴）。
+ *
+ * 任一侧缺业务日或缺序号 → 返回 null，该场**不做确定性锚定**，诚实回退语义键。
+ * @param {?string} dateCompact 业务日（人工 match_num_date / 官方 serial_date），YYMMDD 或 YYYYMMDD
+ * @param {?string} matchNumStr 序号串（如「周一002」）
+ * @returns {?string}
+ */
+function periodKey(dateCompact, matchNumStr) {
+  const d = String(dateCompact == null ? '' : dateCompact).replace(/[-/]/g, '').trim();
+  if (!/^\d{6}$|^\d{8}$/.test(d)) return null;
+  const m = String(matchNumStr == null ? '' : matchNumStr).trim().match(/(\d{1,4})$/);
+  if (!m) return null;
+  return `${d.slice(-6)}#${m[1].padStart(3, '0')}`;
+}
+
+/**
  * 合并竞彩赛程元信息到人工盘赔场次。
  * @param {Object} [opts]
  * @param {Object} [opts.schedule]  syncSportterySchedule 结果（matches 为无快照元信息）
@@ -44,39 +65,48 @@ function mergeMatchSources({ schedule = {}, manual = {} } = {}) {
 
   // 索引赛程（同一语义键可能命中多场——取最近一场，防御噪声）
   const byKey = new Map();
-  // 期号锚定索引：官方赔率源带 meta.match_num_str（如「周三001」）；人工 md 录入流程
-  // 显式标注同一官方期号时，可跳过队名 OCR 变体差异做确定性对齐（meta.align_via='match_num'）。
+  // 期号锚定索引：键 = 业务日#序号（见 periodKey）。官方侧需同时带 serial_date 与序号，
+  // 缺任一项则不入索引——只按序号匹配会把不同业务日的历史场次错锚到当天在售场次上。
   const byMatchNum = new Map();
   for (const s of scheduleMatches) {
     const key = matchKey(s);
     const cur = byKey.get(key);
     if (!cur || Date.parse(s.match_time || 0) > Date.parse(cur.match_time || 0)) byKey.set(key, s);
-    const mn = s.meta && s.meta.match_num_str;
-    if (mn) byMatchNum.set(String(mn).trim(), s);
+    const pk = periodKey(s.meta && s.meta.match_num_date, s.meta && s.meta.match_num_str);
+    if (pk) byMatchNum.set(pk, s);
   }
 
   const pool = [];
   const dismissed = [];
+  const usedOfficialId = new Set(); // 同一官方场次只允许一个池条目（防重复锚定，见下）
   let aligned = 0;
   let manualOnly = 0;
 
   for (const m of manualMatches) {
-    // 锚定优先级：期号（确定性）> 语义键（联赛+队名收敛）
-    const manualNum = m.meta && m.meta.match_num_str;
+    // 锚定优先级：期号+业务日（确定性）> 语义键（联赛+队名收敛）
+    const pk = periodKey(m.meta && m.meta.match_num_date, m.meta && m.meta.match_num_str);
     let sched = null;
     let alignVia = null;
-    if (manualNum && byMatchNum.has(String(manualNum).trim())) {
-      sched = byMatchNum.get(String(manualNum).trim());
+    if (pk && byMatchNum.has(pk)) {
+      sched = byMatchNum.get(pk);
       alignVia = 'match_num';
     } else {
       sched = byKey.get(matchKey(m));
       alignVia = sched ? 'semantic_key' : null;
     }
 
+    // 防御：多个池条目指向同一官方 match_id 会让「按 id 取数」产生歧义，
+    // 也会让统计口径（pool_size）失真。后到者剔除并记录原因，绝不静默合并。
+    if (sched && usedOfficialId.has(sched.match_id)) {
+      dismissed.push({ match_id: sched.match_id, key: matchKey(m), reason: 'duplicate_official_anchor', manual_match_id: m.match_id, align_via: alignVia });
+      continue;
+    }
+
     // 合并：以人工快照为底，官方元信息覆盖同名顶层（保留人工快照与其 trust）
     let merged;
     let conflict = null;
     if (sched) {
+      usedOfficialId.add(sched.match_id);
       merged = {
         ...m,
         match_id: sched.match_id,
@@ -90,7 +120,9 @@ function mergeMatchSources({ schedule = {}, manual = {} } = {}) {
         received_at: m.received_at,
         // 官方 meta 透传（business_date / match_num_str / 联赛代码 / 排名等），
         // 使「今日可买」批次分组与官方期号在合并后仍可溯；人工 meta 优先保留非重叠键。
-        meta: { ...(m.meta || {}), ...(sched.meta || {}), merged: true, schedule_match_id: sched.match_id, align_via: alignVia },
+        // manual_match_id 必留：顶层 match_id 已被官方数字 id 覆盖，不留此键则无法溯源到
+        // 究竟是哪一场人工盘赔（排障与复盘都需要），source_dir/binding_id 由扫描层带入 meta。
+        meta: { ...(m.meta || {}), ...(sched.meta || {}), merged: true, manual_match_id: m.match_id, schedule_match_id: sched.match_id, align_via: alignVia },
       };
       // 同步更新每份快照的 match_id，保持 快照.match_id === 顶层.match_id
       merged.snapshots = (m.snapshots || []).map((s) => ({ ...s, match_id: merged.match_id }));
@@ -99,7 +131,7 @@ function mergeMatchSources({ schedule = {}, manual = {} } = {}) {
         if (Date.parse(s.received_at) > Date.parse(merged.match_time)) { conflict = 'schedule_time_precedes_snapshot'; break; }
       }
     } else {
-      merged = { ...m, meta: { ...(m.meta || {}), merged: false } };
+      merged = { ...m, meta: { ...(m.meta || {}), merged: false, manual_match_id: m.match_id } };
     }
 
     const { errors } = validateMatch(merged);
@@ -126,4 +158,4 @@ function mergeMatchSources({ schedule = {}, manual = {} } = {}) {
   };
 }
 
-module.exports = { mergeMatchSources, matchKey };
+module.exports = { mergeMatchSources, matchKey, periodKey };

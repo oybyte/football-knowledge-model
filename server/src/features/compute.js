@@ -5,6 +5,9 @@
 // ============================================================================
 'use strict';
 
+const { parseDepth } = require('../engine/v97/handicap');
+const { normalizeLine } = require('../data/normalize');
+
 function avg(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
 function max(arr) { return arr.length ? Math.max(...arr) : null; }
 function min(arr) { return arr.length ? Math.min(...arr) : null; }
@@ -12,16 +15,39 @@ function sign(x) { return x < -0.005 ? -1 : (x > 0.005 ? 1 : 0); }
 function round(x, n) { const p = Math.pow(10, n); return Math.round(x * p) / p; }
 
 /**
+ * 盘口原始串 → 有符号深度（数值）。无法解析返回 null（诚实缺值，绝不猜）。
+ *
+ * 为什么必须有这一步：`data.line` 是 **OCR 原文串**（'1' / '0.5/1' / '0/0.5' / '-0.5'），
+ * 直接对它做算术会退化——`avg(['1','1','1','1','1','1'])` 因字符串拼接得 `'0111111'/6 = 18518.5`，
+ * `'1' - '0.5/1'` 得 NaN（JSON 序列化成 null），使「盘口线」整族特征全废。
+ *
+ * 复用 v97 引擎的 parseDepth：它已正确处理 '/' 双盘口（含负号作用域）、以及中文盘口名；
+ * 以 normalizeLine 兜底历史 '-' 分隔格式。
+ * 符号语义（与 v97 一致，经 673 条真实快照 × 欧赔交叉验证）：负 = 主队受让，正 = 主队让球。
+ */
+function toDepth(line) {
+  const d = parseDepth(line);
+  if (d && d.depth != null) return d.depth * d.sign; // sign: -1 受让 / 0 平手 / 1 让球
+  const n = normalizeLine(line);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * 从 markets.handicap 提取机构盘口数组（供四族计算）。
  * @param {Object} handicapMarket { institution: { initial, current } }
  * @returns {Array<{name:string, initial:{h,hw,aw}, current:{h,hw,aw}}>}
  */
 function toBookmakerRows(handicapMarket) {
-  return Object.entries(handicapMarket || {}).map(([name, rec]) => ({
-    name,
-    initial: rec.initial || {},
-    current: rec.current || {},
-  }));
+  return Object.entries(handicapMarket || {}).map(([name, rec]) => {
+    const ini = rec.initial || {};
+    const cur = rec.current || {};
+    return {
+      name,
+      // line 统一归一化为「有符号深度」数值——下游四族全按数值做算术
+      initial: { ...ini, line: toDepth(ini.line) },
+      current: { ...cur, line: toDepth(cur.line) },
+    };
+  });
 }
 
 /**
