@@ -16,10 +16,15 @@ const { isISOTime } = require('../data/schema');
  * markets 结构：
  *   {
  *     handicap: { macau: { initial:{h,hw,aw}, current:{h,hw,aw} }, ... },
- *     european: { macau: { initial:{h,d,a,kelly}, current:{...} }, ... },
+ *     european: { macau: { initial:{h,d,a}, current:{...}, latest_kelly:{...} }, ... },
  *     over_under: { ... },
  *     bf: { betfair: { current:{...} } }
  *   }
+ *
+ * `latest_kelly`：该机构×市场下**最近一条带凯利**的观测。凯利是 1X2 盘口交叉验证指标，
+ * 只出现在「澳门胜平负详细变化」的时序行上；而 `current` 取的是最晚观测（即盘估算行，
+ * 无凯利字段），二者不是同一条。故单独保留，供 anomalies / 欧指族取用。
+ * 它同样受下方 point-in-time 过滤约束（超 T 的快照已在循环入口 continue）。
  */
 function adaptMatch(match, t) {
   const tMs = Date.parse(t);
@@ -36,7 +41,7 @@ function adaptMatch(match, t) {
     if (s.source_id) sources.add(s.source_id);
 
     const market = markets[s.market] || (markets[s.market] = {});
-    const inst = market[s.institution] || (market[s.institution] = { initial: null, current: null });
+    const inst = market[s.institution] || (market[s.institution] = { initial: null, current: null, latest_kelly: null });
 
     // 同一机构内：最早 = initial，最晚 = current
     if (!inst.initial || obsMs < Date.parse(inst.initial.observed_at)) {
@@ -44,6 +49,13 @@ function adaptMatch(match, t) {
     }
     if (!inst.current || obsMs >= Date.parse(inst.current.observed_at)) {
       inst.current = { ...s.data, observed_at: s.observed_at };
+    }
+    // 最近一条带凯利的观测（见文件头说明：它通常不是 current）
+    const d = s.data || {};
+    if (d.kelly_home != null || d.kelly_draw != null || d.kelly_away != null) {
+      if (!inst.latest_kelly || obsMs >= Date.parse(inst.latest_kelly.observed_at)) {
+        inst.latest_kelly = { ...d, observed_at: s.observed_at };
+      }
     }
   }
 

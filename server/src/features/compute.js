@@ -117,19 +117,33 @@ function computeReso(rows) {
 
 /**
  * ④ 衍生异常（计算指标）
+ *
+ * 口径依据 dsl-syntax：「最大/最小凯利指数」「凯利背离（最大−最小）」，均属 anomaly 族。
+ * **凯利取自欧指市场**——它是 1X2 盘口的交叉验证指标，只存在于欧洲盘（澳门胜平负详细变化）。
+ *
+ * 历史缺陷（2026-10-12 修复）：本函数原以 `toBookmakerRows(markets.handicap)` 为输入，
+ * 读 `current.kelly` / `current.volume` / `current.volumeBaseline`——而让球盘快照只产出
+ * line/home_water/away_water，这三个字段**从不存在**，导致 kelly_index.max/min/divergence
+ * 与 volume.ratio 无论数据多全都恒为 null（结构性死字段，非数据缺失）。
+ * @param {Object} europeanMarket adaptMatch 产出的 markets.european
  */
-function computeAnom(rows) {
-  const kellys = rows.map((b) => b.current.kelly).filter((k) => typeof k === 'number');
+function computeAnom(europeanMarket) {
+  const kellys = [];
+  for (const rec of Object.values(europeanMarket || {})) {
+    const o = rec.latest_kelly || rec.current || {}; // 凯利通常只在该机构最近一条带凯利的观测上
+    for (const v of [o.kelly_home, o.kelly_draw, o.kelly_away]) {
+      if (typeof v === 'number' && Number.isFinite(v)) kellys.push(v);
+    }
+  }
   const maxK = max(kellys);
   const minK = min(kellys);
-  const ratios = rows
-    .map((b) => (b.current.volume != null && b.current.volumeBaseline ? b.current.volume / b.current.volumeBaseline : null))
-    .filter((r) => r != null);
   return {
     'kelly_index.max': maxK == null ? null : round(maxK, 3),
     'kelly_index.min': minK == null ? null : round(minK, 3),
     'kelly_index.divergence': maxK != null && minK != null ? round(maxK - minK, 3) : null,
-    'volume.ratio': ratios.length ? round(avg(ratios), 2) : null,
+    // 量比 = 当前成交量 / 基线成交量，数据源为必发。本项目现用人工盘赔源（盘口截图 v2.3.4）
+    // 的 md **整体不含必发章节**，故诚实为 null——是数据源不提供，不是实现缺失。
+    'volume.ratio': null,
     'odds.volatility': null, // 预留：真实数据接入后计算
   };
 }
@@ -138,7 +152,7 @@ function computeAnom(rows) {
  * ⑤ 欧指特征（1X2 + 凯利）
  */
 function computeOnex(europeanMarket) {
-  const rows = Object.values(europeanMarket || {}).map((rec) => rec.current || {});
+  const rows = Object.values(europeanMarket || {}).map((rec) => rec.latest_kelly || rec.current || {});
   const kh = rows.map((o) => (o.kelly_home != null ? o.kelly_home : null)).filter((x) => x != null);
   return {
     'kelly_index.home_max': kh.length ? round(max(kh), 3) : null,
@@ -164,27 +178,46 @@ function computeBetfair(bfMarket) {
 }
 
 /**
+ * 距开赛分钟数 = 开赛时间 − 分析时刻。
+ *
+ * **防泄漏契约（必须遵守）**：分析时刻由调用方显式给出。回测 / 复盘复用本模块时
+ * **必须传入其回测时点**，禁止依赖默认「现在」，否则构成时间泄漏
+ * （项目硬约束：特征与 AI 不得看到未来数据）。
+ * 已开赛场次返回负值——语义诚实，不做 clamp。
+ * @param {string} matchTime 开赛时间（ISO 8601）
+ * @param {string} analyzedAt 分析时刻（ISO 8601）
+ * @returns {?number} 分钟（四舍五入）；任一时间非法则 null
+ */
+function minutesUntil(matchTime, analyzedAt) {
+  const nowMs = Date.parse(analyzedAt);
+  const mtMs = Date.parse(matchTime);
+  if (Number.isNaN(nowMs) || Number.isNaN(mtMs)) return null;
+  return Math.round((mtMs - nowMs) / 60000);
+}
+
+/**
  * 特征计算主入口。
  * @param {Object} markets adaptMatch 产出的 markets 结构
  * @param {string} matchTime 开赛时间（ISO 8601）
- * @param {string} t 分析时点（ISO 8601）
+ * @param {{analyzedAt?:string}} [opts] analyzedAt = 分析时刻（ISO 8601），默认当前时刻。
+ *        仅用于 `time_to_match`；数据截取上界由 adapt 的 T 参数负责，二者语义不同、不可混用。
  * @returns {Record<string, number|string|boolean|null>} 注册表字段特征
  */
-function computeFeatures(markets, matchTime, t) {
+function computeFeatures(markets, matchTime, opts = {}) {
   const rows = toBookmakerRows(markets.handicap);
   const f = {
     ...computeCross(rows),
     ...computeTemp(rows),
     ...computeReso(rows),
-    ...computeAnom(rows),
+    // 凯利属 1X2 盘口指标 → 必须取自欧指（曾经错读让球盘，见 computeAnom 注释）
+    ...computeAnom(markets.european),
     ...computeOnex(markets.european),
     ...computeBetfair(markets.bf),
   };
-  // 距开赛时间（分钟）：match_time − T，天然无未来数据
-  const tMs = Date.parse(t);
-  const mtMs = Date.parse(matchTime);
-  f.time_to_match = !Number.isNaN(tMs) && !Number.isNaN(mtMs) ? Math.round((mtMs - tMs) / 60000) : null;
+  // 距开赛时间：以「分析时刻」计算。历史缺陷是直接用分析锚点 T（恒等于 match_time），
+  // 减法恒得 0，使该字段毫无信息量。
+  f.time_to_match = minutesUntil(matchTime, opts.analyzedAt || new Date().toISOString());
   return f;
 }
 
-module.exports = { computeFeatures, toBookmakerRows, computeCross, computeTemp, computeReso, computeAnom, computeOnex, computeBetfair };
+module.exports = { computeFeatures, minutesUntil, toBookmakerRows, computeCross, computeTemp, computeReso, computeAnom, computeOnex, computeBetfair };
