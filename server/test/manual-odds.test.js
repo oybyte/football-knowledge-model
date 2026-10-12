@@ -121,6 +121,53 @@ test('① 澳门分时时序使用真实显示时间（非估算）', () => {
   assert.ok(tlHc && tlHc.data.display_time === '08-14 17:37');
 });
 
+test('① 澳门总进球详细变化 → over_under 真实时序快照（非估算）', () => {
+  const md = `# 盘口截图数据
+
+## 比赛基础信息
+
+- 赛事：韩职
+- 比赛：仁川联 vs 浦项制铁
+- 开赛时间：10-09 15:30
+- 数据来源：用户提供截图
+
+## 总进球数据
+
+（大球 / 盘口 / 小球）
+| 机构 | 初盘 | 即盘 |
+|---|---|---|
+| 澳* | 0.80 / 2 / 0.92 | 0.94 / 2 / 0.78 |
+
+## 澳门总进球详细变化
+
+（大球 / 盘口 / 小球）
+| 显示时间 | 状态 | 数据 |
+|---|---|---|
+| 10-09 14:57 | 即 | 0.94 / 2 / 0.78 |
+| 10-09 13:38 | 即 | 1.02 / 2/2.5 / 0.70 |
+`;
+  const { ok, match, errors } = parseOddsMd(md, { year: 2026 });
+  assert.equal(ok, true, JSON.stringify(errors));
+  const tl = match.snapshots.filter((s) => s.market === 'over_under' && s.data.timing === 'timeline');
+  assert.equal(tl.length, 2);
+  for (const s of tl) {
+    assert.equal(s.institution, 'macau');
+    assert.equal(s.data.timing_estimate, false); // 真实显示时间，非估算
+    assert.equal(s.source_id, 'src_manual_odds');
+    assert.equal(s.trust_level, 'provisional');
+    assert.equal(Date.parse(s.received_at) <= Date.parse(match.match_time), true, s.snapshot_id + ' 泄漏');
+  }
+  const cur = tl.find((s) => s.data.display_time === '10-09 14:57');
+  assert.equal(cur.data.line, '2'); // 盘口保留原始串
+  assert.equal(cur.data.over_odds, 0.94);
+  assert.equal(cur.data.under_odds, 0.78);
+  const half = tl.find((s) => s.data.display_time === '10-09 13:38');
+  assert.equal(half.data.line, '2/2.5'); // 复合盘口原串不被改写
+  assert.equal(half.data.over_odds, 1.02);
+  // 时间顺序：时序点逆序（新→旧），与 md 书写顺序一致
+  assert.equal(Date.parse(tl[0].observed_at) > Date.parse(tl[1].observed_at), true);
+});
+
 // ═════════════ ② 信任分级 + 时间防泄漏 ═════════════
 test('② 所有快照标记 src_manual_odds / provisional，且时点不晚于开赛', () => {
   const { match } = parseOddsMd(SAMPLE, { year: 2026 });
@@ -223,4 +270,71 @@ test('①b 基础信息含「体彩期号：周三001」→ meta.match_num_str �
   // 无期号行 → null（不臆造）
   const r2 = parseOddsMd(md.replace('- 体彩期号：周三001\n', ''), { year: 2026 });
   assert.equal(r2.match.meta.match_num_str, null);
+});
+
+test('①d v2.3.4 期号「业务日-序号」→ 归一化为官方序号（期号锚定输入）', () => {
+  const build = (period) => `# 盘口截图数据
+
+## 比赛基础信息
+
+- 赛事：意甲
+- 比赛：亚特兰大 vs 威尼斯
+- 开赛时间：10-13 00:30
+- 体彩期号：${period}
+- 数据来源：盘口截图提取
+
+## 让球盘数据
+
+（主水 / 盘口 / 客水）
+| 机构 | 初盘 | 即盘 |
+|---|---|---|
+| 澳* | 0.94 / 0 / 0.84 | 0.82 / 0 / 0.96 |
+`;
+  // 业务日-序号：星期取**业务日**（10-12 = 周一），不是开赛日（10-13 00:30 = 周二）。
+  // 与真实官方报文一致：serial=周一002 / serial_date=261012。
+  const a = parseOddsMd(build('261012-002'), { year: 2026 });
+  assert.equal(a.ok, true);
+  assert.equal(a.match.meta.match_num_str, '周一002');
+  assert.equal(a.match.meta.match_num_date, '261012');
+  // 仅业务日：无序号不可确定性锚定 → 不臆造序号，只留业务日
+  const b = parseOddsMd(build('261011'), { year: 2026 });
+  assert.equal(b.match.meta.match_num_str, null);
+  assert.equal(b.match.meta.match_num_date, '261011');
+  // 无法识别 → 双 null（诚实）
+  const c = parseOddsMd(build('待定'), { year: 2026 });
+  assert.equal(c.match.meta.match_num_str, null);
+  assert.equal(c.match.meta.match_num_date, null);
+});
+
+test('①c 队名尾缀标注（用户修正 / 人工确认）被剥离，不污染语义键', () => {
+  const build = (teams) => `# 盘口截图数据
+
+## 比赛基础信息
+
+- 赛事：英冠
+- 比赛：${teams}
+- 开赛时间：10-11 19:00
+- 数据来源：盘口截图提取
+
+## 让球盘数据
+
+（主水 / 盘口 / 客水）
+| 机构 | 初盘 | 即盘 |
+|---|---|---|
+| 澳* | 0.94 / 0 / 0.84 | 0.82 / 0 / 0.96 |
+`;
+  // v2.3.4 标注（人工确认）
+  const a = parseOddsMd(build('南安普敦 vs 朴茨茅斯（人工确认）'), { year: 2026 });
+  assert.equal(a.ok, true);
+  assert.equal(a.match.home_team, '南安普敦');
+  assert.equal(a.match.away_team, '朴茨茅斯'); // 标注不进入队名
+  // 旧版标注（用户修正）语义不变
+  const b = parseOddsMd(build('南安普敦 vs 朴茨茅斯（用户修正）'), { year: 2026 });
+  assert.equal(b.match.away_team, '朴茨茅斯');
+  // 主队侧标注同样被剥离；中立项（中）仍按既有规则剥离
+  const c = parseOddsMd(build('南安普敦（人工确认） vs 朴茨茅斯'), { year: 2026 });
+  assert.equal(c.match.home_team, '南安普敦');
+  const d = parseOddsMd(build('中国U23（中） vs 日本U23'), { year: 2026 });
+  assert.equal(d.match.home_team, '中国U23');
+  assert.equal(d.match.neutral, true);
 });

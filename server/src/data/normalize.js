@@ -144,6 +144,72 @@ function parseMatchTime(datePart, timePart) {
   return Number.isNaN(Date.parse(iso)) ? null : iso;
 }
 
+// ───────────────────────── 竞彩期号归一化（人工盘赔 ↔ 官方序号确定性对齐）─────────────────────────
+
+/** 竞彩序号用中文星期，官方口径周日为「日」（非「天」）。 */
+const CN_WEEKDAYS = Object.freeze(['周日', '周一', '周二', '周三', '周四', '周五', '周六']);
+
+/**
+ * 紧凑日期 → 中文星期。支持 6 位 YYMMDD（如 261012）与 8 位 YYYYMMDD。
+ * 用 Date.UTC 取星期而非本地时区解析，避免跨时区导致跨日漂移。
+ * 非法日期（含 Date.UTC 会静默溢出的 2026-02-30 之类）返回 null，绝不猜测。
+ * @param {string} compact
+ * @returns {?string} 如 '周一'
+ */
+function weekdayCn(compact) {
+  const s = String(compact == null ? '' : compact).replace(/[-/]/g, '');
+  let y;
+  let mo;
+  let d;
+  if (/^\d{6}$/.test(s)) {
+    y = 2000 + Number(s.slice(0, 2)); mo = Number(s.slice(2, 4)); d = Number(s.slice(4, 6));
+  } else if (/^\d{8}$/.test(s)) {
+    y = Number(s.slice(0, 4)); mo = Number(s.slice(4, 6)); d = Number(s.slice(6, 8));
+  } else return null;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  // 反向校验：Date.UTC 会把非法日记溢出到下月（2026-02-30 → 03-02），须拒绝而非接受
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+  return CN_WEEKDAYS[dt.getUTCDay()];
+}
+
+/**
+ * 竞彩期号文本归一化 → 官方序号格式（供 merge 的期号锚定做字符串全等匹配）。
+ * 兼容三种录入形态；无法识别一律返回双 null（诚实，绝不臆造序号）：
+ *   · '周三001'    → 已是序号：原样（序号补齐 3 位），业务日未知
+ *   · '261012-002' → 业务日-序号：推导 '周一002' + 业务日 '261012'
+ *   · '261011'     → 仅业务日：序号为 null（无序号不能做确定性锚定），保留业务日
+ * @param {string} text
+ * @returns {{ match_num_str: ?string, match_num_date: ?string }}
+ */
+function parseMatchPeriod(text) {
+  const s = String(text == null ? '' : text).trim();
+  if (!s || s === '无' || s === '未知') return { match_num_str: null, match_num_date: null };
+
+  // 形态一：已是「周X + 序号」
+  let m = s.match(/^周([一二三四五六日天])\s*(\d{1,4})$/);
+  if (m) {
+    const day = m[1] === '天' ? '日' : m[1];
+    return { match_num_str: `周${day}${m[2].padStart(3, '0')}`, match_num_date: null };
+  }
+
+  // 形态二：业务日 - 序号（业务日的星期 = 官方序号里的星期；注意非开赛日）
+  m = s.match(/^(\d{6}|\d{8})-(\d{1,4})$/);
+  if (m) {
+    const date = m[1].length === 8 ? m[1].slice(2) : m[1]; // 统一收敛为 YYMMDD
+    const wd = weekdayCn(date);
+    return { match_num_str: wd ? `${wd}${m[2].padStart(3, '0')}` : null, match_num_date: wd ? date : null };
+  }
+
+  // 形态三：仅业务日（无序号）
+  m = s.match(/^(\d{6}|\d{8})$/);
+  if (m) {
+    const date = m[1].length === 8 ? m[1].slice(2) : m[1];
+    return { match_num_str: null, match_num_date: weekdayCn(date) ? date : null };
+  }
+
+  return { match_num_str: null, match_num_date: null };
+}
+
 module.exports = {
   normalizeInstitution,
   normalizeLine,
@@ -152,4 +218,6 @@ module.exports = {
   normalizeTeamName,
   normalizeLeague,
   parseMatchTime,
+  weekdayCn,
+  parseMatchPeriod,
 };

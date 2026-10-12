@@ -64,6 +64,8 @@ function matchRoute(method, parts) {
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'schedule') return { handler: 'getScheduleStatus' };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'sporttery-odds') return { handler: 'getSportteryOddsStatus' };
     if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'merged') return { handler: 'getMergedPool' };
+    // 人工盘赔目录绑定（004 可变配置）：统一目录 + 场次目录
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'manual-odds' && parts[3] === 'dirs') return { handler: 'listManualOddsDirs' };
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'merged' && parts[2] === 'analysis') return { handler: 'getMergedAnalysis', id: parts[3] };
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'manual-odds' && parts[2] === 'analysis') return { handler: 'getManualAnalysis', id: parts[3] };
     // P0②：预测台账（发布 + 幂等赛果回填）
@@ -82,6 +84,9 @@ function matchRoute(method, parts) {
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'predictions' && parts[3] === 'result') return { handler: 'backfillPrediction', id: parts[2] };
     // P1：规则转正试点（S25 等 V9.7 规则回测认证）
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'rules' && parts[3] === 'promote') return { handler: 'promoteRule', id: parts[2] };
+    // 人工盘赔目录绑定：新增/更新（body 带 bindings）与移除（路径带 binding_id）
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'manual-odds' && parts[3] === 'dirs') return { handler: 'setManualOddsDir', id: null };
+    if (parts.length === 6 && parts[0] === 'api' && parts[1] === 'sources' && parts[2] === 'manual-odds' && parts[3] === 'dirs' && parts[5] === 'remove') return { handler: 'removeManualOddsDir', id: parts[4] };
   }
   return null;
 }

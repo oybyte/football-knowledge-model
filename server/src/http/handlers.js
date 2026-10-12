@@ -6,8 +6,11 @@
 'use strict';
 
 const { loadMockMatches, getMockMatch } = require('../data/mock');
-const { loadManualOdds, syncSportterySchedule, syncSportteryOdds, mergeMatchSources, querySources } = require('../data');
-const { loadManualOddsFromDb } = require('../db/g12/manual_reconcile');
+const { syncSportterySchedule, syncSportteryOdds, mergeMatchSources, querySources } = require('../data');
+const { loadManualOddsFromDb, reconcileManualOddsToDb } = require('../db/g12/manual_reconcile');
+const { listDirs, getDir, upsertDir, removeDir, resolveRoots, makeBindingId, UNIFIED_ID } = require('../db/g12/manual_dirs');
+const { locateMdFiles, scanManualOddsSources } = require('../data/manual');
+const fs = require('node:fs');
 const { computeMatchFeatures } = require('../features');
 const { predict } = require('../engine');
 const { evaluateMatch } = require('../engine/v97/run');
@@ -32,6 +35,21 @@ const candidateRegistry = new Map();
 
 function ok(data) { return { status: 200, data }; }
 function fail(status, error) { return { status, error }; }
+
+/**
+ * 按当前目录绑定扫描人工盘赔源（DB 绑定 ∪ env 兜底）——统一入口。
+ * 各 handler 走同一根集合，避免「DB 里配了绑定但端点仍只认 env 单根」的不一致。
+ * @param {Object} service createService 上下文
+ * @param {string} actorId 审计用 actor id
+ */
+function loadManualOddsByRoots(service, actorId) {
+  const roots = resolveRoots({ db: service.db, env: process.env });
+  return scanManualOddsSources({
+    roots,
+    actor: { id: actorId, role: 'ingest' },
+    year: new Date().getFullYear(),
+  });
+}
 
 // ───────────────────────── 体彩官方数据「当天缓存」 ─────────────────────────
 // 中国体彩官网为公益网站，使用公开数据的同时必须控制请求频率：
@@ -131,7 +149,7 @@ function getAnalysis(service, params) {
 // 盘口数据.md → MatchSchema → 特征 → 推理链 端到端（真实本地人工盘赔源）。
 // 每次按当前 env 扫描定位场次，全部盘赔快照均早于开赛，且防泄漏。
 function getManualAnalysis(service, params) {
-  const res = loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+  const res = loadManualOddsByRoots(service, 'http:worker');
   if (res.status === 'not_configured') return fail(503, 'manual_odds_not_configured');
   const id = decodeURIComponent(params.id || ''); // match_id 含中文，需解码
   const match = (res.matches || []).find((m) => m.match_id === id);
@@ -433,11 +451,11 @@ async function getSportteryOddsStatus(service, params) {
 }
 
 // ───────────────────────── GET /api/sources/manual-odds ─────────────────────────
-// 本地人工盘赔源实时状态：根目录经 env:OE_MANUAL_ODDS_ROOT 动态配置，
-// 每次请求按当前环境扫描 → 前端「数据接入」视图实时可观测。
-function getManualOddsStatus() {
+// 本地人工盘赔源实时状态：扫描根 = DB 绑定（qd_manual_odds_dirs）∪ env:OE_MANUAL_ODDS_ROOT 兜底，
+// 每次请求按当前绑定实时扫描 → 前端「数据接入」视图实时可观测。
+function getManualOddsStatus(service) {
   const src = querySources('src_manual_odds');
-  const res = loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+  const res = loadManualOddsByRoots(service, 'http:worker');
   return ok({
     source_id: res.source_id,
     name: (src && src.source_name) || '本地人工盘赔',
@@ -457,6 +475,149 @@ function getManualOddsStatus() {
   });
 }
 
+// ───────────────────────── 人工盘赔「数据目录绑定」（004 可变配置）─────────────────────────
+// 双层模型：统一目录（scope=unified，DB 行覆盖 env:OE_MANUAL_ODDS_ROOT 兜底）
+//           + 场次目录（scope=match，为指定一场补数据 / 对已有场次换源刷新）。
+// 写操作落在 /api/sources/* 下，网关鉴权自动覆盖；变更写入 append-only 审计。
+
+/** last_result 是 JSON 文本列；读取容错（损坏返回 null，不让脏值炸掉整个列表）。 */
+function parseJsonOrNull(v) {
+  if (!v) return null;
+  try { return JSON.parse(v); } catch { return null; }
+}
+
+/** 绑定行 → 视图（去掉 JSON 文本列，换成解析后的对象）。 */
+function dirView(r) {
+  return {
+    binding_id: r.binding_id,
+    scope: r.scope,
+    match_key: r.match_key,
+    match_key_kind: r.match_key_kind,
+    dir_path: r.dir_path,
+    label: r.label,
+    status: r.status,
+    last_scanned_at: r.last_scanned_at,
+    last_result: parseJsonOrNull(r.last_result),
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+/** 目录绑定变更审计（append-only）。 */
+function auditManualDir(service, message, payload) {
+  if (service.auditStore) {
+    service.auditStore.append({ level: 'INFO', service: 'ingest', message, ...payload });
+  }
+}
+
+/** GET /api/sources/manual-odds/dirs —— 当前生效的统一目录 + 全部场次绑定。 */
+function listManualOddsDirs(service) {
+  const rows = listDirs(service.db);
+  const roots = resolveRoots({ db: service.db, env: process.env });
+  const unifiedRoot = roots.find((r) => r.scope === 'unified') || null;
+  const unifiedRow = rows.find((r) => r.scope === 'unified') || null;
+  const envRoot = String(process.env.OE_MANUAL_ODDS_ROOT || '').trim() || null;
+  return ok({
+    unified: {
+      binding_id: UNIFIED_ID,
+      dir_path: unifiedRoot ? unifiedRoot.dir : null,
+      origin: unifiedRoot ? unifiedRoot.origin : null, // 'db' = 运行时指定；'env' = 环境变量兜底
+      env_fallback: envRoot,                            // 永远展示兜底值，便于「恢复默认」
+      overridden: !!(unifiedRow && unifiedRow.dir_path && envRoot && unifiedRow.dir_path !== envRoot),
+      last_scanned_at: unifiedRow ? unifiedRow.last_scanned_at : null,
+      last_result: unifiedRow ? parseJsonOrNull(unifiedRow.last_result) : null,
+    },
+    matches: rows.filter((r) => r.scope === 'match').map(dirView),
+  });
+}
+
+/**
+ * POST /api/sources/manual-odds/dirs —— 新增/更新一条绑定（upsert），随后立即重扫落库。
+ * body: { scope, dir_path, match_key?, match_key_kind?, label? }
+ */
+function setManualOddsDir(service, params, body) {
+  const b = body || {};
+  const scope = String(b.scope || '').trim();
+  const dirPath = String(b.dir_path || '').trim();
+  const matchKey = b.match_key == null || b.match_key === '' ? null : String(b.match_key).trim();
+  const matchKeyKind = b.match_key_kind == null || b.match_key_kind === '' ? null : String(b.match_key_kind).trim();
+  const label = b.label == null || b.label === '' ? null : String(b.label).trim();
+
+  if (scope !== 'unified' && scope !== 'match') return fail(400, 'invalid_scope');
+  if (!dirPath) return fail(400, 'dir_path_required');
+
+  let st;
+  try { st = fs.statSync(dirPath); } catch { return fail(400, 'dir_not_found'); }
+  if (!st.isDirectory()) return fail(400, 'dir_not_a_directory');
+  // 目录内须有 盘口数据.md（单场目录）或含 md 的子目录（上层根）——否则诚实拒绝，不建空绑定
+  let mdFiles = [];
+  try { mdFiles = locateMdFiles(dirPath); } catch { mdFiles = []; }
+  if (mdFiles.length === 0) return fail(400, 'no_md_found');
+
+  if (scope === 'match') {
+    if (!matchKey) return fail(400, 'bind_key_required');
+    if (matchKeyKind !== 'official' && matchKeyKind !== 'manual') return fail(400, 'invalid_match_key_kind');
+    // 官方场次 id 为纯数字（如 2041922）。此处只做本地格式校验、不联网校验存在性：
+    // 若依赖官方端点，端点不可用时会连「配置都改不了」，比偶发错填更糟。
+    if (matchKeyKind === 'official' && !/^\d+$/.test(matchKey)) return fail(400, 'invalid_official_match_id');
+  }
+
+  const bindingId = makeBindingId(scope, matchKey);
+  const before = getDir(service.db, bindingId);
+  const up = upsertDir(service.db, { scope, matchKey, matchKeyKind, dirPath, label });
+
+  // 立即重扫并落库：reconcile 幂等（内容未变即 skipped），只补「最后一公里」
+  let rec;
+  try {
+    rec = reconcileManualOddsToDb({
+      db: service.db, qd: service.qd, env: process.env,
+      actor: { id: 'api:manual-dirs', role: 'ingest' },
+      year: new Date().getFullYear(),
+    });
+  } catch (e) {
+    return fail(500, 'reconcile_failed');
+  }
+
+  const after = getDir(service.db, up.binding_id);
+  auditManualDir(service, up.created ? 'manual_odds_dir_added' : 'manual_odds_dir_updated', {
+    binding_id: up.binding_id, scope, match_key: matchKey, match_key_kind: matchKeyKind, dir_path: dirPath,
+    prev_state: before ? dirView(before) : null,
+    new_state: after ? dirView(after) : null,
+  });
+
+  return ok({ binding_id: up.binding_id, created: up.created, dir: after ? dirView(after) : null, scan: rec });
+}
+
+/**
+ * POST /api/sources/manual-odds/dirs/:binding_id/remove —— 移除绑定并重扫。
+ * 移除 unified 绑定 = 回退 env 兜底值（不是「无目录」）。
+ */
+function removeManualOddsDir(service, params, body) {
+  const b = body || {};
+  const bindingId = String((params && params.id) || b.binding_id || '').trim();
+  if (!bindingId) return fail(400, 'binding_id_required');
+
+  const before = getDir(service.db, bindingId);
+  if (!before) return fail(404, 'binding_not_found');
+
+  removeDir(service.db, bindingId);
+  let rec = null;
+  try {
+    rec = reconcileManualOddsToDb({
+      db: service.db, qd: service.qd, env: process.env,
+      actor: { id: 'api:manual-dirs', role: 'ingest' },
+      year: new Date().getFullYear(),
+    });
+  } catch { /* 移除已生效；重扫失败不回滚（下次启动 reconcile 会补齐） */ }
+
+  auditManualDir(service, 'manual_odds_dir_removed', {
+    binding_id: bindingId, scope: before.scope, match_key: before.match_key, dir_path: before.dir_path,
+    prev_state: dirView(before), new_state: null,
+  });
+
+  return ok({ binding_id: bindingId, removed: true, scan: rec });
+}
+
 // ───────────────────────── GET /api/sources/merged ─────────────────────────
 // 双源合并「真实比赛池」：竞彩官方赛程（trusted 元信息）∪ 本地人工盘赔（provisional 盘口快照）。
 // 语义键对齐；官方 match_time 早于盘口快照接收的场次被时间防线剔除（conflicts）。
@@ -466,7 +627,7 @@ async function getMergedPool(service, params) {
     const { value: schedule } = await syncAnchorCached(service, wantRefresh(params));
     // 合并池优先读 DB（派生层，扫盘即写入）；DB 为空时回退磁盘扫描（兼容首次启动/重置）。
     const manual = loadManualOddsFromDb(service.qd)
-      || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+      || loadManualOddsByRoots(service, 'http:worker');
     const merged = mergeMatchSources({ schedule, manual });
     return ok({
       status: merged.ok ? 'ok' : 'degraded',
@@ -498,7 +659,7 @@ async function getMergedAnalysis(service, params) {
   try {
     const { value: schedule } = await syncAnchorCached(service, false);
     const manual = loadManualOddsFromDb(service.qd)
-      || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+      || loadManualOddsByRoots(service, 'http:worker');
     const merged = mergeMatchSources({ schedule, manual });
     const id = decodeURIComponent(params.id || '');
     const match = (merged.pool || []).find((m) => m.match_id === id);
@@ -545,7 +706,7 @@ async function getFeatures(service, params) {
   try {
     const { value: schedule } = await syncAnchorCached(service, false);
     const manual = loadManualOddsFromDb(service.qd)
-      || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+      || loadManualOddsByRoots(service, 'http:worker');
     const merged = mergeMatchSources({ schedule, manual });
     const id = decodeURIComponent(params.id || '');
     const match = (merged.pool || []).find((m) => m.match_id === id);
@@ -592,7 +753,7 @@ function getPublisher(service) {
 async function resolveAnalysisMatch(service, id) {
   const { value: schedule } = await syncAnchorCached(service, false);
   const manual = loadManualOddsFromDb(service.qd)
-    || loadManualOdds({ env: process.env, actor: { id: 'http:worker', role: 'ingest' } });
+    || loadManualOddsByRoots(service, 'http:worker');
   const merged = mergeMatchSources({ schedule, manual });
   let match = (merged.pool || []).find((m) => m.match_id === id);
   if (!match && manual && manual.matches) {
@@ -851,6 +1012,9 @@ module.exports = {
   getScheduleStatus,
   getSportteryOddsStatus,
   getManualOddsStatus,
+  listManualOddsDirs,
+  setManualOddsDir,
+  removeManualOddsDir,
   getMergedPool,
   getMergedAnalysis,
   getFeatures,

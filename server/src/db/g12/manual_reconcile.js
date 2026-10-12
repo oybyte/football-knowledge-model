@@ -1,6 +1,8 @@
 // ============================================================================
 // G12 派生层 · manual_reconcile —— 扫盘即写入 DB（磁盘 盘口数据.md 为真相源）
 // 职责：
+//   0. 扫描根取自 resolveRoots（DB 绑定 qd_manual_odds_dirs ∪ env:OE_MANUAL_ODDS_ROOT 兜底）；
+//      多根结果按 match_id 去重（match 绑定 > unified），每次扫描把各根结果回写绑定表 last_result。
 //   1. reconcileManualOddsToDb：把磁盘扫描得到的 parsed match 落库为「整场版本」。
 //      · 版本粒度 = 整份盘口数据.md 的 sha256（match.content_hash 已带）。
 //      · 幂等：version_id = hmv_<content_hash>；相同内容 INSERT OR IGNORE 跳过。
@@ -15,12 +17,27 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { scanManualOddsRoot } = require('../../data/manual');
+const { scanManualOddsSources } = require('../../data/manual');
 const { withTransaction } = require('../connection');
 const { defaultLogger } = require('../../lib/logger');
+const { resolveRoots, recordScan } = require('./manual_dirs');
 
 function nowIso() { return new Date().toISOString(); }
 function genRunId() { return `hsr_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}`; }
+
+/**
+ * 把每个扫描根的结果回写到绑定表 last_result（可观测：哪个目录扫到几个 md、接入几场）。
+ * 绑定不存在时（如 env 兜底合成的 unified）静默忽略——不影响主链。
+ */
+function recordRootScans(db, scan) {
+  const roots = (scan && scan.meta && scan.meta.roots) || [];
+  for (const r of roots) {
+    if (!r.binding_id) continue;
+    try {
+      recordScan(db, r.binding_id, { ok: r.ok, md_files: r.md_files, admitted: r.admitted, rejected: r.rejected });
+    } catch { /* 配置表不可用（迁移未跑）→ 不阻断扫描落库 */ }
+  }
+}
 
 /**
  * 从 DB 读取当前生效的人工盘赔比赛（重建为 parseOddsMd 同构的 match 对象）。
@@ -75,7 +92,9 @@ function loadManualOddsFromDb(qd) {
  */
 function reconcileManualOddsToDb({ db, qd, env = process.env, actor, year, logger = defaultLogger }) {
   const startedAt = nowIso();
-  const scan = scanManualOddsRoot({ env, actor: actor || { id: 'reconcile:worker', role: 'ingest' }, year });
+  // 扫描根 = DB 绑定（qd_manual_odds_dirs）∪ env:OE_MANUAL_ODDS_ROOT 兜底。
+  const roots = resolveRoots({ db, env });
+  const scan = scanManualOddsSources({ roots, actor: actor || { id: 'reconcile:worker', role: 'ingest' }, year });
   const matches = scan.matches || [];
   const filesSeen = (scan.meta && scan.meta.total) || 0;
   const filesRejected = (scan.meta && scan.meta.rejected) || 0;
@@ -90,6 +109,7 @@ function reconcileManualOddsToDb({ db, qd, env = process.env, actor, year, logge
       imported: 0, skipped: 0, superseded: 0,
       note: scan.reason || 'no_admitted_matches', created_at: nowIso(),
     });
+    recordRootScans(db, scan);
     return { ok: false, status: scan.status || 'empty', reason: scan.reason, imported: 0, skipped: 0, superseded: 0, snapshotCount: 0 };
   }
 
@@ -174,6 +194,7 @@ function reconcileManualOddsToDb({ db, qd, env = process.env, actor, year, logge
   });
 
   logger.info('manual_odds_reconcile_done', { imported, skipped, superseded, snapshotCount });
+  recordRootScans(db, scan);
   return { ok: true, status: 'ok', imported, skipped, superseded, snapshotCount };
 }
 

@@ -10,13 +10,17 @@
 // ============================================================================
 'use strict';
 
-const { normalizeInstitution, normalizeWater, normalizeResult } = require('../normalize');
+const { normalizeInstitution, normalizeWater, normalizeResult, parseMatchPeriod } = require('../normalize');
 
 const OFFSET = '+08:00';
 
 /** 初盘估算：开赛前 6 小时；即盘估算：开赛前 30 分钟。 */
 const INITIAL_BEFORE_MIN = 6 * 60;
 const CURRENT_BEFORE_MIN = 30;
+
+// 队名尾部的人工校验标注：旧版 OCR 工具写「（用户修正）」，v2.3.4 起写「（人工确认）」。
+// 二者都是录入流程标记而非队名内容，必须剥离，否则归一化队名与官方不一致，语义键锚定永远不命中。
+const TEAM_ANNOT_SUFFIX = /[（(](?:用户修正|人工确认)[）)]\s*$/;
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
@@ -87,7 +91,8 @@ function parseOddsMd(mdText, opts = {}) {
 
   // ── 比赛元信息 ──
   let league = '', home = '', away = '', kickoffStr = '', neutral = false;
-  let matchNumStr = null; // 官方竞彩期号（如「周三001」，供确定性锚定）
+  let matchNumStr = null; // 官方竞彩序号（归一化为官方格式，如「周一002」，供确定性锚定）
+  let matchNumDate = null; // 竞彩业务日（如「261012」），用于可溯与批次归组
   // ── 赛果 ──
   let half = null, full = null, total = null;
   const snapshots = [];
@@ -96,6 +101,7 @@ function parseOddsMd(mdText, opts = {}) {
   const instRows = []; // 机构初/即盘表：{ market, institution, initial, current }
   const tlHcRows = []; // 澳门让球时序
   const tlEuRows = []; // 澳门胜平负时序
+  const tlOuRows = []; // 澳门总进球时序
   const bfRows = [];
   let turnover = null;
 
@@ -106,17 +112,23 @@ function parseOddsMd(mdText, opts = {}) {
     // 比赛基础信息
     if (/^- 赛事：/.test(line)) league = line.slice(line.indexOf('：') + 1).trim();
     if (/^- 比赛：/.test(line)) {
-      const t = line.slice(line.indexOf('：') + 1).replace(/（用户修正）$/, '').trim();
+      const t = line.slice(line.indexOf('：') + 1).trim();
       const m = t.match(/^(.*?)\s+vs\s+(.*?)$/i);
-      if (m) { home = m[1].trim(); away = m[2].trim(); }
+      if (m) {
+        home = m[1].replace(TEAM_ANNOT_SUFFIX, '').trim();
+        away = m[2].replace(TEAM_ANNOT_SUFFIX, '').trim();
+      }
       neutral = home.includes('（中）') || home.includes('(中)') || home.includes('中立');
       home = home.replace(/[（(]中[）)]/g, '').trim();
     }
     if (/^- 开赛时间：/.test(line)) kickoffStr = line.slice(line.indexOf('：') + 1).trim();
-    // 官方竞彩期号（如「周三001」）：录入流程显式标注时，作为确定性锚定键（对齐官方 match_id）
+    // 官方竞彩期号：录入侧可能写「周三001」（序号）/「261012-002」（业务日-序号）/
+    // 「261011」（仅业务日）。统一归一化为官方序号格式，使 merge 的期号锚定（字符串全等）
+    // 生效——该通道不受队名 OCR 变体影响。无法识别则留 null（诚实，绝不臆造序号）。
     if (/^- (体彩|竞彩)期号：/.test(line)) {
-      const v = line.slice(line.indexOf('：') + 1).trim();
-      if (v && v !== '无' && v !== '未知') matchNumStr = v;
+      const p = parseMatchPeriod(line.slice(line.indexOf('：') + 1));
+      if (p.match_num_str) matchNumStr = p.match_num_str;
+      if (p.match_num_date) matchNumDate = p.match_num_date;
     }
     if (/^- 半场比分：/.test(line)) {
       const mm = line.match(/(\d+)\s*[-—]\s*(\d+)/); if (mm) half = { h: Number(mm[1]), a: Number(mm[2]) };
@@ -165,6 +177,9 @@ function parseOddsMd(mdText, opts = {}) {
       if (t && c[0] && Number.isFinite(Number(c[3]))) { // c[3]=返还率数值
         tlEuRows.push({ time: c[0], status: c[1] || '即', triple: t, return_rate: Number(c[3]), kelly: parseTriple(c[4]) });
       }
+    } else if (section.includes('澳门总进球详细变化')) {
+      const t = parseTriple(c[2]);
+      if (t && c[0]) tlOuRows.push({ time: c[0], status: c[1] || '即', triple: t });
     } else if (section.includes('必发交易盈亏')) {
       if (c[0] && (c[0] === '胜' || c[0] === '平' || c[0] === '负') && /\d/.test(c[1])) {
         bfRows.push({
@@ -239,6 +254,15 @@ function parseOddsMd(mdText, opts = {}) {
     });
   }
 
+  for (const t of tlOuRows) {
+    const iso = t.time ? parseMdDate(t.time, year) : null;
+    if (!iso) continue;
+    const d = pickMarketData('over_under', t.triple);
+    pushSnap('macau', 'over_under', iso, iso, {
+      ...d, timing: 'timeline', timing_estimate: false, display_time: t.time,
+    });
+  }
+
   // ── 必发 → bf 快照 ──
   if (bfRows.length && currentMs) {
     pushSnap('betfair', 'bf', isoFromMs(currentMs), isoFromMs(currentMs), {
@@ -274,7 +298,8 @@ function parseOddsMd(mdText, opts = {}) {
     meta: {
       source_kind: 'manual_md',
       kickoff_display: kickoffStr,
-      match_num_str: matchNumStr || null, // 官方期号（录入流程标注时存在）→ merge 期号锚定
+      match_num_str: matchNumStr || null, // 官方序号（归一化后）→ merge 期号锚定输入
+      match_num_date: matchNumDate || null, // 竞彩业务日（YYMMDD）
       total_goals: total,
       half_score: half ? `${half.h}:${half.a}` : null,
     },

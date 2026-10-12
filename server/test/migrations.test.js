@@ -29,6 +29,8 @@ const QD_TABLES = [
   'qd_hist_match_version',
   'qd_hist_match_snapshot',
   'qd_hist_scan_runs',
+  // 004_manual_odds_dirs.sql 可变配置层（人工盘赔目录绑定）
+  'qd_manual_odds_dirs',
 ];
 
 function tableNames(db) {
@@ -78,6 +80,8 @@ test('G12 · 12 个索引全部创建', () => {
     // 002_manual_odds_history.sql 派生层索引
     'idx_hist_run_started', 'idx_hist_snap_version',
     'idx_hist_version_active', 'idx_hist_version_hash', 'idx_hist_version_match',
+    // 004_manual_odds_dirs.sql 配置层索引（另有部分唯一索引 uniq_manual_dirs_unified，非 idx_ 前缀，不在此列）
+    'idx_manual_dirs_match', 'idx_manual_dirs_scope',
   ];
   assert.deepEqual(indexes.sort(), expected.sort());
   close();

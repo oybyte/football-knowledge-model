@@ -44,7 +44,7 @@ function tmpDbPath() {
 
 // ───────────────────────── ① 迁移与不可变触发器 ─────────────────────────
 
-test('迁移 · 建 20 张表（5 运行时 + 15 G12 qd_*）+ 16 个不可变触发器', () => {
+test('迁移 · 建 21 张表（5 运行时 + 16 G12 qd_*）+ 16 个不可变触发器', () => {
   const { db, close } = createDb();
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((r) => r.name);
   assert.deepEqual(tables, [
@@ -52,6 +52,7 @@ test('迁移 · 建 20 张表（5 运行时 + 15 G12 qd_*）+ 16 个不可变触
     'qd_ai_candidates', 'qd_analysis_commands', 'qd_audit_log', 'qd_backtest_jobs',
     'qd_data_sources', 'qd_evidence_snapshots', 'qd_field_registry',
     'qd_hist_match_snapshot', 'qd_hist_match_version', 'qd_hist_scan_runs',
+    'qd_manual_odds_dirs',
     'qd_match_features', 'qd_matches', 'qd_odds_snapshots', 'qd_predictions',
     'qd_rule_versions', 'rule_versions',
   ]);

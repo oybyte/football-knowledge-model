@@ -108,6 +108,15 @@ const ENTITIES = Object.freeze({
     json: [],
     defaults: { files_seen: 0, files_ok: 0, files_rejected: 0, imported: 0, skipped: 0, superseded: 0 },
   },
+  // ── 004 可变配置：人工盘赔数据目录绑定（unified 统一目录 / match 场次目录）──
+  // 刻意**不**列入 IMMUTABLE_TABLES：这是可编辑的运行时配置，需要 UPDATE（改目录/结果、停用）。
+  qd_manual_odds_dirs: {
+    pk: 'binding_id',
+    columns: ['binding_id', 'scope', 'match_key', 'match_key_kind', 'dir_path', 'label', 'status', 'last_scanned_at', 'last_result', 'created_at', 'updated_at'],
+    required: ['binding_id', 'scope', 'dir_path', 'created_at', 'updated_at'],
+    json: ['last_result'],
+    defaults: { status: 'active' },
+  },
 });
 
 /** 不可变违规（应用层守卫；DB 触发器兜底）。 */

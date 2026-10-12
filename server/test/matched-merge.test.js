@@ -13,7 +13,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { mergeMatchSources } = require('../src/data');
-const { normalizeLeague, normalizeTeamName } = require('../src/data/normalize');
+const { normalizeLeague, normalizeTeamName, parseMatchPeriod } = require('../src/data/normalize');
 
 /** 竞彩赛程元信息场次（basic，无快照，EMPTY_SNAPSHOTS 非致命）。 */
 function scheduleMatch(over = {}) {
@@ -186,4 +186,48 @@ test('⑦c normalizeLeague 日联杯系别名收敛（日本联赛杯/日联赛�
   assert.equal(normalizeLeague('日本联赛杯'), '日联杯');
   assert.equal(normalizeLeague('日联赛杯'), '日联杯');
   assert.equal(normalizeLeague('日联杯'), '日联杯');
+});
+
+test('⑦d 跨格式期号锚定：人工「业务日-序号」 vs 官方「周X序号」', () => {
+  // 真实场景：官方 2041922「意大利甲级联赛 亚特兰大 vs 威尼斯」，serial=周一002 / serial_date=261012。
+  // 人工 md 记「体彩期号：261012-002」→ 经 parseMatchPeriod 归一化为「周一002」后应确定性对齐。
+  // 这里刻意让队名带 OCR 变体残留，使语义键必然不中——只有期号通道能救。
+  const sched = scheduleMatch({
+    match_id: '2041922', league: '意大利甲级联赛', home_team: '亚特兰大', away_team: '威尼斯',
+    match_time: '2026-10-13T00:30:00+08:00',
+    meta: { match_num_str: '周一002', match_num_date: '261012', business_date: '2026-10-12' },
+  });
+  const manual = manualMatch({
+    match_id: '意甲_亚特兰大_vs_威尼斯（人工确认）', league: '意甲',
+    home_team: '亚特兰大', away_team: '威尼斯（人工确认）',
+    match_time: '2026-10-13T00:30:00+08:00',
+    observed_at: '2026-10-12T20:00:00+08:00', received_at: '2026-10-12T20:00:00+08:00',
+    meta: {
+      match_num_str: parseMatchPeriod('261012-002').match_num_str,
+      match_num_date: parseMatchPeriod('261012-002').match_num_date,
+    },
+  });
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
+  assert.equal(res.meta.aligned, 1, '跨格式期号应确定性对齐');
+  assert.equal(res.meta.conflicts, 0);
+  assert.equal(res.pool[0].meta.align_via, 'match_num');
+  assert.equal(res.pool[0].match_id, '2041922', '官方数字 ID 接管');
+  assert.equal(res.pool[0].away_team, '威尼斯', '官方队名覆盖 OCR 变体');
+});
+
+test('⑦e 仅业务日（无序号）不得锚定：回退语义键，语义键不中则 manual_only', () => {
+  const sched = scheduleMatch({
+    match_id: '2041922', league: '意大利甲级联赛', home_team: '亚特兰大', away_team: '威尼斯',
+    match_time: '2026-10-13T00:30:00+08:00',
+    meta: { match_num_str: '周一002', match_num_date: '261012' },
+  });
+  const manual = manualMatch({
+    league: '意甲', home_team: '亚特兰大', away_team: '威尼斯',
+    match_time: '2026-10-13T00:30:00+08:00',
+    observed_at: '2026-10-12T20:00:00+08:00', received_at: '2026-10-12T20:00:00+08:00',
+    meta: { match_num_str: null, match_num_date: '261012' }, // 仅业务日，无序号
+  });
+  const res = mergeMatchSources({ schedule: { matches: [sched] }, manual: { matches: [manual] } });
+  assert.equal(res.pool[0].meta.align_via, 'semantic_key', '无序号只能走语义键');
+  assert.notEqual(res.pool[0].meta.align_via, 'match_num');
 });

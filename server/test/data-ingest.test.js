@@ -13,7 +13,7 @@ const { validateMatch, ERROR_CODES } = require('../src/data/schema');
 const { ingestMatch, ingestMockAll, ingestMockMatch, querySources } = require('../src/data');
 const { CredentialVault, UnauthorizedVaultError } = require('../src/vault/credential_vault');
 const { filterAudit } = require('../src/vault/audit');
-const { normalizeInstitution, normalizeLine, normalizeWater, normalizeResult } = require('../src/data/normalize');
+const { normalizeInstitution, normalizeLine, normalizeWater, normalizeResult, weekdayCn, parseMatchPeriod } = require('../src/data/normalize');
 
 /** 构造一份合法 MatchSchema 的最小样例 */
 function validMatch(overrides = {}) {
@@ -120,6 +120,40 @@ test('验收② 水位与赛果归一化', () => {
   assert.equal(normalizeResult(1, 1), 'draw');
   assert.equal(normalizeResult(0, 3), 'away_win');
   assert.equal(normalizeResult(null, 1), null);
+});
+
+// ───────────────────────── 验收②b 竞彩期号归一化（期号锚定输入）─────────────────────────
+test('验收②b weekdayCn：中文星期（取业务日，非开赛日）', () => {
+  // 与真实官方报文字段对齐验证：业务日 2026-10-12 ↔ 官方 serial=周一002
+  assert.equal(weekdayCn('261012'), '周一');
+  assert.equal(weekdayCn('20261012'), '周一');
+  // 业务日 2026-10-11 ↔ 官方 serial=周日017
+  assert.equal(weekdayCn('261011'), '周日');
+  assert.equal(weekdayCn('261013'), '周二');
+  // 非法输入一律 null（不猜测）
+  assert.equal(weekdayCn('260230'), null); // 2026-02-30 不存在（Date.UTC 会溢出到 3 月，须拒绝）
+  assert.equal(weekdayCn('abc'), null);
+  assert.equal(weekdayCn(''), null);
+  assert.equal(weekdayCn(null), null);
+});
+
+test('验收②b parseMatchPeriod：三种录入形态 → 官方序号（无法识别不臆造）', () => {
+  // 形态一：已是序号（补齐 3 位；「天」归一为官方口径「日」）
+  assert.deepEqual(parseMatchPeriod('周三001'), { match_num_str: '周三001', match_num_date: null });
+  assert.deepEqual(parseMatchPeriod('周三1'), { match_num_str: '周三001', match_num_date: null });
+  assert.deepEqual(parseMatchPeriod('周天017'), { match_num_str: '周日017', match_num_date: null });
+  // 形态二：业务日-序号 → 推导序号（核心场景）
+  assert.deepEqual(parseMatchPeriod('261012-002'), { match_num_str: '周一002', match_num_date: '261012' });
+  assert.deepEqual(parseMatchPeriod('261012-2'), { match_num_str: '周一002', match_num_date: '261012' });
+  assert.deepEqual(parseMatchPeriod('20261012-002'), { match_num_str: '周一002', match_num_date: '261012' });
+  // 形态三：仅业务日 → 有序号才能确定性锚定，故序号为 null
+  assert.deepEqual(parseMatchPeriod('261011'), { match_num_str: null, match_num_date: '261011' });
+  // 无法识别 / 空 / 无 / 未知 → 双 null
+  assert.deepEqual(parseMatchPeriod('待定'), { match_num_str: null, match_num_date: null });
+  assert.deepEqual(parseMatchPeriod('260230-001'), { match_num_str: null, match_num_date: null }); // 非法业务日
+  assert.deepEqual(parseMatchPeriod(''), { match_num_str: null, match_num_date: null });
+  assert.deepEqual(parseMatchPeriod('无'), { match_num_str: null, match_num_date: null });
+  assert.deepEqual(parseMatchPeriod(undefined), { match_num_str: null, match_num_date: null });
 });
 
 // ───────────────────────── 验收③ mock 不污染 ─────────────────────────
